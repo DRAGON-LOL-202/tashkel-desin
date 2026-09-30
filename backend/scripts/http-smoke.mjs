@@ -1,0 +1,48 @@
+// اختبار تكامل: يحتاج خادماً يعمل على PostgreSQL مُهيَّأ بالـ seed + متغير ADMIN_PASSWORD و SMOKE_USER_PASSWORD (لا تُكتب هنا). ينشئ مستخدماً تجريبياً des1 — استخدمه على قاعدة اختبار فقط.
+const DPW=process.env.SMOKE_USER_PASSWORD; if(!DPW||DPW.length<8){console.error('حدّد SMOKE_USER_PASSWORD (8 أحرف على الأقل) و ADMIN_PASSWORD'); process.exit(2)}
+import fs from 'fs';
+const B=(process.env.API_URL||'http://localhost:4000/api'); const pw=(process.env.ADMIN_PASSWORD||'');
+let pass=0, fail=0;
+const ok=(n,c,x='')=>{ if(c){pass++;console.log('PASS',n)} else {fail++;console.log('FAIL',n,x)} };
+async function call(m,p,tok,body){const r=await fetch(B+p,{method:m,headers:{'Content-Type':'application/json',...(tok?{Authorization:'Bearer '+tok}:{})},body:body?JSON.stringify(body):undefined});let j=null;try{j=await r.json()}catch{}return {s:r.status,j}}
+const today=new Date().toISOString().slice(0,10);
+const a=await call('POST','/auth/login',null,{username:'lol',password:pw}); ok('admin login',a.s===200&&a.j.token&&!JSON.stringify(a.j).includes('passwordHash'));
+const T=a.j.token;
+ok('bad login 401',(await call('POST','/auth/login',null,{username:'lol',password:'x'})).s===401);
+ok('me',(await call('GET','/auth/me',T)).j.user.username==='lol');
+const u=await call('POST','/users',T,{name:'مصمم تجريبي',username:'des1',email:'des1@example.test',password:DPW,role:'DESIGNER'}); ok('create designer',u.s===201,JSON.stringify(u.j));
+const did=u.j.user?.id;
+const d=await call('POST','/auth/login',null,{username:'des1',password:DPW}); const D=d.j.token; ok('designer login',d.s===200);
+ok('designer /users 403',(await call('GET','/users',D)).s===403);
+ok('designer /goals 403',(await call('GET','/goals',D)).s===403);
+ok('designer /calendar-events 403',(await call('GET','/calendar-events',D)).s===403);
+ok('no token 401',(await call('GET','/tasks')).s===401);
+const users=(await call('GET','/users',T)).j.users; const amr=users.find(x=>x.username==='amr');
+const t1=await call('POST','/tasks',D,{title:'مهمة المصمم',date:today,target:5,current:0,priority:'high'}); ok('designer creates own task',t1.s===201&&t1.j.task.assigneeId===did,JSON.stringify(t1.j));
+ok('designer cannot assign other',(await call('POST','/tasks',D,{title:'x',date:today,assigneeId:amr.id})).s===403);
+const tid=t1.j.task.id;
+ok('start',(await call('POST',`/tasks/${tid}/start`,D)).s===200);
+const st=await call('POST',`/tasks/${tid}/stop`,D,{note:'استراحة'}); ok('stop',st.s===200);
+ok('start again',(await call('POST',`/tasks/${tid}/start`,D)).s===200);
+const en=await call('POST',`/tasks/${tid}/end`,D); ok('end',en.s===200&&en.j.task.status==='completed',JSON.stringify(en.j.task?.status));
+ok('duration>=0',typeof en.j.task.totalDuration==='number');
+ok('designer cannot delete task',(await call('DELETE',`/tasks/${tid}`,D)).s===403);
+ok('comment',(await call('POST',`/tasks/${tid}/comments`,D,{text:'تعليق'})).s===200);
+const at=await call('POST','/tasks',T,{title:'مهمة إدارة',date:today,assigneeId:did,target:10,current:2}); ok('admin assigns to designer',at.s===201&&at.j.task.createdByName&&at.j.task.assigneeName,JSON.stringify(at.j));
+const sub=await call('POST','/tasks',T,{title:'فرعية',date:today,assigneeId:did,parentId:at.j.task.id}); ok('subtask',sub.s===201&&sub.j.task.parentId===at.j.task.id);
+const dl=(await call('GET','/tasks',D)).j.tasks; ok('designer sees only own',dl.every(t=>t.assigneeId===did)&&dl.length>=3);
+ok('move-unfinished',(await call('POST','/tasks/move-unfinished',T,{date:today})).j.moved>=1);
+ok('designer move-unfinished 403',(await call('POST','/tasks/move-unfinished',D,{date:today})).s===403);
+const fb=await call('POST','/feedback',D,{title:'فكرة',description:'وصف',type:'idea',date:today}); ok('designer feedback',fb.s===201,JSON.stringify(fb.j));
+ok('designer cannot patch feedback',(await call('PATCH',`/feedback/${fb.j.feedback.id}`,D,{status:'resolved'})).s===403);
+ok('admin resolve feedback',(await call('PATCH',`/feedback/${fb.j.feedback.id}`,T,{status:'resolved'})).j.feedback.status==='resolved');
+const g=await call('POST','/goals',T,{title:'هدف',type:'weekly',target:10,current:10,startDate:today}); ok('goal auto completed',g.s===201&&g.j.goal.status==='completed'&&g.j.goal.progress===100,JSON.stringify(g.j));
+const ev=await call('POST','/calendar-events',T,{title:'موسم',startDate:'2026-10-01',endDate:'2026-10-10',color:'#27C6A3'}); ok('calendar create',ev.s===201);
+ok('calendar bad range 400',(await call('POST','/calendar-events',T,{title:'x',startDate:'2026-10-10',endDate:'2026-10-01'})).s===400);
+ok('bulk-delete',(await call('POST','/feedback/bulk-delete',T,{})).j.deleted>=1);
+ok('profile patch',(await call('PATCH','/users/me',D,{jobTitle:'مصمم أول'})).s===200);
+ok('designer cannot change role via me',(await call('PATCH','/users/me',D,{role:'ADMIN'})).s===400);
+ok('deactivate designer',(await call('PATCH',`/users/${did}/status`,T,{isActive:false})).s===200);
+ok('deactivated token -> 401',(await call('GET','/tasks',D)).s===401);
+const sys=users.find(x=>x.username==='lol'); ok('system user not deletable',(await call('DELETE',`/users/${sys.id}`,T)).s>=400);
+console.log(`\n${pass} passed, ${fail} failed`);
