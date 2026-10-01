@@ -114,26 +114,48 @@ function stopLines(task: Task, reportDate: string): string {
     .join("\n");
 }
 
+/** حالة المهمة التي لها فرعيات تُشتق من فرعياتها: مكتملة إن اكتملت كلها، وإلا قيد التنفيذ/متوقفة حسب الفرعيات، ولا تُعرض حالتها المخزَّنة. */
+function derivedStatus(groupTasks: Task[], task: Task): string {
+  const subs = descendants(groupTasks, task.id);
+  if (isTreeDone(groupTasks, task)) return STATUS_LABEL.completed;
+  if (subs.some((t) => t.status === "running")) return STATUS_LABEL.running;
+  if (subs.some((t) => t.status === "paused")) return STATUS_LABEL.paused;
+  if (subs.some((t) => t.status === "completed")) return STATUS_LABEL.running;
+  return STATUS_LABEL.not_started;
+}
+
 const blanks = (n: number, s: CellStyle): XlsxCell[] => Array.from({ length: n }, () => ({ v: "", s }));
 
 /** خلايا المهمة من «النوع» إلى «أضافها» (16 خلية) — مشتركة بين الورقة المجمَّعة وورقة الجدول */
 function taskCells(groupTasks: Task[], task: Task, depth: number, date: string, now: number): XlsxCell[] {
   const kids = groupTasks.filter((t) => t.parentId === task.id);
-  const progress = kids.length > 0 ? calculateParentProgress(kids) : calculateTaskProgress(task);
-  const withKids =
-    kids.length > 0 ? elapsedMs(task, now) + descendants(groupTasks, task.id).reduce((sum, t) => sum + elapsedMs(t, now), 0) : null;
+  const hasKids = kids.length > 0;
+  const family = hasKids ? [task, ...descendants(groupTasks, task.id)] : [task];
+  const done = hasKids ? isTreeDone(groupTasks, task) : task.status === "completed";
+  const progress = hasKids ? calculateParentProgress(kids) : calculateTaskProgress(task);
+  const withKids = hasKids ? family.reduce((sum, t) => sum + elapsedMs(t, now), 0) : null;
+
+  // المهمة التي لها فرعيات: الإنجاز والبدء والانتهاء والحالة تُشتق من فرعياتها (لا تُترك على حالتها المخزَّنة)
+  const current = hasKids ? kids.reduce((sum, k) => sum + Math.min(Math.max(0, k.current), Math.max(0, k.target)), 0) : task.current;
+  const target = hasKids ? kids.reduce((sum, k) => sum + Math.max(0, k.target), 0) : task.target;
+  const starts = family.map((t) => t.startedAt ?? t.startTime).filter((v): v is number => !!v);
+  const ends = family.map((t) => t.endTime).filter((v): v is number => !!v);
+  const startMs = hasKids ? (starts.length > 0 ? Math.min(...starts) : undefined) : (task.startedAt ?? task.startTime);
+  const endMs = hasKids ? (done && ends.length > 0 ? Math.max(...ends) : undefined) : task.endTime;
+  const status = hasKids ? derivedStatus(groupTasks, task) : (STATUS_LABEL[task.status] ?? task.status);
+
   const isSub = depth > 0;
   return [
     { v: isSub ? "فرعية" : "رئيسية", s: "center" },
     { v: isSub ? `${"    ".repeat(depth - 1)}↳ ${task.title}` : task.title, s: isSub ? "text" : "boldText" },
     { v: task.description ?? "", s: "text" },
     { v: PRIORITY_LABEL[task.priority] ?? task.priority, s: "center" },
-    { v: STATUS_LABEL[task.status] ?? task.status, s: "center" },
-    { v: task.current, s: "number" },
-    { v: task.target, s: "number" },
+    { v: status, s: "center" },
+    { v: current, s: "number" },
+    { v: target, s: "number" },
     { v: progress / 100, s: "percent" },
-    { v: formatClock(task.startedAt ?? task.startTime, date), s: "center" },
-    { v: formatClock(task.endTime, date), s: "center" },
+    { v: formatClock(startMs, date), s: "center" },
+    { v: formatClock(endMs, date), s: "center" },
     { v: asExcelDuration(elapsedMs(task, now)), s: "duration" },
     { v: withKids === null ? null : asExcelDuration(withKids), s: "duration" },
     { v: asExcelDuration(pauseMs(task, now)), s: "duration" },
