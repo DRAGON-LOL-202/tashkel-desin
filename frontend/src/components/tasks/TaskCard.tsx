@@ -107,6 +107,7 @@ function subtasksLabel(count: number): string {
 function SubtaskRow({ task, getSubtasks, onStart, onRequestStop, onFinish, onDelete, onEdit, onSetCurrent, onAddSubtask, onAddComment, onDeleteComment }: Pick<TaskCardProps, "getSubtasks" | "onStart" | "onRequestStop" | "onFinish" | "onDelete" | "onEdit" | "onSetCurrent" | "onAddSubtask" | "onAddComment" | "onDeleteComment"> & { task: Task }) {
   const [expanded, setExpanded] = useState(false);
   const { canManageTasks, canDeleteComment } = usePermissions();
+  const elapsed = useElapsed(task);
   const isCompleted = task.status === "completed";
   const isRunning = task.status === "running";
   const isPaused = task.status === "paused";
@@ -156,6 +157,11 @@ function SubtaskRow({ task, getSubtasks, onStart, onRequestStop, onFinish, onDel
           <div className="mt-2 flex items-center gap-3">
             <ProgressBar percentage={percentage} />
             <span className="w-11 shrink-0 text-left font-mono text-xs font-bold text-text">{percentage}%</span>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
+            <span className="flex items-center gap-1.5"><Clock size={13} />الوقت: <span className="font-mono font-semibold text-text">{formatDuration(elapsed)}</span></span>
+            <span>بدأت: {formatArabicTime(task.startedAt ?? task.startTime)}</span>
+            <span>انتهت: {formatArabicTime(task.endTime)}</span>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {!isCompleted && (
