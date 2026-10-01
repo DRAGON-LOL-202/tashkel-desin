@@ -8,6 +8,7 @@ export type CellStyle =
   | "header"
   | "text"
   | "center"
+  | "boldText"
   | "number"
   | "duration"
   | "percent"
@@ -51,6 +52,7 @@ const STYLE_INDEX: Record<CellStyle | "default", number> = {
   totalNumber: 9,
   totalDuration: 10,
   totalPercent: 11,
+  boldText: 12,
 };
 
 const MAX_CELL_CHARS = 32000; // حد Excel 32767 حرفاً للخلية
@@ -156,9 +158,9 @@ const STYLES_XML =
   `</border>` +
   `</borders>` +
   `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
-  `<cellXfs count="12">` +
+  `<cellXfs count="13">` +
   `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>` + // 0 default
-  `<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"><alignment horizontal="center" vertical="center"/></xf>` + // 1 title
+  `<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>` + // 1 title
   `<xf numFmtId="0" fontId="1" fillId="2" borderId="${BORDER}" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>` + // 2 header
   `<xf numFmtId="0" fontId="0" fillId="0" borderId="${BORDER}" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>` + // 3 text
   `<xf numFmtId="0" fontId="0" fillId="0" borderId="${BORDER}" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top" wrapText="1"/></xf>` + // 4 center
@@ -169,6 +171,7 @@ const STYLES_XML =
   `<xf numFmtId="0" fontId="3" fillId="3" borderId="${BORDER}" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf>` + // 9 totalNumber
   `<xf numFmtId="164" fontId="3" fillId="3" borderId="${BORDER}" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf>` + // 10 totalDuration
   `<xf numFmtId="9" fontId="3" fillId="3" borderId="${BORDER}" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf>` + // 11 totalPercent
+  `<xf numFmtId="0" fontId="3" fillId="0" borderId="${BORDER}" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>` + // 12 boldText
   `</cellXfs>` +
   `<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>` +
   `</styleSheet>`;

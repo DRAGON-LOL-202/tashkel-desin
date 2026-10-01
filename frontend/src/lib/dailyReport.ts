@@ -1,6 +1,6 @@
 // بناء أوراق التقرير اليومي (دالة صرفة بلا DOM ولا شبكة — سهلة الاختبار).
 import type { Task, TeamMember } from "../types/index.ts";
-import type { XlsxCell, XlsxRow, XlsxSheet } from "./xlsx.ts";
+import type { CellStyle, XlsxCell, XlsxRow, XlsxSheet } from "./xlsx.ts";
 import { calculateParentProgress, calculateTaskProgress } from "./taskProgress.ts";
 
 type MemberLike = Pick<TeamMember, "id" | "name" | "role">;
@@ -79,18 +79,78 @@ function groupByMember(tasks: Task[], members: MemberLike[]): Group[] {
   return groups.filter((g) => g.tasks.length > 0);
 }
 
-/** رئيسية أولاً ثم فرعياتها مباشرة بعدها. المهمة الفرعية التي أبوها ليس في هذا اليوم تُعامل كرئيسية. */
-function orderTree(memberTasks: Task[]): { task: Task; isSub: boolean }[] {
+/** رئيسية أولاً ثم فرعياتها مباشرة بعدها (مع عمق التداخل). المهمة الفرعية التي أبوها ليس في هذا اليوم تُعامل كرئيسية. */
+function orderTree(memberTasks: Task[]): { task: Task; depth: number }[] {
   const ids = new Set(memberTasks.map((t) => t.id));
   const childrenOf = (id: string) => memberTasks.filter((t) => t.parentId === id).sort(byOrder);
   const roots = memberTasks.filter((t) => !t.parentId || !ids.has(t.parentId)).sort(byOrder);
-  const out: { task: Task; isSub: boolean }[] = [];
-  const walk = (task: Task, isSub: boolean) => {
-    out.push({ task, isSub });
-    for (const child of childrenOf(task.id)) walk(child, true);
+  const out: { task: Task; depth: number }[] = [];
+  const walk = (task: Task, depth: number) => {
+    out.push({ task, depth });
+    for (const child of childrenOf(task.id)) walk(child, depth + 1);
   };
-  for (const root of roots) walk(root, !!root.parentId && ids.has(root.parentId));
+  for (const root of roots) walk(root, 0);
   return out;
+}
+
+function descendants(tasks: Task[], id: string): Task[] {
+  return tasks.filter((t) => t.parentId === id).flatMap((kid) => [kid, ...descendants(tasks, kid.id)]);
+}
+
+/** إجمالي مدة التوقف للمهمة. توقف لم يُستكمل: يُحتسب حتى الآن إن كانت متوقفة، وإلا حتى انتهائها. */
+function pauseMs(task: Task, now: number): number {
+  return (task.stopNotes ?? []).reduce((sum, s) => {
+    const end = s.resumedAt ?? (task.status === "paused" ? now : (task.endTime ?? now));
+    return sum + Math.max(0, end - s.time);
+  }, 0);
+}
+
+function stopLines(task: Task, reportDate: string): string {
+  return (task.stopNotes ?? [])
+    .map((s) => {
+      const resumed = s.resumedAt ? `استكمال ${formatClock(s.resumedAt, reportDate)}` : task.status === "paused" ? "متوقفة حالياً" : "لم تُستكمل";
+      return `توقف ${formatClock(s.time, reportDate)} · ${resumed}${s.note ? `: ${s.note}` : ""}`;
+    })
+    .join("\n");
+}
+
+const blanks = (n: number, s: CellStyle): XlsxCell[] => Array.from({ length: n }, () => ({ v: "", s }));
+
+/** خلايا المهمة من «النوع» إلى «أضافها» (16 خلية) — مشتركة بين الورقة المجمَّعة وورقة الجدول */
+function taskCells(groupTasks: Task[], task: Task, depth: number, date: string, now: number): XlsxCell[] {
+  const kids = groupTasks.filter((t) => t.parentId === task.id);
+  const progress = kids.length > 0 ? calculateParentProgress(kids) : calculateTaskProgress(task);
+  const withKids =
+    kids.length > 0 ? elapsedMs(task, now) + descendants(groupTasks, task.id).reduce((sum, t) => sum + elapsedMs(t, now), 0) : null;
+  const isSub = depth > 0;
+  return [
+    { v: isSub ? "فرعية" : "رئيسية", s: "center" },
+    { v: isSub ? `${"    ".repeat(depth - 1)}↳ ${task.title}` : task.title, s: isSub ? "text" : "boldText" },
+    { v: task.description ?? "", s: "text" },
+    { v: PRIORITY_LABEL[task.priority] ?? task.priority, s: "center" },
+    { v: STATUS_LABEL[task.status] ?? task.status, s: "center" },
+    { v: task.current, s: "number" },
+    { v: task.target, s: "number" },
+    { v: progress / 100, s: "percent" },
+    { v: formatClock(task.startedAt ?? task.startTime, date), s: "center" },
+    { v: formatClock(task.endTime, date), s: "center" },
+    { v: asExcelDuration(elapsedMs(task, now)), s: "duration" },
+    { v: withKids === null ? null : asExcelDuration(withKids), s: "duration" },
+    { v: asExcelDuration(pauseMs(task, now)), s: "duration" },
+    { v: stopLines(task, date), s: "text" },
+    { v: (task.comments ?? []).map((c) => (c.userName ? `${c.userName}: ${c.text}` : c.text)).join("\n"), s: "text" },
+    { v: task.createdByName ?? "", s: "text" },
+  ];
+}
+
+/** صف إجمالي: تسمية + ملاحظة نصية + مجموع وقت العمل + مجموع التوقف، والباقي خلايا فارغة بنفس النمط */
+function totalRow(len: number, at: { label: number; note: number; work: number; pause: number }, label: string, note: string, workMs: number, pauseTotalMs: number): XlsxRow {
+  const row = blanks(len, "total");
+  row[at.label] = { v: label, s: "total" };
+  row[at.note] = { v: note, s: "total" };
+  row[at.work] = { v: asExcelDuration(workMs), s: "totalDuration" };
+  row[at.pause] = { v: asExcelDuration(pauseTotalMs), s: "totalDuration" };
+  return row;
 }
 
 export function buildDailyReportSheets(tasks: Task[], members: MemberLike[], date: string, now: number = Date.now()): XlsxSheet[] {
@@ -154,65 +214,83 @@ export function buildDailyReportSheets(tasks: Task[], members: MemberLike[], dat
     ],
   };
 
-  // ---------- ورقة التفاصيل ----------
-  const detailHeader: XlsxRow = [
-    "#",
-    "المسؤول",
-    "النوع",
-    "المهمة",
-    "الوصف",
-    "الأولوية",
-    "الحالة",
-    "المنجز",
-    "المطلوب",
-    "النسبة",
-    "بدأت",
-    "انتهت",
-    "مدة العمل",
-    "عدد المرفقات",
-    "ملاحظات الإيقاف",
-    "التعليقات",
-    "أضافها",
-  ].map((v): XlsxCell => ({ v, s: "header" }));
+  // ---------- الورقة المجمَّعة: كل مصمم ومهامه وإجماليه، ثم الإجمالي العام ----------
+  const TASK_HEADERS = ["النوع", "المهمة", "الوصف", "الأولوية", "الحالة", "المنجز", "المطلوب", "النسبة", "بدأت", "انتهت", "مدة العمل", "الإجمالي مع الفرعيات", "مدة التوقف", "سجل التوقفات", "التعليقات", "أضافها"];
+  const head = (labels: string[]): XlsxRow => labels.map((v): XlsxCell => ({ v, s: "header" }));
 
-  const detailRows: XlsxRow[] = [];
-  let n = 0;
+  const fullRows: XlsxRow[] = [
+    [{ v: `التقرير اليومي التفصيلي — ${arabicLongDate(date)}`, s: "title" }],
+    [],
+    head(["#", ...TASK_HEADERS]),
+  ];
+  const fullMerges: string[] = ["A1:F1"];
+  const FULL_AT = { label: 2, note: 3, work: 11, pause: 13 };
+  let grandWork = 0;
+  let grandPause = 0;
+  let grandSubs = 0;
+
+  if (groups.length === 0) fullRows.push([{ v: "لا توجد مهام في هذا اليوم", s: "text" }]);
+
   for (const g of groups) {
-    for (const { task, isSub } of orderTree(g.tasks)) {
-      const kids = g.tasks.filter((t) => t.parentId === task.id);
-      const progress = kids.length > 0 ? calculateParentProgress(kids) : calculateTaskProgress(task);
+    const ids = new Set(g.tasks.map((t) => t.id));
+    const mains = g.tasks.filter((t) => !t.parentId || !ids.has(t.parentId));
+    const doneMains = mains.filter((t) => isTreeDone(g.tasks, t)).length;
+    const workMs = g.tasks.reduce((sum, t) => sum + elapsedMs(t, now), 0);
+    const pauseTotal = g.tasks.reduce((sum, t) => sum + pauseMs(t, now), 0);
+    grandWork += workMs;
+    grandPause += pauseTotal;
+    grandSubs += g.tasks.length - mains.length;
+
+    fullRows.push([{ v: g.role ? `${g.name} — ${g.role}` : g.name, s: "header" }, ...blanks(16, "header")]);
+    fullMerges.push(`A${fullRows.length}:F${fullRows.length}`);
+
+    let n = 0;
+    for (const { task, depth } of orderTree(g.tasks)) {
       n += 1;
-      detailRows.push([
-        { v: n, s: "number" },
-        { v: g.name, s: "text" },
-        { v: isSub ? "فرعية" : "رئيسية", s: "center" },
-        { v: isSub ? `↳ ${task.title}` : task.title, s: "text" },
-        { v: task.description ?? "", s: "text" },
-        { v: PRIORITY_LABEL[task.priority] ?? task.priority, s: "center" },
-        { v: STATUS_LABEL[task.status] ?? task.status, s: "center" },
-        { v: task.current, s: "number" },
-        { v: task.target, s: "number" },
-        { v: progress / 100, s: "percent" },
-        { v: formatClock(task.startedAt ?? task.startTime, date), s: "center" },
-        { v: formatClock(task.endTime, date), s: "center" },
-        { v: asExcelDuration(elapsedMs(task, now)), s: "duration" },
-        { v: task.attachments?.length ?? 0, s: "number" },
-        { v: (task.stopNotes ?? []).map((s) => s.note).join("\n"), s: "text" },
-        { v: (task.comments ?? []).map((c) => (c.userName ? `${c.userName}: ${c.text}` : c.text)).join("\n"), s: "text" },
-        { v: task.createdByName ?? "", s: "text" },
-      ]);
+      fullRows.push([{ v: n, s: "number" }, ...taskCells(g.tasks, task, depth, date, now)]);
     }
+    fullRows.push(
+      totalRow(17, FULL_AT, `إجمالي ${g.name}`, `رئيسية: ${mains.length} · فرعية: ${g.tasks.length - mains.length} · مكتملة: ${doneMains}`, workMs, pauseTotal)
+    );
+    fullRows.push([]);
   }
 
-  const lastCol = "Q";
-  const detail: XlsxSheet = {
-    name: "المهام",
+  if (groups.length > 0) {
+    fullRows.push(
+      totalRow(17, FULL_AT, "الإجمالي العام", `رئيسية: ${totalMain} · فرعية: ${grandSubs} · مكتملة: ${totalDone}`, grandWork, grandPause)
+    );
+  }
+
+  const full: XlsxSheet = {
+    name: "التقرير التفصيلي",
     rtl: true,
-    widths: [5, 20, 10, 34, 40, 11, 13, 9, 9, 10, 12, 12, 12, 11, 34, 40, 18],
-    freezeRows: 1,
-    autoFilter: detailRows.length > 0 ? `A1:${lastCol}${detailRows.length + 1}` : undefined,
-    rows: [detailHeader, ...detailRows],
+    widths: [5, 10, 36, 36, 11, 13, 9, 9, 10, 12, 12, 13, 16, 13, 40, 38, 18],
+    merges: fullMerges,
+    freezeRows: 3,
+    rows: fullRows,
   };
 
-  return [summary, detail];
+  // ---------- جدول مسطَّح قابل للفلترة (صف لكل مهمة) مع إجمالي أسفله ----------
+  const tableRows: XlsxRow[] = [];
+  let tn = 0;
+  for (const g of groups) {
+    for (const { task, depth } of orderTree(g.tasks)) {
+      tn += 1;
+      tableRows.push([{ v: tn, s: "number" }, { v: g.name, s: "text" }, ...taskCells(g.tasks, task, depth, date, now)]);
+    }
+  }
+  const table: XlsxSheet = {
+    name: "جدول المهام",
+    rtl: true,
+    widths: [5, 20, 10, 36, 36, 11, 13, 9, 9, 10, 12, 12, 13, 16, 13, 40, 38, 18],
+    freezeRows: 1,
+    autoFilter: tableRows.length > 0 ? `A1:R${tableRows.length + 1}` : undefined,
+    rows: [
+      head(["#", "المسؤول", ...TASK_HEADERS]),
+      ...tableRows,
+      ...(tableRows.length > 0 ? [[] as XlsxRow, totalRow(18, { label: 3, note: 4, work: 12, pause: 14 }, "الإجمالي", `${tableRows.length} مهمة`, grandWork, grandPause)] : []),
+    ],
+  };
+
+  return [full, summary, table];
 }
