@@ -19,6 +19,7 @@ import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { useAuth } from "../components/auth/AuthProvider";
 import { useSafeAction } from "../hooks/useSafeAction";
 import { useTeamMembers } from "../hooks/useTeamMembers";
+import { useLiveSync } from "../hooks/useLiveSync";
 import { usePermissions } from "../hooks/usePermissions";
 import { errorMessage } from "../lib/api";
 import { downloadDailyReport } from "../lib/exportDailyReport";
@@ -75,6 +76,16 @@ export default function Dashboard() {
       show(errorMessage(error), "error");
     }
   }, [show]);
+
+  // تحديث تلقائي صامت: عندما يضيف/يعدّل أي مستخدم مهمة أو تعليقاً تظهر عند الجميع بدون رفرش
+  const syncTasks = useCallback(async () => {
+    try {
+      setTasks(await tasksService.list());
+    } catch {
+      // نُبقي القائمة الحالية ونحاول عند التغيير التالي
+    }
+  }, []);
+  useLiveSync(syncTasks);
 
   useEffect(() => {
     const id = setInterval(() => setTick((value) => value + 1), 1000);

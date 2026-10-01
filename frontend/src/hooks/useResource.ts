@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { errorMessage } from "../lib/api";
+import { useLiveSync } from "./useLiveSync";
 
 /**
  * تحميل مورد من الـ API مع حالات loading / error. `reload()` مزامنة صامتة (بدون وميض)،
@@ -21,6 +22,16 @@ export function useResource<T>(loader: () => Promise<T>, initial: T) {
       setLoading(false);
     }
   }, [loader]);
+
+  // تحديث تلقائي عند تغيير أي مستخدم للبيانات: صامت تماماً (لا loading ولا error)
+  const silentSync = useCallback(async () => {
+    try {
+      setData(await loader());
+    } catch {
+      // نُبقي البيانات الحالية ونحاول عند التغيير التالي
+    }
+  }, [loader]);
+  useLiveSync(silentSync);
 
   const retry = useCallback(async () => {
     setLoading(true);

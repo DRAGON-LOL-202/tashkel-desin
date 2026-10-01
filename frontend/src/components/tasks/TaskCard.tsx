@@ -198,7 +198,10 @@ function SubtaskRow({ task, getSubtasks, onStart, onRequestStop, onFinish, onDel
               <p className="mb-1 font-semibold text-primary-deep">تعليقات ({task.comments.length})</p>
               {task.comments.map((comment) => (
                 <div key={String(comment.time) + comment.text} className="flex items-start justify-between gap-2 py-1.5">
-                  <p>{comment.text}</p>
+                  <p className="min-w-0 break-words">
+{comment.userName && <span className="ml-1.5 font-semibold text-primary-deep">{comment.userName}:</span>}
+{comment.text}
+</p>
                   {canDeleteComment(comment.userId) && (
                     <button type="button" onClick={() => onDeleteComment(task.id, comment.time)} className="text-muted hover:text-problem" aria-label="حذف التعليق">
                     <Trash2 size={13} />
@@ -352,7 +355,10 @@ export function TaskCard({ task, subtasks, getSubtasks, onStart, onRequestStop, 
           <p className="mb-2 font-semibold text-primary-deep">تعليقات ({task.comments.length})</p>
           {task.comments.map((comment) => (
             <div key={String(comment.time) + comment.text} className="flex items-start justify-between gap-2 border-t border-primary/15 py-2 first:border-t-0 first:pt-0">
-              <p>{comment.text}</p>
+              <p className="min-w-0 break-words">
+{comment.userName && <span className="ml-1.5 font-semibold text-primary-deep">{comment.userName}:</span>}
+{comment.text}
+</p>
               {canDeleteComment(comment.userId) && (
                 <button type="button" onClick={() => onDeleteComment(task.id, comment.time)} className="text-muted hover:text-problem" aria-label="حذف التعليق"><Trash2 size={13} /></button>
               )}
