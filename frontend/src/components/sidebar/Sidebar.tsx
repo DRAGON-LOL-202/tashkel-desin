@@ -1,7 +1,5 @@
-import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { CalendarRange, Home, LogOut, MessageSquare, PanelRightClose, PanelRightOpen, Plus, Target, UserCog, UserRound, Users } from "lucide-react";
-import { AddPageModal } from "./AddPageModal";
+import { CalendarRange, Home, LogOut, MessageSquare, PanelRightClose, PanelRightOpen, Target, UserCog, UserRound, Users } from "lucide-react";
 import { useAuth } from "../auth/AuthProvider";
 import type { AppPage } from "../../lib/permissions";
 
@@ -21,7 +19,6 @@ interface SidebarProps {
 }
 
 export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
-  const [addPageOpen, setAddPageOpen] = useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const isDesigner = user?.accessRole === "designer";
@@ -76,15 +73,6 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
       </nav>
 
       <div className="p-3 border-t border-border shrink-0 flex flex-col gap-2">
-        {!isDesigner && (
-          <button
-            onClick={() => setAddPageOpen(true)}
-            className="flex items-center gap-3 rounded-control px-3 py-2.5 text-sm font-medium text-muted hover:bg-border/50 hover:text-text transition-colors"
-          >
-            <Plus size={18} className="shrink-0" />
-            {!collapsed && <span>إضافة صفحة</span>}
-          </button>
-        )}
         <button
           onClick={() => {
             logout();
@@ -104,8 +92,6 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
           {!collapsed && <span>طي القائمة</span>}
         </button>
       </div>
-
-      <AddPageModal open={addPageOpen} onClose={() => setAddPageOpen(false)} />
     </aside>
   );
 }

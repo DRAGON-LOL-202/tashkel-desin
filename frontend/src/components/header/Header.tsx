@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Menu, Moon, Sun } from "lucide-react";
+import { Download, Menu, Moon, Sun } from "lucide-react";
 import { formatArabicDate } from "../../lib/date";
+import { promptInstall, useInstallApp } from "../../lib/pwa";
+import { useToast } from "../ui/ToastProvider";
 
 interface HeaderProps {
   title: string;
@@ -10,6 +12,8 @@ interface HeaderProps {
 }
 
 export function Header({ title, description, action, onOpenMobileNav }: HeaderProps) {
+  const toast = useToast();
+  const { canPrompt, isIOS, showInstall } = useInstallApp();
   const [darkMode, setDarkMode] = useState(() => {
     try {
       const saved = localStorage.getItem("tashkeel_theme");
@@ -28,6 +32,14 @@ export function Header({ title, description, action, onOpenMobileNav }: HeaderPr
       // ignore storage errors
     }
   }, [darkMode]);
+
+  const handleInstall = async () => {
+    if (canPrompt) {
+      await promptInstall();
+      return;
+    }
+    if (isIOS) toast.show("لتثبيت التطبيق: اضغط زر المشاركة في Safari ثم اختر «إضافة إلى الشاشة الرئيسية»", "info");
+  };
 
   return (
     <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-md border-b border-border">
@@ -49,6 +61,17 @@ export function Header({ title, description, action, onOpenMobileNav }: HeaderPr
           <span className="hidden xl:inline text-xs text-muted font-medium">
             {formatArabicDate(new Date().toISOString(), "EEEE، d MMMM yyyy")}
           </span>
+          {showInstall && (
+            <button
+              onClick={handleInstall}
+              aria-label="تثبيت التطبيق"
+              title="تثبيت التطبيق"
+              className="h-10 rounded-control border border-border bg-surface px-3 text-muted hover:text-text hover:border-primary-deep/40 flex items-center gap-2 text-sm font-medium transition-colors"
+            >
+              <Download size={18} />
+              <span className="hidden sm:inline">تثبيت التطبيق</span>
+            </button>
+          )}
           <button
             onClick={() => setDarkMode((value) => !value)}
             aria-label={darkMode ? "تفعيل الوضع الفاتح" : "تفعيل الوضع الداكن"}
