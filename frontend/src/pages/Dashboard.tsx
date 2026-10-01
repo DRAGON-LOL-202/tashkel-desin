@@ -21,6 +21,7 @@ import { useSafeAction } from "../hooks/useSafeAction";
 import { useTeamMembers } from "../hooks/useTeamMembers";
 import { usePermissions } from "../hooks/usePermissions";
 import { errorMessage } from "../lib/api";
+import { downloadDailyReport } from "../lib/exportDailyReport";
 
 function sortTasks(a: Task, b: Task): number {
   if (a.status === "completed" && b.status !== "completed") return 1;
@@ -233,6 +234,20 @@ export default function Dashboard() {
     await mutate(() => tasksService.moveUnfinishedToNextDay(selectedDate), "تم نقل المهام غير المنتهية إلى اليوم التالي");
   };
 
+  const handleExportExcel = () => {
+    const dayAll = tasks.filter((task) => task.date === selectedDate);
+    if (dayAll.length === 0) {
+      show("لا توجد مهام في هذا اليوم لتصديرها");
+      return;
+    }
+    try {
+      downloadDailyReport(dayAll, teamMembers, selectedDate);
+      show("تم تصدير التقرير", "success");
+    } catch {
+      show("تعذّر إنشاء ملف Excel", "error");
+    }
+  };
+
   return (
     <AppLayout
       headerSlot={(openMobileNav) => (
@@ -279,6 +294,7 @@ export default function Dashboard() {
           onSearchChange={setSearch}
           onMoveUnfinishedToNextDay={isStaff ? handleMoveUnfinishedToNextDay : undefined}
           moveDisabled={unfinishedCount === 0}
+          onExportExcel={handleExportExcel}
         />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-5 items-start">

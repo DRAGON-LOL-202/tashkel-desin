@@ -1,5 +1,21 @@
 # CHANGES.md
 
+## Checkpoint 17 — تصدير التقرير اليومي إلى Excel (واجهة فقط)
+
+### أُنشئت
+- `frontend/src/lib/xlsx.ts` — كاتب .xlsx بدون مكتبات (ZIP بلا ضغط + XML): عدة أوراق، RTL، تجميد، فلتر تلقائي، دمج، أنماط جاهزة؛ النصوص inlineStr فلا تُفسَّر كصيغ.
+- `frontend/src/lib/dailyReport.ts` — دالة صرفة تبني ورقتي «الملخص» (لكل مصمم) و«المهام» (التفاصيل بالشجرة رئيسية ← فرعية).
+- `frontend/src/lib/exportDailyReport.ts` — تنزيل الملف من المتصفح (`تقرير-المهام-<التاريخ>.xlsx`) بدون أي طلب للخادم.
+
+### عُدّلت
+- `frontend/src/components/tasks/TaskFilters.tsx` — خاصية `onExportExcel` وزر «تصدير Excel».
+- `frontend/src/pages/Dashboard.tsx` — `handleExportExcel` (يصدّر كل مهام اليوم المختار متجاهلاً الفلتر والبحث).
+- لا تغيير في الـ backend ولا في قاعدة البيانات.
+
+### تحقّق
+- ✅ نُفِّذ: `tsc -b` و`oxlint` و`vite build` على المشروع كاملاً؛ توليد ملف تجريبي وقراءته بـ openpyxl وLibreOffice (RTL، دمج، فلتر، تنسيق المدد والنسب، نص يبدأ بـ `=` يبقى نصاً).
+- ❌ لم يُنفَّذ: تجربة في متصفح حقيقي بمهام الإنتاج، ولا فتح الملف في Microsoft Excel نفسه.
+
 ## Checkpoint 16 — تكامل Cloudflare R2 للمرفقات (مكتوب، غير مُشغَّل على R2 حقيقي)
 
 ### أُنشئت

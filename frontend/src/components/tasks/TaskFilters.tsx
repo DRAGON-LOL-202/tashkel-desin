@@ -1,4 +1,4 @@
-import { CalendarPlus, Search } from "lucide-react";
+import { CalendarPlus, Download, Search } from "lucide-react";
 import { Tabs } from "../ui/Tabs";
 
 export type TaskFilterValue = "all" | "not_started" | "running" | "paused" | "completed";
@@ -10,6 +10,7 @@ interface TaskFiltersProps {
   onSearchChange: (value: string) => void;
   onMoveUnfinishedToNextDay?: () => void;
   moveDisabled?: boolean;
+  onExportExcel?: () => void;
 }
 
 const options = [
@@ -27,6 +28,7 @@ export function TaskFilters({
   onSearchChange,
   onMoveUnfinishedToNextDay,
   moveDisabled = false,
+  onExportExcel,
 }: TaskFiltersProps) {
   return (
     <div className="flex flex-col xl:flex-row xl:items-center gap-3 justify-between">
@@ -41,6 +43,16 @@ export function TaskFilters({
           >
             <CalendarPlus size={16} />
             <span>نقل إلى اليوم التالي</span>
+          </button>
+        )}
+        {onExportExcel && (
+          <button
+            type="button"
+            onClick={onExportExcel}
+            className="inline-flex items-center justify-center gap-2 rounded-control border border-border bg-surface px-4 py-2 text-sm font-semibold text-text transition hover:bg-muted/10"
+          >
+            <Download size={16} />
+            <span>تصدير Excel</span>
           </button>
         )}
       </div>
