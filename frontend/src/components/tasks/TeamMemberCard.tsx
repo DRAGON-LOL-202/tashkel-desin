@@ -18,6 +18,7 @@ interface TeamMemberCardProps {
   onStart: (id: string) => void;
   onRequestStop: (id: string) => void;
   onFinish: (id: string) => void;
+  onReopen: (id: string) => void;
   onDelete: (task: Task) => void;
   onAddSubtaskToParent: (task: Task) => void;
   onEdit: (task: Task) => void;
@@ -37,6 +38,7 @@ export function TeamMemberCard({
   onStart,
   onRequestStop,
   onFinish,
+  onReopen,
   onDelete,
   onAddSubtaskToParent,
   onEdit,
@@ -225,6 +227,7 @@ export function TeamMemberCard({
                 onStart={onStart}
                 onRequestStop={onRequestStop}
                 onFinish={onFinish}
+                onReopen={onReopen}
                 onDelete={onDelete}
                 onEdit={onEdit}
                 onSetCurrent={onSetCurrent}

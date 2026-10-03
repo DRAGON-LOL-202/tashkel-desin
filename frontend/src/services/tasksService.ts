@@ -119,6 +119,11 @@ export const tasksService = {
     return task;
   },
 
+  async reopen(id: string): Promise<Task> {
+    const { task } = await api<TaskResponse>(`/tasks/${id}/reopen`, { method: "POST" });
+    return task;
+  },
+
   async remove(id: string): Promise<void> {
     await api<{ ok: true }>(`/tasks/${id}`, { method: "DELETE" });
   },

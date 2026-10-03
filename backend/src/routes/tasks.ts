@@ -373,6 +373,26 @@ tasksRouter.post(
   })
 );
 
+// إعادة فتح مهمة أُنهيت بالخطأ: تعود غير مكتملة (متوقفة إن كانت قد بدأت) ويمكن استكمالها
+tasksRouter.post(
+  "/:id/reopen",
+  asyncHandler(async (req, res) => {
+    const db = prisma();
+    const task = await getTaskFor(req.user!, req.params.id);
+    if (task.status !== "COMPLETED") throw conflict("المهمة ليست مكتملة");
+    await db.task.update({
+      where: { id: task.id },
+      data: {
+        status: task.startedAt ? "PAUSED" : "NOT_STARTED",
+        endTime: null,
+        // الإنهاء يرفع المنجز إلى الهدف؛ نُنزله خطوة حتى لا تُكمَّل المهمة تلقائياً عند أي تعديل لاحق
+        current: Math.min(task.current, Math.max(task.target - 1, 0)),
+      },
+    });
+    await respondTask(res, task.id);
+  })
+);
+
 // ---------- التعليقات ----------
 tasksRouter.post(
   "/:id/comments",

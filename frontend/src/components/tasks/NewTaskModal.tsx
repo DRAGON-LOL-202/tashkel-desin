@@ -62,7 +62,8 @@ export function NewTaskModal({
       setError("اسم المهمة مطلوب");
       return;
     }
-    if (isSubtask && !parentTask && !selectedParentId) {
+    // عند تعديل مهمة فرعية موجودة أبوها محدد أصلاً (حقل الاختيار مخفي)، فلا يُطلب اختياره
+    if (isSubtask && !editing && !parentTask && !selectedParentId) {
       setError("اختر المهمة الرئيسية");
       return;
     }
@@ -157,6 +158,10 @@ export function NewTaskModal({
       <FieldWrap label="المرفقات">
         <ImageAttachmentsField value={attachments} onChange={setAttachments} scope="tasks" />
       </FieldWrap>
+
+      {error && title.trim() && !(isSubtask && !editing && !parentTask && !selectedParentId) && (
+        <p className="mb-2 text-xs text-problem" role="alert">{error}</p>
+      )}
 
       <div className="mt-2 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>إلغاء</Button>
