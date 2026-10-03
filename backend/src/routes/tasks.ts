@@ -180,10 +180,7 @@ tasksRouter.post(
     const db = prisma();
     const next = addDaysISO(date, 1);
 
-    const day = await db.task.findMany({
-      where: { date },
-      select: { id: true, parentId: true, status: true, assignedToId: true, sortOrder: true },
-    });
+    const day = await db.task.findMany({ where: { date } });
     const byId = new Map(day.map((t) => [t.id, t]));
     const kids = new Map<string, string[]>();
     for (const t of day) {
@@ -193,7 +190,10 @@ tasksRouter.post(
       const ks = kids.get(id) ?? [];
       return ks.length > 0 ? ks.every(isDone) : byId.get(id)!.status === "COMPLETED";
     };
-    const collect = (id: string): string[] => [id, ...(kids.get(id) ?? []).flatMap(collect)];
+    const doneKids = (id: string) => (kids.get(id) ?? []).filter(isDone);
+    const openKids = (id: string) => (kids.get(id) ?? []).filter((k) => !isDone(k));
+    // المهمة المنقولة التي تركت خلفها فرعيات منتهية تحتاج نسخة هيكلية (أب) تبقى في اليوم الحالي لتحتضنها
+    const needsStub = (id: string): boolean => doneKids(id).length > 0 || openKids(id).some(needsStub);
 
     const roots = day.filter((t) => !t.parentId && !isDone(t.id)).sort((a, b) => a.sortOrder - b.sortOrder);
 
@@ -204,15 +204,44 @@ tasksRouter.post(
     const lastOrder = new Map<string, number>();
     for (const t of existing) lastOrder.set(t.assignedToId, Math.max(lastOrder.get(t.assignedToId) ?? -1, t.sortOrder));
 
-    const ops = roots.flatMap((r) => {
-      const order = (lastOrder.get(r.assignedToId) ?? -1) + 1;
-      lastOrder.set(r.assignedToId, order);
-      return [
-        db.task.updateMany({ where: { id: { in: collect(r.id) } }, data: { date: next } }),
-        db.task.updateMany({ where: { id: r.id }, data: { sortOrder: order } }),
-      ];
+    await db.$transaction(async (tx) => {
+      for (const root of roots) {
+        const moveIds: string[] = [];
+        const stubOf = new Map<string, string>();
+        const walk = async (id: string): Promise<void> => {
+          const node = byId.get(id)!;
+          if (needsStub(id)) {
+            const stub = await tx.task.create({
+              data: {
+                title: node.title,
+                description: node.description,
+                target: node.target,
+                current: node.target,
+                priority: node.priority,
+                status: "COMPLETED",
+                endTime: new Date(),
+                date,
+                sortOrder: node.sortOrder,
+                createdById: node.createdById,
+                assignedToId: node.assignedToId,
+                parentId: node.parentId ? (stubOf.get(node.parentId) ?? null) : null,
+              },
+            });
+            stubOf.set(id, stub.id);
+            // الفرعيات المنتهية تبقى اليوم تحت النسخة الهيكلية
+            await tx.task.updateMany({ where: { id: { in: doneKids(id) } }, data: { parentId: stub.id } });
+          }
+          moveIds.push(id);
+          for (const kid of openKids(id)) await walk(kid);
+        };
+        await walk(root.id);
+
+        const order = (lastOrder.get(root.assignedToId) ?? -1) + 1;
+        lastOrder.set(root.assignedToId, order);
+        await tx.task.updateMany({ where: { id: { in: moveIds } }, data: { date: next } });
+        await tx.task.updateMany({ where: { id: root.id }, data: { sortOrder: order } });
+      }
     });
-    if (ops.length > 0) await db.$transaction(ops);
     res.json({ moved: roots.length, toDate: next });
   })
 );
@@ -369,6 +398,26 @@ tasksRouter.post(
         data: { status: "COMPLETED", current: task.target, endTime: now, sortOrder: await bottomOrder(task) },
       }),
     ]);
+    await respondTask(res, task.id);
+  })
+);
+
+// إعادة فتح مهمة أُنهيت بالخطأ: تعود غير مكتملة (متوقفة إن كانت قد بدأت) ويمكن استكمالها
+tasksRouter.post(
+  "/:id/reopen",
+  asyncHandler(async (req, res) => {
+    const db = prisma();
+    const task = await getTaskFor(req.user!, req.params.id);
+    if (task.status !== "COMPLETED") throw conflict("المهمة ليست مكتملة");
+    await db.task.update({
+      where: { id: task.id },
+      data: {
+        status: task.startedAt ? "PAUSED" : "NOT_STARTED",
+        endTime: null,
+        // الإنهاء يرفع المنجز إلى الهدف؛ نُنزله خطوة حتى لا تُكمَّل المهمة تلقائياً عند أي تعديل لاحق
+        current: Math.min(task.current, Math.max(task.target - 1, 0)),
+      },
+    });
     await respondTask(res, task.id);
   })
 );

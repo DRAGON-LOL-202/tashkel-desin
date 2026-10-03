@@ -178,4 +178,23 @@ describe("tasks: نقل بين المسؤولين ونقل غير المنتهي
     expect((await prisma().task.findUnique({ where: { id: open.id } }))!.date).toBe("2026-07-31");
     expect((await prisma().task.findUnique({ where: { id: finished.id } }))!.date).toBe(day);
   });
+  it("move-unfinished: الفرعيات المنتهية تبقى اليوم وغير المنتهية تنتقل مع الأب", async () => {
+    const day = "2026-08-10";
+    const parent = await mk(d1, { date: day, title: "رئيسية" });
+    const doneKid = await mk(d1, { date: day, parentId: parent.id, title: "منتهية" });
+    const openKid = await mk(d1, { date: day, parentId: parent.id, title: "مفتوحة" });
+    await api(d1).post(`/api/tasks/${doneKid.id}/end`);
+    const res = await api(manager).post("/api/tasks/move-unfinished").send({ date: day });
+    expect(res.status).toBe(200);
+    const db = prisma();
+    const movedParent = (await db.task.findUnique({ where: { id: parent.id } }))!;
+    expect(movedParent.date).toBe("2026-08-11");
+    expect((await db.task.findUnique({ where: { id: openKid.id } }))!.date).toBe("2026-08-11");
+    const kept = (await db.task.findUnique({ where: { id: doneKid.id } }))!;
+    expect(kept.date).toBe(day);
+    const stub = (await db.task.findUnique({ where: { id: kept.parentId! } }))!;
+    expect(stub.id).not.toBe(parent.id);
+    expect(stub.date).toBe(day);
+    expect(stub.title).toBe("رئيسية");
+  });
 });

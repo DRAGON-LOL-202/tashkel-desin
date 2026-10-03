@@ -202,6 +202,8 @@ export default function Dashboard() {
 
   const handleFinish = (id: string) => void mutate(() => tasksService.finish(id), "تم إنهاء المهمة بنجاح");
 
+  const handleReopen = (id: string) => void mutate(() => tasksService.reopen(id), "أُعيد فتح المهمة");
+
   const handleDelete = (task: Task) => setDeleteTask(task);
 
   const handleConfirmDelete = async () => {
@@ -320,6 +322,7 @@ export default function Dashboard() {
               onStart={handleStart}
               onRequestStop={handleRequestStop}
               onFinish={handleFinish}
+              onReopen={handleReopen}
               onDelete={handleDelete}
               onAddSubtaskToParent={handleAddSubtask}
               onEdit={handleEdit}
