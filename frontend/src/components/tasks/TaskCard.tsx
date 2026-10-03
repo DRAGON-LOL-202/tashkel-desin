@@ -64,8 +64,11 @@ function ProgressControls({ task, onSetCurrent }: { task: Task; onSetCurrent: (i
 function StopNotesHistory({ task }: { task: Task }) {
   if (task.stopNotes.length === 0) return null;
   const now = Date.now();
+  // توقف لم يُستكمل: يستمر عدّه فقط والمهمة متوقفة؛ وإن أُنهيت المهمة يتوقف عند وقت الإنهاء
+  const pauseEnd = (stopNote: Task["stopNotes"][number]) =>
+    stopNote.resumedAt ?? (task.status === "paused" ? now : (task.endTime ?? now));
   const totalPauseDuration = task.stopNotes.reduce(
-    (sum, stopNote) => sum + Math.max(0, (stopNote.resumedAt ?? now) - stopNote.time),
+    (sum, stopNote) => sum + Math.max(0, pauseEnd(stopNote) - stopNote.time),
     0
   );
 
@@ -81,8 +84,12 @@ function StopNotesHistory({ task }: { task: Task }) {
             <p className="font-medium text-text/90">{stopNote.note}</p>
             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted">
               <span>توقف: {formatArabicTime(stopNote.time)}</span>
-              <span>{stopNote.resumedAt ? "استكمال: " + formatArabicTime(stopNote.resumedAt) : "متوقفة الآن"}</span>
-              <span className="font-mono text-text/80">المدة: {formatDuration(Math.max(0, (stopNote.resumedAt ?? now) - stopNote.time))}</span>
+              <span>{stopNote.resumedAt
+                  ? "استكمال: " + formatArabicTime(stopNote.resumedAt)
+                  : task.status === "paused"
+                    ? "متوقفة الآن"
+                    : "أُنهيت المهمة"}</span>
+              <span className="font-mono text-text/80">المدة: {formatDuration(Math.max(0, pauseEnd(stopNote) - stopNote.time))}</span>
             </div>
           </div>
         ))}
