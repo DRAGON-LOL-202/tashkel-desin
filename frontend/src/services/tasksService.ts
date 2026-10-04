@@ -119,6 +119,11 @@ export const tasksService = {
     return task;
   },
 
+  async reopen(id: string): Promise<Task> {
+    const { task } = await api<TaskResponse>(`/tasks/${id}/reopen`, { method: "POST" });
+    return task;
+  },
+
   async remove(id: string): Promise<void> {
     await api<{ ok: true }>(`/tasks/${id}`, { method: "DELETE" });
   },
@@ -141,6 +146,16 @@ export const tasksService = {
 
   async reorder(orderedIds: string[]): Promise<void> {
     await api<{ ok: true }>("/tasks/reorder", { method: "POST", body: { orderedIds } });
+  },
+
+  /** للإدارة فقط. ينسخ أوردراً (مع فرعياته) إلى مسؤول آخر من الصفر */
+  async copyTo(id: string, assigneeId: string): Promise<void> {
+    await api<unknown>(`/tasks/${id}/copy`, { method: "POST", body: { assigneeId } });
+  },
+
+  /** للإدارة فقط. ينقل أوردراً إلى يوم محدد */
+  async moveToDate(id: string, date: string): Promise<void> {
+    await api<unknown>(`/tasks/${id}/move-date`, { method: "POST", body: { date } });
   },
 
   /** للإدارة فقط. يعيد عدد الجذور المنقولة */

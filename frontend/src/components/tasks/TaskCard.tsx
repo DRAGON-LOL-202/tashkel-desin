@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronDown, ChevronLeft, Clock, MessageSquarePlus, Minus, Pause, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { CalendarDays, CheckCircle2, Copy, ChevronDown, ChevronLeft, Clock, MessageSquarePlus, Minus, Pause, Pencil, Play, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import type { Task } from "../../types";
 import { calculateParentProgress, calculateTaskProgress } from "../../lib/taskProgress";
@@ -18,6 +18,9 @@ interface TaskCardProps {
   onStart: (id: string) => void;
   onRequestStop: (id: string) => void;
   onFinish: (id: string) => void;
+  onReopen: (id: string) => void;
+  onMoveToDate: (task: Task) => void;
+  onCopy: (task: Task) => void;
   onDelete: (task: Task) => void;
   onEdit: (task: Task) => void;
   onSetCurrent: (id: string, current: number) => void;
@@ -64,8 +67,11 @@ function ProgressControls({ task, onSetCurrent }: { task: Task; onSetCurrent: (i
 function StopNotesHistory({ task }: { task: Task }) {
   if (task.stopNotes.length === 0) return null;
   const now = Date.now();
+  // توقف لم يُستكمل: يستمر عدّه فقط والمهمة متوقفة؛ وإن أُنهيت المهمة يتوقف عند وقت الإنهاء
+  const pauseEnd = (stopNote: Task["stopNotes"][number]) =>
+    stopNote.resumedAt ?? (task.status === "paused" ? now : (task.endTime ?? now));
   const totalPauseDuration = task.stopNotes.reduce(
-    (sum, stopNote) => sum + Math.max(0, (stopNote.resumedAt ?? now) - stopNote.time),
+    (sum, stopNote) => sum + Math.max(0, pauseEnd(stopNote) - stopNote.time),
     0
   );
 
@@ -81,8 +87,12 @@ function StopNotesHistory({ task }: { task: Task }) {
             <p className="font-medium text-text/90">{stopNote.note}</p>
             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted">
               <span>توقف: {formatArabicTime(stopNote.time)}</span>
-              <span>{stopNote.resumedAt ? "استكمال: " + formatArabicTime(stopNote.resumedAt) : "متوقفة الآن"}</span>
-              <span className="font-mono text-text/80">المدة: {formatDuration(Math.max(0, (stopNote.resumedAt ?? now) - stopNote.time))}</span>
+              <span>{stopNote.resumedAt
+                  ? "استكمال: " + formatArabicTime(stopNote.resumedAt)
+                  : task.status === "paused"
+                    ? "متوقفة الآن"
+                    : "أُنهيت المهمة"}</span>
+              <span className="font-mono text-text/80">المدة: {formatDuration(Math.max(0, pauseEnd(stopNote) - stopNote.time))}</span>
             </div>
           </div>
         ))}
@@ -104,7 +114,7 @@ function subtasksLabel(count: number): string {
   return `${count} مهمة فرعية`;
 }
 
-function SubtaskRow({ task, getSubtasks, onStart, onRequestStop, onFinish, onDelete, onEdit, onSetCurrent, onAddSubtask, onAddComment, onDeleteComment }: Pick<TaskCardProps, "getSubtasks" | "onStart" | "onRequestStop" | "onFinish" | "onDelete" | "onEdit" | "onSetCurrent" | "onAddSubtask" | "onAddComment" | "onDeleteComment"> & { task: Task }) {
+function SubtaskRow({ task, getSubtasks, onStart, onRequestStop, onFinish, onReopen, onDelete, onEdit, onSetCurrent, onAddSubtask, onAddComment, onDeleteComment }: Pick<TaskCardProps, "getSubtasks" | "onStart" | "onRequestStop" | "onFinish" | "onReopen" | "onDelete" | "onEdit" | "onSetCurrent" | "onAddSubtask" | "onAddComment" | "onDeleteComment"> & { task: Task }) {
   const [expanded, setExpanded] = useState(false);
   const { canManageTasks, canDeleteComment } = usePermissions();
   const elapsed = useElapsed(task);
@@ -172,6 +182,7 @@ function SubtaskRow({ task, getSubtasks, onStart, onRequestStop, onFinish, onDel
             <Button size="sm" variant="ghost" icon={<Plus size={14} />} onClick={() => onAddSubtask(task)}>مهمة فرعية</Button>
             <Button size="sm" variant="secondary" icon={<MessageSquarePlus size={14} />} onClick={() => onAddComment(task.id)}>تعليق</Button>
             {!isCompleted && <Button size="sm" variant="primary" onClick={() => onFinish(task.id)}>إنهاء المهمة</Button>}
+            {isCompleted && <Button size="sm" variant="secondary" icon={<RotateCcw size={14} />} onClick={() => onReopen(task.id)}>إعادة فتح</Button>}
           </div>
           {hasChildren && expanded && (
             <div className="task-subtasks-enter mt-3">
@@ -183,6 +194,7 @@ function SubtaskRow({ task, getSubtasks, onStart, onRequestStop, onFinish, onDel
                   onStart={onStart}
                   onRequestStop={onRequestStop}
                   onFinish={onFinish}
+                  onReopen={onReopen}
                   onDelete={onDelete}
                   onEdit={onEdit}
                   onSetCurrent={onSetCurrent}
@@ -218,7 +230,7 @@ function SubtaskRow({ task, getSubtasks, onStart, onRequestStop, onFinish, onDel
   );
 }
 
-export function TaskCard({ task, subtasks, getSubtasks, onStart, onRequestStop, onFinish, onDelete, onEdit, onSetCurrent, onAddSubtask, onAddComment, onDeleteComment }: TaskCardProps) {
+export function TaskCard({ task, subtasks, getSubtasks, onStart, onRequestStop, onFinish, onReopen, onMoveToDate, onCopy, onDelete, onEdit, onSetCurrent, onAddSubtask, onAddComment, onDeleteComment }: TaskCardProps) {
   const [expanded, setExpanded] = useState(false);
   const { canManageTasks, canDeleteComment } = usePermissions();
   const elapsed = useElapsed(task);
@@ -267,6 +279,8 @@ export function TaskCard({ task, subtasks, getSubtasks, onStart, onRequestStop, 
             </div>
             {canManageTasks && (
             <div className="flex shrink-0 items-center gap-1">
+              <IconButton onClick={() => onCopy(task)} aria-label="نسخ إلى شخص آخر" title="نسخ إلى شخص آخر" className="h-7 w-7"><Copy size={14} /></IconButton>
+              <IconButton onClick={() => onMoveToDate(task)} aria-label="نقل إلى يوم" title="نقل إلى يوم" className="h-7 w-7"><CalendarDays size={14} /></IconButton>
               <IconButton onClick={() => onEdit(task)} aria-label="تعديل المهمة" title="تعديل" className="h-7 w-7"><Pencil size={14} /></IconButton>
               <IconButton onClick={() => onDelete(task)} aria-label="حذف المهمة" title="حذف" className="h-7 w-7"><Trash2 size={14} /></IconButton>
             </div>
@@ -324,6 +338,7 @@ export function TaskCard({ task, subtasks, getSubtasks, onStart, onRequestStop, 
             <Button size="sm" variant="ghost" icon={<Plus size={14} />} onClick={() => onAddSubtask(task)}>مهمة فرعية</Button>
             <Button size="sm" variant="secondary" icon={<MessageSquarePlus size={14} />} onClick={() => onAddComment(task.id)}>تعليق</Button>
             {!isCompleted && <Button size="sm" variant="primary" onClick={() => onFinish(task.id)}>إنهاء المهمة</Button>}
+            {isCompleted && <Button size="sm" variant="secondary" icon={<RotateCcw size={14} />} onClick={() => onReopen(task.id)}>إعادة فتح</Button>}
           </div>
         </div>
       </div>
@@ -339,6 +354,7 @@ export function TaskCard({ task, subtasks, getSubtasks, onStart, onRequestStop, 
               onStart={onStart}
               onRequestStop={onRequestStop}
               onFinish={onFinish}
+              onReopen={onReopen}
               onDelete={onDelete}
               onEdit={onEdit}
               onSetCurrent={onSetCurrent}

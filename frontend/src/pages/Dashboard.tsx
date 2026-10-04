@@ -10,6 +10,8 @@ import { TaskCommentModal } from "../components/tasks/TaskCommentModal";
 import { DateNavigator } from "../components/tasks/DateNavigator";
 import { TeamMemberCard } from "../components/tasks/TeamMemberCard";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
+import { MoveDateModal } from "../components/tasks/MoveDateModal";
+import { CopyTaskModal } from "../components/tasks/CopyTaskModal";
 import { applyMoveToMember, applyReorder, isTaskTreeCompleted, tasksService } from "../services/tasksService";
 import type { CreateTaskInput, Task, TeamMember } from "../types";
 import { getTaskElapsed } from "../hooks/useTaskTimer";
@@ -42,6 +44,8 @@ export default function Dashboard() {
   const [newTaskMode, setNewTaskMode] = useState<"normal" | "main" | "subtask">("normal");
   const [editingTask, setEditingTask] = useState<Task | undefined>();
   const [deleteTask, setDeleteTask] = useState<Task | undefined>();
+  const [moveDateTask, setMoveDateTask] = useState<Task | undefined>();
+  const [copyTask, setCopyTask] = useState<Task | undefined>();
   const [stopTaskId, setStopTaskId] = useState<string | null>(null);
   const [commentTaskId, setCommentTaskId] = useState<string | null>(null);
   const [filter, setFilter] = useState<TaskFilterValue>("all");
@@ -202,6 +206,8 @@ export default function Dashboard() {
 
   const handleFinish = (id: string) => void mutate(() => tasksService.finish(id), "تم إنهاء المهمة بنجاح");
 
+  const handleReopen = (id: string) => void mutate(() => tasksService.reopen(id), "أُعيد فتح المهمة");
+
   const handleDelete = (task: Task) => setDeleteTask(task);
 
   const handleConfirmDelete = async () => {
@@ -236,6 +242,12 @@ export default function Dashboard() {
     setTasks((current) => applyMoveToMember(current, id, assigneeId, beforeTaskId));
     void mutate(() => tasksService.moveToMember(id, assigneeId, beforeTaskId));
   };
+
+  const handleCopyTo = (id: string, assigneeId: string) =>
+    mutate(() => tasksService.copyTo(id, assigneeId), "تم نسخ الأوردر");
+
+  const handleMoveToDate = (id: string, date: string) =>
+    mutate(() => tasksService.moveToDate(id, date), "تم نقل الأوردر إلى اليوم المحدد");
 
   const handleMoveUnfinishedToNextDay = async () => {
     if (unfinishedCount === 0) {
@@ -320,6 +332,9 @@ export default function Dashboard() {
               onStart={handleStart}
               onRequestStop={handleRequestStop}
               onFinish={handleFinish}
+              onReopen={handleReopen}
+              onMoveToDate={setMoveDateTask}
+              onCopy={setCopyTask}
               onDelete={handleDelete}
               onAddSubtaskToParent={handleAddSubtask}
               onEdit={handleEdit}
@@ -360,6 +375,8 @@ export default function Dashboard() {
         onClose={() => setCommentTaskId(null)}
         onConfirm={handleAddComment}
       />
+      <CopyTaskModal task={copyTask} members={teamMembers.filter((member) => member.isActive)} onClose={() => setCopyTask(undefined)} onConfirm={handleCopyTo} />
+      <MoveDateModal task={moveDateTask} onClose={() => setMoveDateTask(undefined)} onConfirm={handleMoveToDate} />
       <ConfirmDialog
         open={!!deleteTask}
         onClose={() => setDeleteTask(undefined)}

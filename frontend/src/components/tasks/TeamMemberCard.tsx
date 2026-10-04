@@ -1,10 +1,11 @@
-import { CheckCircle2, ChevronDown, GripVertical, ListTodo, Plus, Timer, UserRound } from "lucide-react";
-import { useState } from "react";
+import { CheckCircle2, ChevronDown, GripVertical, ListTodo, Maximize2, Minimize2, Plus, Timer, UserRound } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { Task, TeamMember } from "../../types";
 import { getTaskElapsed } from "../../hooks/useTaskTimer";
 import { formatDuration } from "../../lib/date";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
+import { IconButton } from "../ui/IconButton";
 import { EmptyState } from "../ui/EmptyState";
 import { usePermissions } from "../../hooks/usePermissions";
 import { TaskCard } from "./TaskCard";
@@ -18,6 +19,9 @@ interface TeamMemberCardProps {
   onStart: (id: string) => void;
   onRequestStop: (id: string) => void;
   onFinish: (id: string) => void;
+  onReopen: (id: string) => void;
+  onMoveToDate: (task: Task) => void;
+  onCopy: (task: Task) => void;
   onDelete: (task: Task) => void;
   onAddSubtaskToParent: (task: Task) => void;
   onEdit: (task: Task) => void;
@@ -37,6 +41,9 @@ export function TeamMemberCard({
   onStart,
   onRequestStop,
   onFinish,
+  onReopen,
+  onMoveToDate,
+  onCopy,
   onDelete,
   onAddSubtaskToParent,
   onEdit,
@@ -51,6 +58,17 @@ export function TeamMemberCard({
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [isDragOverMember, setIsDragOverMember] = useState(false);
   const [taskMenuOpen, setTaskMenuOpen] = useState(false);
+  // وضع التركيز: تكبّر البطاقة لتملأ الشاشة ويكبر الخط لمتابعة مهام العضو
+  const [focusMode, setFocusMode] = useState(false);
+  useEffect(() => {
+    if (!focusMode) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !document.querySelector("[role='dialog']")) setFocusMode(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [focusMode]);
+
   const getSubtasks = (parentId: string) => tasks.filter((task) => task.parentId === parentId);
   const isTaskCompleted = (task: Task): boolean => {
     const subtasks = getSubtasks(task.id);
@@ -86,7 +104,7 @@ export function TeamMemberCard({
     if (canManageTasks) onMoveTask(sourceId, member.id, targetId);
   };
 
-  return (
+  const card = (
     <Card
       className={`p-4 md:p-5 flex min-h-[520px] flex-col gap-4 transition-colors ${
         isDragOverMember ? "border-primary-deep bg-primary/5" : ""
@@ -120,6 +138,14 @@ export function TeamMemberCard({
             <p className="text-xs text-muted">{member.role}</p>
           </div>
         </div>
+        <IconButton
+          onClick={() => setFocusMode((value) => !value)}
+          aria-label={focusMode ? "تصغير" : "تكبير"}
+          title={focusMode ? "تصغير (Esc)" : "تكبير لملء الشاشة"}
+          className="h-8 w-8 shrink-0"
+        >
+          {focusMode ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+        </IconButton>
       </div>
 
       <div className="grid grid-cols-3 divide-x divide-x-reverse divide-border rounded-control border border-border bg-surface">
@@ -225,6 +251,9 @@ export function TeamMemberCard({
                 onStart={onStart}
                 onRequestStop={onRequestStop}
                 onFinish={onFinish}
+                onReopen={onReopen}
+                onMoveToDate={onMoveToDate}
+                onCopy={onCopy}
                 onDelete={onDelete}
                 onEdit={onEdit}
                 onSetCurrent={onSetCurrent}
@@ -237,5 +266,14 @@ export function TeamMemberCard({
         )}
       </div>
     </Card>
+  );
+
+  if (!focusMode) return card;
+  return (
+    <div className="fixed inset-0 z-40 overflow-y-auto bg-background">
+      <div className="mx-auto max-w-4xl p-3 md:p-6" style={{ zoom: 1.25 }}>
+        {card}
+      </div>
+    </div>
   );
 }
