@@ -5,10 +5,11 @@ import { isStaff, requireAuth, requireStaff } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { badRequest, conflict, forbidden, notFound } from "../utils/httpError.js";
 import { serializeTask, taskInclude } from "../utils/taskSerialize.js";
-import { assertAttachmentsAllowed, deleteStoredObjects } from "../utils/attachments.js";
+import { assertAttachmentsAllowed, deleteUnreferencedObjects } from "../utils/attachments.js";
 import { keysOf, removedKeys } from "../utils/attachmentKeys.ts";
 import {
   commentSchema,
+  copyTaskSchema,
   createTaskSchema,
   listQuerySchema,
   moveSchema,
@@ -261,6 +262,62 @@ tasksRouter.post(
   })
 );
 
+// نسخ كامل لأوردر (مع فرعياته وصوره) إلى مسؤول آخر في نفس اليوم؛ النسخة تبدأ من الصفر (غير مبدوءة، بلا وقت أو تعليقات)
+tasksRouter.post(
+  "/:id/copy",
+  requireStaff,
+  asyncHandler(async (req, res) => {
+    const { assigneeId } = copyTaskSchema.parse(req.body);
+    const db = prisma();
+    const source = await db.task.findUnique({ where: { id: req.params.id } });
+    if (!source) throw notFound("المهمة غير موجودة");
+    if (source.parentId) throw badRequest("يمكن نسخ المهمة الرئيسية فقط");
+    const assignee = await db.user.findUnique({ where: { id: assigneeId } });
+    if (!assignee || !assignee.isActive) throw badRequest("المسؤول غير موجود أو غير مفعّل");
+
+    const rows = await db.task.findMany({ where: { id: { in: await treeIds(source.id) } } });
+    const kids = new Map<string, typeof rows>();
+    for (const t of rows) {
+      if (t.parentId) kids.set(t.parentId, [...(kids.get(t.parentId) ?? []), t]);
+    }
+    // الصور تُنسخ كمراجع لنفس ملفات R2 (بلا نسخ فعلي للملف)؛ الحذف لا يمس ملفاً ما زالت مهمة أخرى تستخدمه
+    const copiedAttachments = (value: unknown) => (Array.isArray(value) ? value : []) as never;
+
+    const top = await db.task.aggregate({
+      _min: { sortOrder: true },
+      where: { assignedToId: assigneeId, date: source.date, parentId: null },
+    });
+
+    const newRootId = await db.$transaction(async (tx) => {
+      const clone = async (node: (typeof rows)[number], parentId: string | null, sortOrder: number): Promise<string> => {
+        const created = await tx.task.create({
+          data: {
+            title: node.title,
+            description: node.description,
+            attachments: copiedAttachments(node.attachments),
+            target: node.target,
+            current: 0,
+            priority: node.priority,
+            status: "NOT_STARTED",
+            date: source.date,
+            sortOrder,
+            createdById: req.user!.id,
+            assignedToId: assigneeId,
+            parentId,
+          },
+        });
+        for (const kid of (kids.get(node.id) ?? []).sort((a, b) => a.sortOrder - b.sortOrder)) {
+          await clone(kid, created.id, kid.sortOrder);
+        }
+        return created.id;
+      };
+      return clone(source, null, Math.min(0, top._min.sortOrder ?? 0) - 1);
+    });
+    const fresh = await loadTask(newRootId);
+    res.status(201).json({ task: serializeTask(fresh!) });
+  })
+);
+
 // نقل مهمة رئيسية (أوردر) إلى يوم يحدده المدير
 tasksRouter.post(
   "/:id/move-date",
@@ -326,7 +383,7 @@ tasksRouter.patch(
     );
     await db.$transaction(ops);
     // المرفقات التي أُزيلت من المهمة تُحذف من R2 بعد نجاح الحفظ (أفضل جهد)
-    if (body.attachments !== undefined) await deleteStoredObjects(removedKeys(task.attachments, body.attachments));
+    if (body.attachments !== undefined) await deleteUnreferencedObjects(removedKeys(task.attachments, body.attachments));
     await respondTask(res, task.id);
   })
 );
@@ -341,7 +398,7 @@ tasksRouter.delete(
     const rows = await prisma().task.findMany({ where: { id: { in: ids } }, select: { attachments: true } });
     const keys = rows.flatMap((r) => keysOf(r.attachments));
     await prisma().task.delete({ where: { id: task.id } }); // المهام الفرعية والسجلات والتعليقات تُحذف بالـ cascade
-    await deleteStoredObjects(keys);
+    await deleteUnreferencedObjects(keys);
     res.json({ ok: true });
   })
 );

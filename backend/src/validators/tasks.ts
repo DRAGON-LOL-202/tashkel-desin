@@ -54,4 +54,5 @@ export const stopSchema = z.object({ note: z.string().trim().max(500).optional()
 export const commentSchema = z.object({ text: z.string().trim().min(1, "نص التعليق مطلوب").max(2000) });
 export const reorderSchema = z.object({ orderedIds: z.array(id).min(1).max(2000) });
 export const moveSchema = z.object({ assigneeId: id, beforeTaskId: id.optional() });
+export const copyTaskSchema = z.object({ assigneeId: id });
 export const moveUnfinishedSchema = z.object({ date: isoDate });

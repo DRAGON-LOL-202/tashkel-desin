@@ -83,6 +83,19 @@ export async function deleteStoredObjects(keys: string[]): Promise<void> {
   }
 }
 
+/**
+ * حذف كائنات R2 غير المستخدمة فقط: نسخ الأوردر تشارك نفس الملف، فلا يُحذف ما زالت مهمة أخرى تشير إليه.
+ * يُستدعى بعد حفظ التعديل/الحذف في قاعدة البيانات.
+ */
+export async function deleteUnreferencedObjects(keys: string[]): Promise<void> {
+  const unique = [...new Set(keys)];
+  const orphaned: string[] = [];
+  for (const key of unique) {
+    if (!(await isKeyReferenced(key))) orphaned.push(key);
+  }
+  await deleteStoredObjects(orphaned);
+}
+
 /** هل المفتاح مُشار إليه من أي مهمة أو ملاحظة؟ (يمنع حذف ملف مستخدم فعلاً) */
 export async function isKeyReferenced(key: string): Promise<boolean> {
   const db = prisma();

@@ -197,6 +197,25 @@ describe("tasks: نقل بين المسؤولين ونقل غير المنتهي
     expect(stub.date).toBe(day);
     expect(stub.title).toBe("رئيسية");
   });
+  it("copy: المدير ينسخ أوردر بفرعياته لمسؤول آخر من الصفر؛ المصمم ← 403", async () => {
+    const day = "2026-09-02";
+    const att = [{ id: "a1", name: "x.png", dataUrl: "data:image/png;base64,AAAA" }];
+    const parent = await mk(d1, { date: day, title: "أوردر للنسخ", attachments: att });
+    const kid = await mk(d1, { date: day, parentId: parent.id, title: "فرعية" });
+    await api(d1).post(`/api/tasks/${kid.id}/end`);
+    expect((await api(d1).post(`/api/tasks/${parent.id}/copy`).send({ assigneeId: d2Id })).status).toBe(403);
+    expect((await api(manager).post(`/api/tasks/${kid.id}/copy`).send({ assigneeId: d2Id })).status).toBe(400);
+    const res = await api(manager).post(`/api/tasks/${parent.id}/copy`).send({ assigneeId: d2Id });
+    expect(res.status).toBe(201);
+    const copy = (await prisma().task.findUnique({ where: { id: res.body.task.id } }))!;
+    expect(copy.assignedToId).toBe(d2Id);
+    expect(copy.status).toBe("NOT_STARTED");
+    expect(copy.attachments).toEqual(att);
+    const copiedKids = await prisma().task.findMany({ where: { parentId: copy.id } });
+    expect(copiedKids).toHaveLength(1);
+    expect(copiedKids[0].status).toBe("NOT_STARTED");
+    expect((await prisma().task.findUnique({ where: { id: parent.id } }))!.assignedToId).toBe(d1Id);
+  });
   it("move-date: المدير ينقل أوردر ليوم يحدده؛ المصمم ← 403", async () => {
     const day = "2026-09-01";
     const parent = await mk(d1, { date: day, title: "أوردر" });

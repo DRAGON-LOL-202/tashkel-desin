@@ -1,4 +1,4 @@
-import { CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, Clock, MessageSquarePlus, Minus, Pause, Pencil, Play, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { CalendarDays, CheckCircle2, Copy, ChevronDown, ChevronLeft, Clock, MessageSquarePlus, Minus, Pause, Pencil, Play, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import type { Task } from "../../types";
 import { calculateParentProgress, calculateTaskProgress } from "../../lib/taskProgress";
@@ -20,6 +20,7 @@ interface TaskCardProps {
   onFinish: (id: string) => void;
   onReopen: (id: string) => void;
   onMoveToDate: (task: Task) => void;
+  onCopy: (task: Task) => void;
   onDelete: (task: Task) => void;
   onEdit: (task: Task) => void;
   onSetCurrent: (id: string, current: number) => void;
@@ -229,7 +230,7 @@ function SubtaskRow({ task, getSubtasks, onStart, onRequestStop, onFinish, onReo
   );
 }
 
-export function TaskCard({ task, subtasks, getSubtasks, onStart, onRequestStop, onFinish, onReopen, onMoveToDate, onDelete, onEdit, onSetCurrent, onAddSubtask, onAddComment, onDeleteComment }: TaskCardProps) {
+export function TaskCard({ task, subtasks, getSubtasks, onStart, onRequestStop, onFinish, onReopen, onMoveToDate, onCopy, onDelete, onEdit, onSetCurrent, onAddSubtask, onAddComment, onDeleteComment }: TaskCardProps) {
   const [expanded, setExpanded] = useState(false);
   const { canManageTasks, canDeleteComment } = usePermissions();
   const elapsed = useElapsed(task);
@@ -278,6 +279,7 @@ export function TaskCard({ task, subtasks, getSubtasks, onStart, onRequestStop, 
             </div>
             {canManageTasks && (
             <div className="flex shrink-0 items-center gap-1">
+              <IconButton onClick={() => onCopy(task)} aria-label="نسخ إلى شخص آخر" title="نسخ إلى شخص آخر" className="h-7 w-7"><Copy size={14} /></IconButton>
               <IconButton onClick={() => onMoveToDate(task)} aria-label="نقل إلى يوم" title="نقل إلى يوم" className="h-7 w-7"><CalendarDays size={14} /></IconButton>
               <IconButton onClick={() => onEdit(task)} aria-label="تعديل المهمة" title="تعديل" className="h-7 w-7"><Pencil size={14} /></IconButton>
               <IconButton onClick={() => onDelete(task)} aria-label="حذف المهمة" title="حذف" className="h-7 w-7"><Trash2 size={14} /></IconButton>

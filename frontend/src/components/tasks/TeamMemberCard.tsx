@@ -20,6 +20,7 @@ interface TeamMemberCardProps {
   onFinish: (id: string) => void;
   onReopen: (id: string) => void;
   onMoveToDate: (task: Task) => void;
+  onCopy: (task: Task) => void;
   onDelete: (task: Task) => void;
   onAddSubtaskToParent: (task: Task) => void;
   onEdit: (task: Task) => void;
@@ -41,6 +42,7 @@ export function TeamMemberCard({
   onFinish,
   onReopen,
   onMoveToDate,
+  onCopy,
   onDelete,
   onAddSubtaskToParent,
   onEdit,
@@ -231,6 +233,7 @@ export function TeamMemberCard({
                 onFinish={onFinish}
                 onReopen={onReopen}
                 onMoveToDate={onMoveToDate}
+                onCopy={onCopy}
                 onDelete={onDelete}
                 onEdit={onEdit}
                 onSetCurrent={onSetCurrent}

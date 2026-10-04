@@ -148,6 +148,11 @@ export const tasksService = {
     await api<{ ok: true }>("/tasks/reorder", { method: "POST", body: { orderedIds } });
   },
 
+  /** للإدارة فقط. ينسخ أوردراً (مع فرعياته) إلى مسؤول آخر من الصفر */
+  async copyTo(id: string, assigneeId: string): Promise<void> {
+    await api<unknown>(`/tasks/${id}/copy`, { method: "POST", body: { assigneeId } });
+  },
+
   /** للإدارة فقط. ينقل أوردراً إلى يوم محدد */
   async moveToDate(id: string, date: string): Promise<void> {
     await api<unknown>(`/tasks/${id}/move-date`, { method: "POST", body: { date } });
