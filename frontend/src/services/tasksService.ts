@@ -148,6 +148,11 @@ export const tasksService = {
     await api<{ ok: true }>("/tasks/reorder", { method: "POST", body: { orderedIds } });
   },
 
+  /** للإدارة فقط. ينقل أوردراً إلى يوم محدد */
+  async moveToDate(id: string, date: string): Promise<void> {
+    await api<unknown>(`/tasks/${id}/move-date`, { method: "POST", body: { date } });
+  },
+
   /** للإدارة فقط. يعيد عدد الجذور المنقولة */
   async moveUnfinishedToNextDay(date: string): Promise<number> {
     const { moved } = await api<{ moved: number }>("/tasks/move-unfinished", { method: "POST", body: { date } });

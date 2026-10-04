@@ -197,4 +197,15 @@ describe("tasks: نقل بين المسؤولين ونقل غير المنتهي
     expect(stub.date).toBe(day);
     expect(stub.title).toBe("رئيسية");
   });
+  it("move-date: المدير ينقل أوردر ليوم يحدده؛ المصمم ← 403", async () => {
+    const day = "2026-09-01";
+    const parent = await mk(d1, { date: day, title: "أوردر" });
+    const kid = await mk(d1, { date: day, parentId: parent.id, title: "فرعية" });
+    expect((await api(d1).post(`/api/tasks/${parent.id}/move-date`).send({ date: "2026-09-20" })).status).toBe(403);
+    expect((await api(manager).post(`/api/tasks/${kid.id}/move-date`).send({ date: "2026-09-20" })).status).toBe(400);
+    const res = await api(manager).post(`/api/tasks/${parent.id}/move-date`).send({ date: "2026-09-20" });
+    expect(res.status).toBe(200);
+    expect(res.body.task.date).toBe("2026-09-20");
+    expect((await prisma().task.findUnique({ where: { id: kid.id } }))!.date).toBe("2026-09-20");
+  });
 });

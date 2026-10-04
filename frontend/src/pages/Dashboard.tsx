@@ -10,6 +10,7 @@ import { TaskCommentModal } from "../components/tasks/TaskCommentModal";
 import { DateNavigator } from "../components/tasks/DateNavigator";
 import { TeamMemberCard } from "../components/tasks/TeamMemberCard";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
+import { MoveDateModal } from "../components/tasks/MoveDateModal";
 import { applyMoveToMember, applyReorder, isTaskTreeCompleted, tasksService } from "../services/tasksService";
 import type { CreateTaskInput, Task, TeamMember } from "../types";
 import { getTaskElapsed } from "../hooks/useTaskTimer";
@@ -42,6 +43,7 @@ export default function Dashboard() {
   const [newTaskMode, setNewTaskMode] = useState<"normal" | "main" | "subtask">("normal");
   const [editingTask, setEditingTask] = useState<Task | undefined>();
   const [deleteTask, setDeleteTask] = useState<Task | undefined>();
+  const [moveDateTask, setMoveDateTask] = useState<Task | undefined>();
   const [stopTaskId, setStopTaskId] = useState<string | null>(null);
   const [commentTaskId, setCommentTaskId] = useState<string | null>(null);
   const [filter, setFilter] = useState<TaskFilterValue>("all");
@@ -239,6 +241,9 @@ export default function Dashboard() {
     void mutate(() => tasksService.moveToMember(id, assigneeId, beforeTaskId));
   };
 
+  const handleMoveToDate = (id: string, date: string) =>
+    mutate(() => tasksService.moveToDate(id, date), "تم نقل الأوردر إلى اليوم المحدد");
+
   const handleMoveUnfinishedToNextDay = async () => {
     if (unfinishedCount === 0) {
       show("لا توجد مهام غير منتهية لنقلها");
@@ -323,6 +328,7 @@ export default function Dashboard() {
               onRequestStop={handleRequestStop}
               onFinish={handleFinish}
               onReopen={handleReopen}
+              onMoveToDate={setMoveDateTask}
               onDelete={handleDelete}
               onAddSubtaskToParent={handleAddSubtask}
               onEdit={handleEdit}
@@ -363,6 +369,7 @@ export default function Dashboard() {
         onClose={() => setCommentTaskId(null)}
         onConfirm={handleAddComment}
       />
+      <MoveDateModal task={moveDateTask} onClose={() => setMoveDateTask(undefined)} onConfirm={handleMoveToDate} />
       <ConfirmDialog
         open={!!deleteTask}
         onClose={() => setDeleteTask(undefined)}

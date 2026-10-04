@@ -172,41 +172,45 @@ tasksRouter.post(
   })
 );
 
-tasksRouter.post(
-  "/move-unfinished",
-  requireStaff,
-  asyncHandler(async (req, res) => {
-    const { date } = moveUnfinishedSchema.parse(req.body);
-    const db = prisma();
-    const next = addDaysISO(date, 1);
+/**
+ * ينقل مهام رئيسية من يوم إلى يوم آخر. الفرعيات المنتهية تبقى في اليوم الأصلي (تحت نسخة هيكلية من الأب)،
+ * وغير المنتهية تنتقل مع الأب. إن كانت المهمة المحددة منتهية بالكامل (نقل يدوي) تنتقل كلها كما هي.
+ */
+async function moveRootsToDate(date: string, target: string, onlyRootId?: string): Promise<number> {
+  const db = prisma();
+  const day = await db.task.findMany({ where: { date } });
+  const byId = new Map(day.map((t) => [t.id, t]));
+  const kids = new Map<string, string[]>();
+  for (const t of day) {
+    if (t.parentId) kids.set(t.parentId, [...(kids.get(t.parentId) ?? []), t.id]);
+  }
+  const isDone = (id: string): boolean => {
+    const ks = kids.get(id) ?? [];
+    return ks.length > 0 ? ks.every(isDone) : byId.get(id)!.status === "COMPLETED";
+  };
+  const doneKids = (id: string) => (kids.get(id) ?? []).filter(isDone);
+  const openKids = (id: string) => (kids.get(id) ?? []).filter((k) => !isDone(k));
+  const collect = (id: string): string[] => [id, ...(kids.get(id) ?? []).flatMap(collect)];
+  // المهمة المنقولة التي تركت خلفها فرعيات منتهية تحتاج نسخة هيكلية (أب) تبقى في اليوم الحالي لتحتضنها
+  const needsStub = (id: string): boolean => doneKids(id).length > 0 || openKids(id).some(needsStub);
 
-    const day = await db.task.findMany({ where: { date } });
-    const byId = new Map(day.map((t) => [t.id, t]));
-    const kids = new Map<string, string[]>();
-    for (const t of day) {
-      if (t.parentId) kids.set(t.parentId, [...(kids.get(t.parentId) ?? []), t.id]);
-    }
-    const isDone = (id: string): boolean => {
-      const ks = kids.get(id) ?? [];
-      return ks.length > 0 ? ks.every(isDone) : byId.get(id)!.status === "COMPLETED";
-    };
-    const doneKids = (id: string) => (kids.get(id) ?? []).filter(isDone);
-    const openKids = (id: string) => (kids.get(id) ?? []).filter((k) => !isDone(k));
-    // المهمة المنقولة التي تركت خلفها فرعيات منتهية تحتاج نسخة هيكلية (أب) تبقى في اليوم الحالي لتحتضنها
-    const needsStub = (id: string): boolean => doneKids(id).length > 0 || openKids(id).some(needsStub);
+  const roots = day
+    .filter((t) => !t.parentId && (onlyRootId ? t.id === onlyRootId : !isDone(t.id)))
+    .sort((a, b) => a.sortOrder - b.sortOrder);
 
-    const roots = day.filter((t) => !t.parentId && !isDone(t.id)).sort((a, b) => a.sortOrder - b.sortOrder);
+  const existing = await db.task.findMany({
+    where: { date: target, parentId: null },
+    select: { assignedToId: true, sortOrder: true },
+  });
+  const lastOrder = new Map<string, number>();
+  for (const t of existing) lastOrder.set(t.assignedToId, Math.max(lastOrder.get(t.assignedToId) ?? -1, t.sortOrder));
 
-    const existing = await db.task.findMany({
-      where: { date: next, parentId: null },
-      select: { assignedToId: true, sortOrder: true },
-    });
-    const lastOrder = new Map<string, number>();
-    for (const t of existing) lastOrder.set(t.assignedToId, Math.max(lastOrder.get(t.assignedToId) ?? -1, t.sortOrder));
-
-    await db.$transaction(async (tx) => {
-      for (const root of roots) {
-        const moveIds: string[] = [];
+  await db.$transaction(async (tx) => {
+    for (const root of roots) {
+      const moveIds: string[] = [];
+      if (isDone(root.id)) {
+        moveIds.push(...collect(root.id));
+      } else {
         const stubOf = new Map<string, string>();
         const walk = async (id: string): Promise<void> => {
           const node = byId.get(id)!;
@@ -235,14 +239,40 @@ tasksRouter.post(
           for (const kid of openKids(id)) await walk(kid);
         };
         await walk(root.id);
-
-        const order = (lastOrder.get(root.assignedToId) ?? -1) + 1;
-        lastOrder.set(root.assignedToId, order);
-        await tx.task.updateMany({ where: { id: { in: moveIds } }, data: { date: next } });
-        await tx.task.updateMany({ where: { id: root.id }, data: { sortOrder: order } });
       }
-    });
-    res.json({ moved: roots.length, toDate: next });
+
+      const order = (lastOrder.get(root.assignedToId) ?? -1) + 1;
+      lastOrder.set(root.assignedToId, order);
+      await tx.task.updateMany({ where: { id: { in: moveIds } }, data: { date: target } });
+      await tx.task.updateMany({ where: { id: root.id }, data: { sortOrder: order } });
+    }
+  });
+  return roots.length;
+}
+
+tasksRouter.post(
+  "/move-unfinished",
+  requireStaff,
+  asyncHandler(async (req, res) => {
+    const { date } = moveUnfinishedSchema.parse(req.body);
+    const next = addDaysISO(date, 1);
+    const moved = await moveRootsToDate(date, next);
+    res.json({ moved, toDate: next });
+  })
+);
+
+// نقل مهمة رئيسية (أوردر) إلى يوم يحدده المدير
+tasksRouter.post(
+  "/:id/move-date",
+  requireStaff,
+  asyncHandler(async (req, res) => {
+    const { date } = moveUnfinishedSchema.parse(req.body);
+    const task = await prisma().task.findUnique({ where: { id: req.params.id } });
+    if (!task) throw notFound("المهمة غير موجودة");
+    if (task.parentId) throw badRequest("يمكن نقل المهمة الرئيسية فقط");
+    if (task.date === date) throw badRequest("المهمة موجودة في هذا اليوم بالفعل");
+    await moveRootsToDate(task.date, date, task.id);
+    await respondTask(res, task.id);
   })
 );
 
