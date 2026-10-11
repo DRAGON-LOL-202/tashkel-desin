@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Modal } from "../ui/Modal";
 import { FieldWrap, Input, Select, Textarea } from "../ui/Field";
 import { Button } from "../ui/Button";
@@ -6,12 +6,15 @@ import type { CreateTaskInput, Task, TaskPriority, TeamMember } from "../../type
 import { formatArabicDate } from "../../lib/date";
 import { ImageAttachmentsField } from "../ui/ImageAttachments";
 import type { ImageAttachment } from "../../types";
+import { getSiblings } from "../../lib/taskOrder";
 
 interface NewTaskModalProps {
   open: boolean;
   assignee?: TeamMember;
   parentTask?: Task;
   parentOptions?: Task[];
+  /** كل مهام النظام (غير مفلترة) لحساب الأرقام المتاحة */
+  allTasks?: Task[];
   mode: "normal" | "main" | "subtask";
   editing?: Task;
   date: string;
@@ -26,6 +29,7 @@ export function NewTaskModal({
   assignee,
   parentTask,
   parentOptions = [],
+  allTasks = [],
   mode,
   editing,
   date,
@@ -40,6 +44,8 @@ export function NewTaskModal({
   const [current, setCurrent] = useState("0");
   const [selectedParentId, setSelectedParentId] = useState("");
   const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
+  // "" = القيمة الافتراضية (الرقم التالي عند الإضافة، أو الرقم الحالي عند التعديل)
+  const [position, setPosition] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const isSubtask = mode === "subtask";
@@ -53,8 +59,21 @@ export function NewTaskModal({
     setCurrent(String(editing?.current ?? 0));
     setSelectedParentId(parentTask?.id ?? "");
     setAttachments(editing?.attachments ?? []);
+    setPosition("");
     setError("");
   }, [open, editing, parentTask]);
+
+  // الأشقاء: نفس اليوم والمسؤول والمهمة الرئيسية (أو المهام الرئيسية إن لم تكن فرعية)
+  const scopeParentId = editing ? editing.parentId : isSubtask ? parentTask?.id ?? selectedParentId : undefined;
+  const siblings = useMemo(
+    () => (assignee ? getSiblings(allTasks, { date, assigneeId: assignee.id, parentId: scopeParentId || undefined }) : []),
+    [allTasks, assignee, date, scopeParentId]
+  );
+  const editingIndex = editing ? siblings.findIndex((task) => task.id === editing.id) : -1;
+  const maxPosition = editing && editingIndex >= 0 ? siblings.length : siblings.length + 1;
+  const defaultPosition = editing && editingIndex >= 0 ? editingIndex + 1 : siblings.length + 1;
+  const effectivePosition = Math.min(Number(position) || defaultPosition, maxPosition);
+  const orderLocked = isSubtask && !editing && !scopeParentId;
 
   const handleSubmit = async () => {
     if (!assignee || submitting) return;
@@ -89,6 +108,7 @@ export function NewTaskModal({
       current: parsedCurrent,
       date,
       assigneeId: assignee.id,
+      position: orderLocked ? undefined : effectivePosition,
     };
 
     setSubmitting(true);
@@ -122,7 +142,7 @@ export function NewTaskModal({
 
       {isSubtask && !parentTask && !editing && (
         <FieldWrap label="المهمة الرئيسية" error={error && !selectedParentId ? error : undefined}>
-          <Select value={selectedParentId} onChange={(event) => { setSelectedParentId(event.target.value); setError(""); }}>
+          <Select value={selectedParentId} onChange={(event) => { setSelectedParentId(event.target.value); setPosition(""); setError(""); }}>
             <option value="">اختر المهمة الرئيسية</option>
             {parentOptions.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}
           </Select>
@@ -134,6 +154,30 @@ export function NewTaskModal({
       </FieldWrap>
       <FieldWrap label="الوصف">
         <Textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="أضف تفاصيل إضافية عن المهمة..." />
+      </FieldWrap>
+
+      <FieldWrap label="الترتيب (رقم المهمة)">
+        <Select
+          value={String(effectivePosition)}
+          disabled={orderLocked}
+          onChange={(event) => setPosition(event.target.value)}
+        >
+          {orderLocked ? (
+            <option value="1">اختر المهمة الرئيسية أولاً</option>
+          ) : (
+            Array.from({ length: maxPosition }, (_, index) => {
+              const number = index + 1;
+              // المهمة التي تشغل هذا الرقم الآن (بدون المهمة التي نعدّلها)
+              const occupant = siblings.filter((task) => task.id !== editing?.id)[index];
+              const isNext = !editing && number === maxPosition;
+              const label = isNext ? number + " — التالي (في النهاية)" : occupant ? number + " — قبل: " + occupant.title : number + " — في النهاية";
+              return <option key={number} value={number}>{label}</option>;
+            })
+          )}
+        </Select>
+        {!orderLocked && effectivePosition < maxPosition && (
+          <p className="mt-1 text-xs text-muted">ستنزل المهام من الرقم {effectivePosition} فما بعده رقماً واحداً.</p>
+        )}
       </FieldWrap>
 
       <div className={"grid grid-cols-1 gap-3 " + (mode === "normal" ? "sm:grid-cols-1" : "sm:grid-cols-3")}>

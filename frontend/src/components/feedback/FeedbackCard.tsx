@@ -1,6 +1,5 @@
-import { Pencil, Trash2, CheckCircle2 } from "lucide-react";
+import { CalendarDays, CheckCircle2, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import type { Feedback } from "../../types";
-import { Card } from "../ui/Card";
 import { Badge } from "../ui/Badge";
 import { formatArabicDate } from "../../lib/date";
 import { ImageAttachmentGallery } from "../ui/ImageAttachments";
@@ -22,51 +21,58 @@ interface FeedbackCardProps {
 
 export function FeedbackCard({ item, onEdit, onDelete, onToggleStatus, canManage = true }: FeedbackCardProps) {
   const meta = typeMap[item.type];
+  const isResolved = item.status === "resolved";
   return (
-    <Card className="p-4 md:p-5 flex flex-col gap-3 hover:shadow-pop hover:-translate-y-0.5 transition-all duration-200 animate-slide-up">
-      <div className="flex items-start justify-between gap-2">
-        <Badge color={meta.color}>{meta.label}</Badge>
-        {item.status === "resolved" && (
-          <Badge color="#27C6A3">
+    <article
+      className={
+        "task-card p-4 sm:p-5 flex flex-col gap-3 animate-slide-up " +
+        (isResolved ? "opacity-60 hover:opacity-100" : "")
+      }
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <Badge color={meta.color} outlined className="px-3.5 py-1.5 text-sm font-semibold">{meta.label}</Badge>
+        {isResolved && (
+          <Badge color="#27C6A3" outlined className="px-3.5 py-1.5 text-sm font-semibold">
             <span className="flex items-center gap-1">
-              <CheckCircle2 size={11} /> تم الحل
+              <CheckCircle2 size={14} /> تم الحل
             </span>
           </Badge>
         )}
       </div>
+
       <div>
-        <h3 className="font-semibold text-[15px] text-text leading-snug">{item.title}</h3>
-        <p className="text-sm text-muted mt-1.5 leading-relaxed">{item.description}</p>
+        <h3 className="text-xl font-bold leading-snug text-text">{item.title}</h3>
+        {item.createdByName && <p className="mt-1.5 text-sm text-muted">أضافها: {item.createdByName}</p>}
+        <p className="mt-3 text-sm leading-7 text-muted">{item.description}</p>
       </div>
+
       <ImageAttachmentGallery attachments={item.attachments} />
-      <div className="flex items-center justify-between pt-2 border-t border-border">
-        <span className="text-xs text-muted">{formatArabicDate(item.date)}</span>
+
+      <div className="mt-1 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-border pt-4">
+        <span className="flex items-center gap-1.5 text-sm text-muted">
+          <CalendarDays size={16} className="text-primary-deep" />
+          {formatArabicDate(item.date)}
+        </span>
         {canManage && (
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => onToggleStatus(item.id)}
-            className="text-xs font-medium text-primary-deep hover:underline px-1.5"
-          >
-            {item.status === "open" ? "وضع كمحلولة" : "إعادة فتح"}
-          </button>
-          <button
-            onClick={() => onEdit(item)}
-            aria-label="تعديل"
-            className="h-7 w-7 flex items-center justify-center rounded-control text-muted hover:bg-border/50 hover:text-text"
-          >
-            <Pencil size={14} />
-          </button>
-          <button
-            onClick={() => onDelete(item.id)}
-            aria-label="حذف"
-            className="h-7 w-7 flex items-center justify-center rounded-control text-muted hover:bg-problem/10 hover:text-problem"
-          >
-            <Trash2 size={14} />
-          </button>
-        </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {isResolved ? (
+              <button type="button" onClick={() => onToggleStatus(item.id)} className="task-btn task-btn--secondary">
+                <RotateCcw size={18} />إعادة فتح
+              </button>
+            ) : (
+              <button type="button" onClick={() => onToggleStatus(item.id)} className="task-btn task-btn--primary">
+                <CheckCircle2 size={18} />وضع كمحلولة
+              </button>
+            )}
+            <button type="button" onClick={() => onEdit(item)} aria-label="تعديل" title="تعديل" className="task-icon-btn">
+              <Pencil size={18} />
+            </button>
+            <button type="button" onClick={() => onDelete(item.id)} aria-label="حذف" title="حذف" className="task-icon-btn task-icon-btn--danger">
+              <Trash2 size={18} />
+            </button>
+          </div>
         )}
       </div>
-      {item.createdByName && <p className="text-[11px] text-muted">أضافها: {item.createdByName}</p>}
-    </Card>
+    </article>
   );
 }

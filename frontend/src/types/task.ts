@@ -65,5 +65,7 @@ export interface CreateTaskInput {
   assigneeId: TeamMemberId;
   priority: TaskPriority;
   date: string;
+  /** الرقم المطلوب للمهمة بين أشقائها (يبدأ من 1)؛ يُعالَج في الواجهة عبر reorder */
+  position?: number;
 }
 import type { ImageAttachment } from "./attachment";
