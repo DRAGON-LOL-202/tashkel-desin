@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronDown, GripVertical, ListTodo, Maximize2, Minimize2, Plus, Timer, UserRound } from "lucide-react";
+import { CheckCircle2, ChevronDown, ListTodo, Maximize2, Minimize2, Plus, Timer, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Task, TeamMember } from "../../types";
 import { getTaskElapsed } from "../../hooks/useTaskTimer";
@@ -30,6 +30,7 @@ interface TeamMemberCardProps {
   onDeleteComment: (id: string, commentTime: number) => void;
   onMoveTask: (id: string, assigneeId: TeamMember["id"], beforeTaskId?: string) => void;
   onReorder: (orderedIds: string[]) => void;
+  taskNumbers: Map<string, number>;
 }
 
 export function TeamMemberCard({
@@ -52,6 +53,7 @@ export function TeamMemberCard({
   onDeleteComment,
   onMoveTask,
   onReorder,
+  taskNumbers,
 }: TeamMemberCardProps) {
   const { canManageTasks } = usePermissions();
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -241,13 +243,11 @@ export function TeamMemberCard({
                 draggingId === task.id ? "opacity-50 scale-[0.99]" : ""
               } ${dragOverId === task.id && draggingId !== task.id ? "translate-y-1" : ""}`}
             >
-              <div className="absolute left-3 bottom-7 z-10 text-muted">
-                <GripVertical size={18} />
-              </div>
               <TaskCard
                 task={task}
                 subtasks={getSubtasks(task.id)}
                 getSubtasks={getSubtasks}
+                taskNumbers={taskNumbers}
                 onStart={onStart}
                 onRequestStop={onRequestStop}
                 onFinish={onFinish}

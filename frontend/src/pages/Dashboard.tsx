@@ -25,6 +25,7 @@ import { useLiveSync } from "../hooks/useLiveSync";
 import { usePermissions } from "../hooks/usePermissions";
 import { errorMessage } from "../lib/api";
 import { downloadDailyReport } from "../lib/exportDailyReport";
+import { buildNumberMap, getSiblings, insertAtPosition } from "../lib/taskOrder";
 
 function sortTasks(a: Task, b: Task): number {
   if (a.status === "completed" && b.status !== "completed") return 1;
@@ -108,6 +109,9 @@ export default function Dashboard() {
       .sort(sortTasks);
   }, [tasks, selectedDate, filter, search]);
 
+  // أرقام المهام تُحسب من كل مهام اليوم (بدون فلترة) لتبقى ثابتة
+  const taskNumbers = useMemo(() => buildNumberMap(tasks), [tasks]);
+
   const stats = useMemo(() => {
     const now = Date.now();
     return {
@@ -153,7 +157,14 @@ export default function Dashboard() {
     return result.ok;
   };
 
-  const handleCreate = (input: CreateTaskInput) => mutate(() => tasksService.create(input), "تمت إضافة المهمة بنجاح");
+  const handleCreate = (input: CreateTaskInput) =>
+    mutate(async () => {
+      const created = await tasksService.create(input);
+      // الخادم يضع المهمة الجديدة في أعلى القائمة؛ نعيد ترتيب الأشقاء حسب الرقم المختار (الافتراضي: الرقم التالي في النهاية)
+      const siblingIds = getSiblings(tasks, { date: created.date, assigneeId: created.assigneeId, parentId: created.parentId }).map((task) => task.id);
+      const orderedIds = insertAtPosition(siblingIds, created.id, input.position ?? siblingIds.length + 1);
+      await tasksService.reorder(orderedIds);
+    }, "تمت إضافة المهمة بنجاح");
 
   const handleOpenNewTask = (member: TeamMember) => {
     setNewTaskParent(undefined);
@@ -191,7 +202,13 @@ export default function Dashboard() {
   };
 
   const handleUpdate = (id: string, input: CreateTaskInput) =>
-    mutate(() => tasksService.update(id, input), "تم تعديل المهمة بنجاح");
+    mutate(async () => {
+      await tasksService.update(id, input);
+      const current = tasks.find((task) => task.id === id);
+      if (!current || !input.position || input.position === taskNumbers.get(id)) return;
+      const siblingIds = getSiblings(tasks, { date: current.date, assigneeId: current.assigneeId, parentId: current.parentId }).map((task) => task.id);
+      await tasksService.reorder(insertAtPosition(siblingIds, id, input.position));
+    }, "تم تعديل المهمة بنجاح");
 
   const handleStart = (id: string) => void mutate(() => tasksService.start(id));
 
@@ -343,6 +360,7 @@ export default function Dashboard() {
               onDeleteComment={handleDeleteComment}
               onMoveTask={handleMoveTask}
               onReorder={handleReorder}
+              taskNumbers={taskNumbers}
             />
           ))}
         </div>
@@ -354,6 +372,7 @@ export default function Dashboard() {
         assignee={newTaskAssignee}
         parentTask={newTaskParent}
         parentOptions={dayTasks.filter((task) => task.assigneeId === newTaskAssignee?.id && !task.parentId)}
+        allTasks={tasks}
         mode={newTaskMode}
         editing={editingTask}
         date={selectedDate}
