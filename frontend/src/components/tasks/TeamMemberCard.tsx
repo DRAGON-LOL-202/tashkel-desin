@@ -30,6 +30,7 @@ interface TeamMemberCardProps {
   onDeleteComment: (id: string, commentTime: number) => void;
   onMoveTask: (id: string, assigneeId: TeamMember["id"], beforeTaskId?: string) => void;
   onReorder: (orderedIds: string[]) => void;
+  taskNumbers: Map<string, number>;
 }
 
 export function TeamMemberCard({
@@ -52,6 +53,7 @@ export function TeamMemberCard({
   onDeleteComment,
   onMoveTask,
   onReorder,
+  taskNumbers,
 }: TeamMemberCardProps) {
   const { canManageTasks } = usePermissions();
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -248,6 +250,7 @@ export function TeamMemberCard({
                 task={task}
                 subtasks={getSubtasks(task.id)}
                 getSubtasks={getSubtasks}
+                taskNumbers={taskNumbers}
                 onStart={onStart}
                 onRequestStop={onRequestStop}
                 onFinish={onFinish}

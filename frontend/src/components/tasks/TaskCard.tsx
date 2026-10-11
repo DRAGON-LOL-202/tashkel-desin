@@ -15,6 +15,7 @@ interface TaskCardProps {
   task: Task;
   subtasks: Task[];
   getSubtasks: (parentId: string) => Task[];
+  taskNumbers: Map<string, number>;
   onStart: (id: string) => void;
   onRequestStop: (id: string) => void;
   onFinish: (id: string) => void;
@@ -114,7 +115,16 @@ function subtasksLabel(count: number): string {
   return `${count} مهمة فرعية`;
 }
 
-function SubtaskRow({ task, getSubtasks, onStart, onRequestStop, onFinish, onReopen, onDelete, onEdit, onSetCurrent, onAddSubtask, onAddComment, onDeleteComment }: Pick<TaskCardProps, "getSubtasks" | "onStart" | "onRequestStop" | "onFinish" | "onReopen" | "onDelete" | "onEdit" | "onSetCurrent" | "onAddSubtask" | "onAddComment" | "onDeleteComment"> & { task: Task }) {
+function NumberBadge({ value }: { value?: number }) {
+  if (!value) return null;
+  return (
+    <span className="ml-2 inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-primary/15 px-1.5 align-middle font-mono text-xs font-bold text-primary-deep" title={"رقم المهمة " + value}>
+      {value}
+    </span>
+  );
+}
+
+function SubtaskRow({ task, getSubtasks, taskNumbers, onStart, onRequestStop, onFinish, onReopen, onDelete, onEdit, onSetCurrent, onAddSubtask, onAddComment, onDeleteComment }: Pick<TaskCardProps, "getSubtasks" | "taskNumbers" | "onStart" | "onRequestStop" | "onFinish" | "onReopen" | "onDelete" | "onEdit" | "onSetCurrent" | "onAddSubtask" | "onAddComment" | "onDeleteComment"> & { task: Task }) {
   const [expanded, setExpanded] = useState(false);
   const { canManageTasks, canDeleteComment } = usePermissions();
   const elapsed = useElapsed(task);
@@ -139,7 +149,7 @@ function SubtaskRow({ task, getSubtasks, onStart, onRequestStop, onFinish, onReo
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <h4 className={"text-sm font-semibold " + (isCompleted ? "line-through text-muted" : "text-text")}>{task.title}</h4>
+              <h4 className={"text-sm font-semibold " + (isCompleted ? "line-through text-muted" : "text-text")}><NumberBadge value={taskNumbers.get(task.id)} />{task.title}</h4>
               {task.description && <p className="mt-1 text-xs leading-5 text-muted">{task.description}</p>}
               <ImageAttachmentGallery attachments={task.attachments} />
               {task.createdByName && (
@@ -191,6 +201,7 @@ function SubtaskRow({ task, getSubtasks, onStart, onRequestStop, onFinish, onReo
                   key={child.id}
                   task={child}
                   getSubtasks={getSubtasks}
+                  taskNumbers={taskNumbers}
                   onStart={onStart}
                   onRequestStop={onRequestStop}
                   onFinish={onFinish}
@@ -230,7 +241,7 @@ function SubtaskRow({ task, getSubtasks, onStart, onRequestStop, onFinish, onReo
   );
 }
 
-export function TaskCard({ task, subtasks, getSubtasks, onStart, onRequestStop, onFinish, onReopen, onMoveToDate, onCopy, onDelete, onEdit, onSetCurrent, onAddSubtask, onAddComment, onDeleteComment }: TaskCardProps) {
+export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, onRequestStop, onFinish, onReopen, onMoveToDate, onCopy, onDelete, onEdit, onSetCurrent, onAddSubtask, onAddComment, onDeleteComment }: TaskCardProps) {
   const [expanded, setExpanded] = useState(false);
   const { canManageTasks, canDeleteComment } = usePermissions();
   const elapsed = useElapsed(task);
@@ -270,7 +281,7 @@ export function TaskCard({ task, subtasks, getSubtasks, onStart, onRequestStop, 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <h3 className={"text-[15px] font-semibold leading-snug " + (displayCompleted ? "line-through text-muted" : "text-text")}>{task.title}</h3>
+              <h3 className={"text-[15px] font-semibold leading-snug " + (displayCompleted ? "line-through text-muted" : "text-text")}><NumberBadge value={taskNumbers.get(task.id)} />{task.title}</h3>
               {task.description && <p className="mt-1 text-xs leading-5 text-muted">{task.description}</p>}
               <ImageAttachmentGallery attachments={task.attachments} />
               {task.createdByName && (
@@ -351,6 +362,7 @@ export function TaskCard({ task, subtasks, getSubtasks, onStart, onRequestStop, 
               key={subtask.id}
               task={subtask}
               getSubtasks={getSubtasks}
+              taskNumbers={taskNumbers}
               onStart={onStart}
               onRequestStop={onRequestStop}
               onFinish={onFinish}
