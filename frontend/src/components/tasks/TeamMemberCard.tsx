@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronDown, GripVertical, ListTodo, Maximize2, Minimize2, Plus, Timer, UserRound } from "lucide-react";
+import { CheckCircle2, ChevronDown, ListTodo, Maximize2, Minimize2, Plus, Timer, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Task, TeamMember } from "../../types";
 import { getTaskElapsed } from "../../hooks/useTaskTimer";
@@ -243,9 +243,6 @@ export function TeamMemberCard({
                 draggingId === task.id ? "opacity-50 scale-[0.99]" : ""
               } ${dragOverId === task.id && draggingId !== task.id ? "translate-y-1" : ""}`}
             >
-              <div className="absolute left-3 bottom-7 z-10 text-muted">
-                <GripVertical size={18} />
-              </div>
               <TaskCard
                 task={task}
                 subtasks={getSubtasks(task.id)}

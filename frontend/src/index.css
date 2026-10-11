@@ -94,3 +94,155 @@ body {
     animation: none;
   }
 }
+
+/* ===== بطاقة المهمة (تصميم جديد) — كل الألوان من متغيرات الموقع فتعمل في الوضعين الفاتح والداكن ===== */
+.task-card {
+  position: relative;
+  border-radius: 26px;
+  border: 1px solid color-mix(in srgb, var(--primary-deep) 28%, var(--border));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 7%, var(--surface)) 0%, var(--surface) 60%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--primary) 20%, transparent),
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 22px 44px -24px color-mix(in srgb, var(--primary-deep) 55%, transparent);
+  transition: box-shadow 200ms ease, border-color 200ms ease;
+}
+.task-card:hover {
+  border-color: color-mix(in srgb, var(--primary-deep) 45%, var(--border));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--primary) 24%, transparent),
+    0 1px 2px rgba(0, 0, 0, 0.08),
+    0 26px 52px -22px color-mix(in srgb, var(--primary-deep) 70%, transparent);
+}
+
+.task-number {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  height: 2.75rem;
+  min-width: 2.75rem;
+  padding: 0 0.5rem;
+  border-radius: 14px;
+  border: 2px solid var(--primary-deep);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary-deep);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 0 18px -4px color-mix(in srgb, var(--primary-deep) 70%, transparent);
+}
+.task-number--sm {
+  height: 1.5rem;
+  min-width: 1.5rem;
+  padding: 0 0.3rem;
+  margin-inline-end: 0.5rem;
+  border-radius: 8px;
+  border-width: 1.5px;
+  font-size: 0.75rem;
+  vertical-align: middle;
+  box-shadow: none;
+}
+.task-number--done {
+  background: var(--primary-deep);
+  color: var(--background);
+}
+
+.task-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.5rem;
+  width: 2.5rem;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--primary-deep) 26%, var(--border));
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+  color: var(--text);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--primary) 16%, transparent),
+    0 8px 16px -10px color-mix(in srgb, var(--primary-deep) 65%, transparent);
+  transition: transform 150ms ease, border-color 150ms ease, color 150ms ease, background-color 150ms ease;
+}
+.task-icon-btn:hover {
+  transform: translateY(-1px);
+  border-color: var(--primary-deep);
+  background: color-mix(in srgb, var(--primary) 16%, var(--surface));
+}
+.task-icon-btn--danger:hover {
+  color: var(--problem);
+  border-color: color-mix(in srgb, var(--problem) 55%, var(--border));
+  background: color-mix(in srgb, var(--problem) 10%, var(--surface));
+}
+
+.task-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 2.75rem;
+  padding: 0 1.25rem;
+  border-radius: 16px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: transform 150ms ease, filter 150ms ease, border-color 150ms ease, background-color 150ms ease;
+}
+.task-btn:active { transform: scale(0.98); }
+.task-btn--secondary {
+  border: 1px solid color-mix(in srgb, var(--primary-deep) 28%, var(--border));
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+  color: var(--text);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--primary) 16%, transparent),
+    0 8px 16px -10px color-mix(in srgb, var(--primary-deep) 60%, transparent);
+}
+.task-btn--secondary:hover {
+  border-color: var(--primary-deep);
+  background: color-mix(in srgb, var(--primary) 15%, var(--surface));
+}
+.task-btn--ghost {
+  background: transparent;
+  color: var(--primary-deep);
+  padding: 0 0.75rem;
+}
+.task-btn--ghost:hover { background: color-mix(in srgb, var(--primary) 12%, transparent); }
+.task-btn--primary {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary-deep) 60%, var(--primary-dark)), var(--primary-deep));
+  color: var(--background);
+  box-shadow: 0 12px 26px -12px var(--primary-deep);
+}
+.task-btn--primary:hover { filter: brightness(1.05); }
+
+.task-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 2.75rem;
+  padding: 0 0.375rem;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--primary-deep) 28%, var(--border));
+  background: color-mix(in srgb, var(--primary) 6%, var(--surface));
+  box-shadow: 0 8px 16px -10px color-mix(in srgb, var(--primary-deep) 55%, transparent);
+}
+.task-stepper-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2rem;
+  width: 2rem;
+  border-radius: 10px;
+  color: var(--text);
+  transition: background-color 150ms ease;
+}
+.task-stepper-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--primary) 18%, transparent); }
+.task-stepper-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.task-stop-card {
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--primary-deep) 30%, var(--border));
+  border-left: 4px solid var(--primary-deep);
+  background: color-mix(in srgb, var(--primary) 6%, var(--surface));
+  padding: 0.875rem 1rem;
+  box-shadow: 0 10px 22px -16px color-mix(in srgb, var(--primary-deep) 60%, transparent);
+}
