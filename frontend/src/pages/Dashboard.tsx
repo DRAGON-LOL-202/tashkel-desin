@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { UserCheck } from "lucide-react";
 import { AppLayout } from "../components/layout/AppLayout";
 import { Header } from "../components/header/Header";
@@ -13,7 +13,7 @@ import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { MoveDateModal } from "../components/tasks/MoveDateModal";
 import { CopyTaskModal } from "../components/tasks/CopyTaskModal";
 import { applyMoveToMember, applyReorder, isTaskTreeCompleted, tasksService } from "../services/tasksService";
-import type { CreateTaskInput, Task, TeamMember } from "../types";
+import type { CalendarDateState, CreateTaskInput, Task, TeamMember } from "../types";
 import { getTaskElapsed } from "../hooks/useTaskTimer";
 import { todayISO } from "../lib/date";
 import { useToast } from "../components/ui/ToastProvider";
@@ -39,6 +39,9 @@ export default function Dashboard() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(true);
   const [tasksError, setTasksError] = useState<string | null>(null);
+  const [dayLoading, setDayLoading] = useState(false);
+  const [dateStates, setDateStates] = useState<Record<string, CalendarDateState>>({});
+  const [calendarRange, setCalendarRange] = useState<{ from: string; to: string } | null>(null);
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [newTaskAssignee, setNewTaskAssignee] = useState<TeamMember | undefined>();
   const [newTaskParent, setNewTaskParent] = useState<Task | undefined>();
@@ -58,38 +61,64 @@ export default function Dashboard() {
   const run = useSafeAction();
   const { members: teamMembers, loading: membersLoading, error: membersError, reload: reloadMembers } = useTeamMembers();
 
-  const loadTasks = useCallback(async () => {
+  // نجلب مهام اليوم المعروض فقط. عدّاد seq يتجاهل ردود الأيام القديمة المتأخرة.
+  const seq = useRef(0);
+  const fetchDay = useCallback(async (date: string) => {
+    const id = ++seq.current;
+    const result = await tasksService.list({ date });
+    if (id === seq.current) setTasks(result);
+  }, []);
+
+  // ألوان التقويم (أحمر/أخضر) للشبكة المعروضة من مسار خفيف بدل حسابها من كل المهام
+  const refreshDateStates = useCallback(async () => {
+    if (!calendarRange) return;
     try {
-      setTasks(await tasksService.list());
+      setDateStates(await tasksService.dayStates(calendarRange.from, calendarRange.to));
+    } catch {
+      // نُبقي الألوان الحالية
+    }
+  }, [calendarRange]);
+
+  const loadTasks = useCallback(async () => {
+    setDayLoading(true);
+    try {
+      await fetchDay(selectedDate);
       setTasksError(null);
     } catch (error) {
       setTasksError(errorMessage(error));
     } finally {
+      setDayLoading(false);
       setTasksLoading(false);
     }
-  }, []);
+  }, [selectedDate, fetchDay]);
 
+  // يعيد التحميل عند تغيير اليوم المعروض
   useEffect(() => {
     void loadTasks();
   }, [loadTasks]);
 
+  // يحدّث الألوان عند تغيير الشهر المعروض في التقويم
+  useEffect(() => {
+    void refreshDateStates();
+  }, [refreshDateStates]);
+
   // مزامنة صامتة مع الخادم: تُستعمل بعد كل عملية (نجحت أو فشلت) ليبقى الـ backend هو مصدر الحقيقة
   const refreshTasks = useCallback(async () => {
     try {
-      setTasks(await tasksService.list());
+      await Promise.all([fetchDay(selectedDate), refreshDateStates()]);
     } catch (error) {
       show(errorMessage(error), "error");
     }
-  }, [show]);
+  }, [selectedDate, fetchDay, refreshDateStates, show]);
 
   // تحديث تلقائي صامت: عندما يضيف/يعدّل أي مستخدم مهمة أو تعليقاً تظهر عند الجميع بدون رفرش
   const syncTasks = useCallback(async () => {
     try {
-      setTasks(await tasksService.list());
+      await Promise.all([fetchDay(selectedDate), refreshDateStates()]);
     } catch {
       // نُبقي القائمة الحالية ونحاول عند التغيير التالي
     }
-  }, []);
+  }, [selectedDate, fetchDay, refreshDateStates]);
   useLiveSync(syncTasks);
 
   useEffect(() => {
@@ -130,24 +159,6 @@ export default function Dashboard() {
       ).length,
     [tasks, selectedDate]
   );
-
-  const dateStates = useMemo(() => {
-    return tasks.filter((task) => !task.parentId).reduce<Record<string, "completed" | "pending">>((states, task) => {
-      const taskDate = task.date.slice(0, 10);
-      if (!taskDate) return states;
-
-      if (!isTaskTreeCompleted(tasks, task)) {
-        states[taskDate] = "pending";
-        return states;
-      }
-
-      if (!states[taskDate]) {
-        states[taskDate] = "completed";
-      }
-
-      return states;
-    }, {});
-  }, [tasks]);
 
   /** ينفّذ عملية على الخادم ثم يعيد المزامنة؛ يعيد true عند النجاح */
   const mutate = async (action: () => Promise<unknown>, successMessage?: string, kind: "success" | "info" = "success") => {
@@ -320,7 +331,14 @@ export default function Dashboard() {
         />
       ) : (
       <div className="flex flex-col gap-6">
-        <DateNavigator value={selectedDate} dateStates={dateStates} onChange={setSelectedDate} />
+        <DateNavigator
+          value={selectedDate}
+          dateStates={dateStates}
+          onChange={setSelectedDate}
+          onViewRangeChange={(range) =>
+            setCalendarRange((previous) => (previous && previous.from === range.from && previous.to === range.to ? previous : range))
+          }
+        />
         <TaskStats
           total={stats.total}
           completed={stats.completed}
@@ -337,7 +355,7 @@ export default function Dashboard() {
           onExportExcel={handleExportExcel}
         />
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-5 items-start">
+        <div className={`grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-5 items-start transition-opacity ${dayLoading ? "opacity-60" : ""}`}>
           {teamMembers.map((member) => (
             <TeamMemberCard
               key={member.id}

@@ -27,7 +27,10 @@ try{
  ok('move',(await tasksService.moveToMember(t.id,members.find(m=>m.username==='amr').id)).assigneeId!==des.id);
  ok('finish',(await tasksService.finish(s.id)).status==='completed');
  ok('moveUnfinished number',typeof (await tasksService.moveUnfinishedToNextDay(today))==='number');
- ok('list',(await tasksService.list()).length>=2);
+ ok('list',(await tasksService.list({date:today})).length>=2);
+ ok('dayStates',typeof (await tasksService.dayStates(today,today))[today]==='string');
+ ok('months',(await tasksService.months()).includes(today.slice(0,7)));
+ ok('dailyTime',Array.isArray(await tasksService.dailyTime(today,today)));
  const g=await goalsService.create({title:'هدف واجهة',type:'monthly',target:10,current:3,startDate:today}); ok('goals.create',g.progress===30,JSON.stringify(g));
  ok('goals.update',(await goalsService.update(g.id,{current:10})).status==='completed'); await goalsService.remove(g.id); ok('goals.remove',!(await goalsService.list()).some(x=>x.id===g.id));
  const fb=await feedbackService.create({title:'ملاحظة',description:'د',type:'problem',date:today}); ok('feedback.create',fb.type==='problem'&&fb.status==='open');
@@ -41,6 +44,6 @@ try{
  await authService.login('des1',DPW);
  try{await usersService.list(); ok('designer users.list 403',false)}catch(e){ok('designer users.list 403',e instanceof ApiError&&e.status===403,String(e))}
  try{await goalsService.list(); ok('designer goals 403',false)}catch(e){ok('designer goals 403',e instanceof ApiError&&e.status===403)}
- ok('designer tasks list own',(await tasksService.list()).every(x=>x.assigneeId===des.id));
+ ok('designer tasks list own',(await tasksService.list({date:today})).every(x=>x.assigneeId===des.id));
 }catch(e){f++;console.log('EXCEPTION',e.message||e)}
 console.log(`${p} passed, ${f} failed`); await vite.close(); process.exit(f?1:0);

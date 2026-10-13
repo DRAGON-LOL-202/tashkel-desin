@@ -786,3 +786,14 @@ Implemented in Checkpoint 16 (backend + frontend, no DB migration). Not run agai
 -   Old base64 rows are not migrated.
 -   No virus scanning; only MIME/extension/size checks (the browser-declared MIME is checked, the file content is not sniffed).
 
+------------------------------------------------------------------------
+
+# Addendum — Tasks range fix (Checkpoint 21)
+
+The task list is no longer fetched in full. See `HANDOFF_TASKS_RANGE_FIX.md`
+(diagnosis + plan) and `CHANGES.md` (Checkpoint 21). Phases A, B and D are
+implemented; phase C (rejecting `GET /api/tasks` without a range) is coded
+but OFF by default behind `TASKS_REQUIRE_RANGE=true` — enable it on Render
+only after the new frontend has been live for about a week (PWA caches).
+Not yet executed in a real environment: run `npm test` / `npm run typecheck`
+(backend) and `npm run build` / `npm run lint` (frontend) first.

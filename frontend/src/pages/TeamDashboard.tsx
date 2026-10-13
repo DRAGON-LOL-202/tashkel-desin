@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { CalendarRange, CheckCircle2, ListTodo, PlayCircle, Timer, UserRound, X } from "lucide-react";
 import { AppLayout } from "../components/layout/AppLayout";
 import { Header } from "../components/header/Header";
@@ -11,16 +11,21 @@ import { useResource } from "../hooks/useResource";
 import { useTeamMembers } from "../hooks/useTeamMembers";
 import type { Task } from "../types";
 import { getTaskElapsed } from "../hooks/useTaskTimer";
-import { formatArabicDate, formatDuration } from "../lib/date";
+import { formatArabicDate, formatDuration, monthRange, todayISO } from "../lib/date";
+import { LongTermTimePanel } from "../components/tasks/LongTermTimePanel";
 
 export default function TeamDashboardPage() {
-  const { data: tasks, loading: tasksLoading, error: tasksError, retry: retryTasks } = useResource<Task[]>(tasksService.list, []);
+  // الإحصائيات الشهرية تُحسب لشهر واحد في كل مرة (الافتراضي: الشهر الحالي)؛ والطويلة الأمد من لوحة التجميع أسفل الصفحة.
+  const [month, setMonth] = useState(() => todayISO().slice(0, 7));
+  const { from: monthFrom, to: monthTo } = useMemo(() => monthRange(month), [month]);
+  const loadMonthTasks = useCallback(() => tasksService.list({ from: monthFrom, to: monthTo }), [monthFrom, monthTo]);
+  const { data: tasks, loading: tasksLoading, error: tasksError, retry: retryTasks } = useResource<Task[]>(loadMonthTasks, []);
+  const { data: knownMonths } = useResource<string[]>(tasksService.months, []);
   const { members: teamMembers, loading: membersLoading, error: membersError, reload: reloadMembers } = useTeamMembers();
   const loading = tasksLoading || membersLoading;
   const error = tasksError ?? membersError;
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const [month, setMonth] = useState("");
 
   const availableDates = useMemo(
     () => [...new Set(tasks.map((task) => task.date))].sort((first, second) => first.localeCompare(second)),
@@ -28,8 +33,10 @@ export default function TeamDashboardPage() {
   );
   const fromDateOptions = availableDates.filter((date) => !toDate || date <= toDate);
   const toDateOptions = availableDates.filter((date) => !fromDate || date >= fromDate);
-  const availableMonths = [...new Set(tasks.map((task) => task.date.slice(0, 7)))].sort((first, second) =>
-    first.localeCompare(second)
+  // الشهر الحالي يظهر دائماً حتى لو لم تُنشأ فيه مهام بعد
+  const availableMonths = useMemo(
+    () => [...new Set([...knownMonths, month])].sort((first, second) => first.localeCompare(second)),
+    [knownMonths, month]
   );
 
   const members = useMemo(
@@ -37,7 +44,6 @@ export default function TeamDashboardPage() {
       teamMembers.map((member) => {
         const memberTasks = tasks
           .filter((task) => task.assigneeId === member.id)
-          .filter((task) => !month || task.date.startsWith(month))
           .filter((task) => !fromDate || task.date >= fromDate)
           .filter((task) => !toDate || task.date <= toDate);
         const mainTasks = memberTasks.filter((task) => !task.parentId);
@@ -49,7 +55,7 @@ export default function TeamDashboardPage() {
           duration: memberTasks.reduce((sum, task) => sum + getTaskElapsed(task), 0),
         };
       }),
-    [tasks, teamMembers, fromDate, toDate, month]
+    [tasks, teamMembers, fromDate, toDate]
   );
 
   return (
@@ -84,7 +90,6 @@ export default function TeamDashboardPage() {
                     setToDate("");
                   }}
                 >
-                  <option value="">كل الأشهر</option>
                   {availableMonths.map((value) => <option key={value} value={value}>{formatArabicDate(value + "-01", "MMMM yyyy")}</option>)}
                 </Select>
               </FieldWrap>
@@ -94,7 +99,6 @@ export default function TeamDashboardPage() {
                   onChange={(event) => {
                     const nextFromDate = event.target.value;
                     setFromDate(nextFromDate);
-                    setMonth("");
                     if (toDate && nextFromDate > toDate) setToDate("");
                   }}
                 >
@@ -108,7 +112,6 @@ export default function TeamDashboardPage() {
                   onChange={(event) => {
                     const nextToDate = event.target.value;
                     setToDate(nextToDate);
-                    setMonth("");
                     if (fromDate && nextToDate && nextToDate < fromDate) setFromDate("");
                   }}
                 >
@@ -117,9 +120,9 @@ export default function TeamDashboardPage() {
                 </Select>
               </FieldWrap>
             </div>
-            {(month || fromDate || toDate) && (
+            {(fromDate || toDate) && (
               <IconButton
-                onClick={() => { setMonth(""); setFromDate(""); setToDate(""); }}
+                onClick={() => { setFromDate(""); setToDate(""); }}
                 aria-label="مسح الفترة الزمنية"
                 title="مسح الفترة الزمنية"
                 className="mb-4 h-10 w-10"
@@ -167,6 +170,7 @@ export default function TeamDashboardPage() {
             </Card>
           ))}
         </div>
+        <LongTermTimePanel members={teamMembers} />
       </div>
       )}
     </AppLayout>

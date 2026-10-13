@@ -30,7 +30,7 @@ ok('designer cannot delete task',(await call('DELETE',`/tasks/${tid}`,D)).s===40
 ok('comment',(await call('POST',`/tasks/${tid}/comments`,D,{text:'تعليق'})).s===200);
 const at=await call('POST','/tasks',T,{title:'مهمة إدارة',date:today,assigneeId:did,target:10,current:2}); ok('admin assigns to designer',at.s===201&&at.j.task.createdByName&&at.j.task.assigneeName,JSON.stringify(at.j));
 const sub=await call('POST','/tasks',T,{title:'فرعية',date:today,assigneeId:did,parentId:at.j.task.id}); ok('subtask',sub.s===201&&sub.j.task.parentId===at.j.task.id);
-const dl=(await call('GET','/tasks',D)).j.tasks; ok('designer sees only own',dl.every(t=>t.assigneeId===did)&&dl.length>=3);
+const dl=(await call('GET','/tasks?date='+today,D)).j.tasks; ok('designer sees only own',dl.every(t=>t.assigneeId===did)&&dl.length>=3);
 ok('move-unfinished',(await call('POST','/tasks/move-unfinished',T,{date:today})).j.moved>=1);
 ok('designer move-unfinished 403',(await call('POST','/tasks/move-unfinished',D,{date:today})).s===403);
 const fb=await call('POST','/feedback',D,{title:'فكرة',description:'وصف',type:'idea',date:today}); ok('designer feedback',fb.s===201,JSON.stringify(fb.j));

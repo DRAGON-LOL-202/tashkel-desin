@@ -1,9 +1,16 @@
 import { api } from "../lib/api";
 import { toAttachmentPayload } from "../lib/attachments";
-import type { CreateTaskInput, Task, TeamMemberId } from "../types";
+import type { CalendarDateState, CreateTaskInput, DailyTimeStat, Task, TeamMemberId } from "../types";
 
 interface TaskResponse {
   task: Task;
+}
+
+/** يوم واحد (date) أو فترة (from + to). الخادم يرفض الطلب بلا فترة عند تفعيل الوضع الصارم، فمرّر دائماً أحدهما. */
+export interface TaskRange {
+  date?: string;
+  from?: string;
+  to?: string;
 }
 
 export function isTaskTreeCompleted(tasks: Task[], task: Task): boolean {
@@ -75,10 +82,28 @@ function taskBody(input: CreateTaskInput) {
 }
 
 export const tasksService = {
-  /** المصمم يحصل من الـ backend على مهامه فقط؛ الإدارة على كل المهام */
-  async list(): Promise<Task[]> {
-    const { tasks } = await api<{ tasks: Task[] }>("/tasks");
+  /** مهام يوم أو فترة. المصمم يحصل من الـ backend على مهامه فقط؛ الإدارة على كل المهام */
+  async list(range: TaskRange): Promise<Task[]> {
+    const { tasks } = await api<{ tasks: Task[] }>("/tasks", { query: { date: range.date, from: range.from, to: range.to } });
     return tasks;
+  },
+
+  /** لون كل يوم في الفترة (أحمر/أخضر) بدون جلب المهام — فترة ≤ 45 يوماً */
+  async dayStates(from: string, to: string): Promise<Record<string, CalendarDateState>> {
+    const { states } = await api<{ states: Record<string, CalendarDateState> }>("/tasks/day-states", { query: { from, to } });
+    return states;
+  },
+
+  /** الأشهر (yyyy-MM) التي يوجد فيها مهام، مرتبة تصاعدياً */
+  async months(): Promise<string[]> {
+    const { months } = await api<{ months: string[] }>("/tasks/months");
+    return months;
+  },
+
+  /** وقت العمل اليومي لكل موظف في فترة طويلة (حتى 400 يوم): صفوف صغيرة فقط، لا مهام */
+  async dailyTime(from: string, to: string): Promise<DailyTimeStat[]> {
+    const { rows } = await api<{ rows: DailyTimeStat[] }>("/tasks/stats/time", { query: { from, to } });
+    return rows;
   },
 
   async create(input: CreateTaskInput): Promise<Task> {

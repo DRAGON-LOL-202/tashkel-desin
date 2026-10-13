@@ -50,3 +50,10 @@ export function addDaysISO(dateStr: string, days: number): string {
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
+
+/** أول وآخر يوم في شهر بصيغة yyyy-MM */
+export function monthRange(month: string): { from: string; to: string } {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const last = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  return { from: `${month}-01`, to: `${month}-${String(last).padStart(2, "0")}` };
+}

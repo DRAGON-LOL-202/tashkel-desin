@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { errorMessage } from "../lib/api";
 import { useLiveSync } from "./useLiveSync";
 
@@ -12,21 +12,31 @@ export function useResource<T>(loader: () => Promise<T>, initial: T) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // عند تغيّر loader (مثلاً شهر آخر) نتجاهل رد الطلب القديم إن وصل متأخراً
+  const latestLoader = useRef(loader);
+  useEffect(() => {
+    latestLoader.current = loader;
+  });
+
   const reload = useCallback(async () => {
     try {
-      setData(await loader());
-      setError(null);
+      const result = await loader();
+      if (latestLoader.current === loader) {
+        setData(result);
+        setError(null);
+      }
     } catch (err) {
-      setError(errorMessage(err));
+      if (latestLoader.current === loader) setError(errorMessage(err));
     } finally {
-      setLoading(false);
+      if (latestLoader.current === loader) setLoading(false);
     }
   }, [loader]);
 
   // تحديث تلقائي عند تغيير أي مستخدم للبيانات: صامت تماماً (لا loading ولا error)
   const silentSync = useCallback(async () => {
     try {
-      setData(await loader());
+      const result = await loader();
+      if (latestLoader.current === loader) setData(result);
     } catch {
       // نُبقي البيانات الحالية ونحاول عند التغيير التالي
     }

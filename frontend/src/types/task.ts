@@ -69,3 +69,13 @@ export interface CreateTaskInput {
   position?: number;
 }
 import type { ImageAttachment } from "./attachment";
+
+/** لون يوم في التقويم: أحمر (يوجد أوردر غير مكتمل) أو أخضر (كل أوردرات اليوم مكتملة) */
+export type CalendarDateState = "completed" | "pending";
+
+/** وقت العمل في يوم لموظف واحد (من GET /tasks/stats/time) — المدة بالميلي ثانية */
+export interface DailyTimeStat {
+  date: string;
+  assigneeId: TeamMemberId;
+  durationMs: number;
+}

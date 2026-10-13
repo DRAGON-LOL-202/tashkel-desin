@@ -1,5 +1,35 @@
 # CHANGES.md
 
+## Checkpoint 21 — إصلاح جلب المهام بدون فترة (حد 5000 الصامت) + إحصائيات وقت العمل طويلة الأمد
+
+الخطة والتشخيص في `HANDOFF_TASKS_RANGE_FIX.md`. نُفِّذت المراحل A وB وD، والمرحلة C مكتوبة لكنها **مغلقة افتراضياً** خلف متغير بيئة.
+
+### Backend
+- `backend/src/routes/tasks.ts` — مسارات جديدة ثابتة مسجّلة **قبل** `GET /:id`: `GET /tasks/day-states?from&to` (لون كل يوم أحمر/أخضر بنفس قاعدة `isTaskTreeCompleted`، مع تتبّع الفرعيات ذات التاريخ المختلف)، `GET /tasks/months`، `GET /tasks/stats/time?from&to` (وقت العمل اليومي لكل موظف). أُضيفت دوال `requireRange` و`scopeOf` وسقف 45 يوماً لجلب المهام و400 يوم للإحصائيات المجمّعة.
+- `GET /tasks` (المرحلة C): عند ضبط `TASKS_REQUIRE_RANGE=true` يرفض الطلب بلا فترة، أو `from` بلا `to`، أو فترة > 45 يوماً، أو نتيجة تتجاوز 5000 (400 برسالة عربية) بدل القص الصامت. **افتراضياً مغلق** فيبقى السلوك القديم، حتى لا تنكسر واجهات PWA القديمة المخزّنة. يُقرأ المتغير عند كل طلب.
+- `backend/src/utils/timeStats.ts` (جديد) — تجميع الوقت: السجلات المُغلقة + (الآن − startTime) للسجل المفتوح لمهمة RUNNING فقط، منسوباً ليوم المهمة (`Task.date`) وللمسؤول (`assignedToId`)، وتدخل الفرعيات. مطابق لـ`serializeTask` و`getTaskElapsed`.
+- `backend/scripts/http-smoke.mjs` — طلب القائمة يمرّر `date`.
+
+### Frontend
+- `Dashboard.tsx` — يجلب مهام اليوم المعروض فقط (`list({ date })`) مع عدّاد `seq` لتجاهل الردود المتأخرة؛ ألوان التقويم من `day-states` للشبكة المعروضة وتُحدَّث بعد كل عملية وعند المزامنة الحية. حالة `dayLoading` تعتّم القائمة أثناء تغيير اليوم **دون** استبدال الصفحة بشاشة تحميل (حتى لا يُعاد بناء التقويم).
+- `DateNavigator.tsx` — خاصية `onViewRangeChange` تبلّغ بنطاق الشبكة (42 يوماً). النوع `CalendarDateState` انتقل إلى `types/task.ts` ويُعاد تصديره من المكوّن.
+- `TeamDashboard.tsx` — الإحصائيات الشهرية تُحسب لشهر واحد في كل مرة (الافتراضي الشهر الحالي) بنفس منطق الحساب القديم؛ الأشهر من `/tasks/months`؛ أُزيل خيار «كل الأشهر» واختيار من/إلى لا يمسح الشهر. أُضيفت لوحة `LongTermTimePanel` أسفل الصفحة.
+- `components/tasks/LongTermTimePanel.tsx` (جديد) + `lib/timeStats.ts` + `lib/exportTimeStats.ts` — جدول (يوم × موظف) لوقت العمل لآخر 3/6/12 شهراً أو فترة مخصصة، مع إجماليات وأيام العمل وتصدير Excel (ورقتان: ملخص، يومي).
+- `services/tasksService.ts` — `list(range)` يتطلب `{ date }` أو `{ from, to }`، وطرق `dayStates` و`months` و`dailyTime`. `lib/date.ts` — `monthRange`. `hooks/useResource.ts` — تجاهل رد loader قديم عند تغيّره. `scripts/services-smoke.mjs` محدَّث.
+
+### Tests
+- `backend/tests/taskStats.test.ts` (جديد): day-states (200 لا 404، القاعدة، العزل، فرعية بتاريخ مختلف، حدود النطاق)، months، stats/time (الفرعيات، السجل الجاري، العزل، مطابقة `totalDuration`، الحدود)، والوضع الصارم.
+- `backend/tests/timeStats.test.ts` (جديد): اختبارات الدوال الصرفة.
+
+### تحقّق
+- ✅ فحص صياغة TypeScript لكل الملفات المعدّلة؛ الدوال الصرفة (`timeStats` في الباكند والواجهة) شُغّلت فعلياً وتطابقت النتائج؛ ولُدّ ملف Excel تجريبي وفُتح كـ zip/XML سليم.
+- ❌ **لم تُشغَّل** اختبارات vitest ولا `tsc -b` ولا `vite build` ولا التطبيق (لا اعتمادات ولا شبكة في تلك الجلسة). **شغّلها قبل النشر:** `cd backend && npm test && npm run typecheck`، و`cd frontend && npm run build && npm run lint`.
+- ❌ لم تُجرَّب ببيانات الإنتاج. تحقّق من `SELECT count(*) FROM "Task"` ومن شروط القبول في §9 من `HANDOFF_TASKS_RANGE_FIX.md`.
+
+### النشر (مهم)
+1. انشر الباكند ثم الواجهة (A ثم B+D). لا تضبط `TASKS_REQUIRE_RANGE` بعد.
+2. انتظر أسبوعاً على الأقل (واراجع استراتيجية `public/sw.js`)، ثم اضبط `TASKS_REQUIRE_RANGE=true` على Render لتفعيل المرحلة C.
+
 ## Checkpoint 20 — حالة المهمة الرئيسية في Excel تُشتق من فرعياتها
 
 ### عُدّلت

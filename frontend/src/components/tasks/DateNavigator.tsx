@@ -1,14 +1,17 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "../ui/Button";
 import { addDaysISO, formatArabicDate, todayISO } from "../../lib/date";
+import type { CalendarDateState } from "../../types";
 
-export type CalendarDateState = "completed" | "pending";
+export type { CalendarDateState };
 
 interface DateNavigatorProps {
   value: string;
   dateStates?: Record<string, CalendarDateState>;
   onChange: (value: string) => void;
+  /** يُبلَّغ بنطاق الشبكة المرئية كاملةً (42 يوماً وتشمل أيام الشهرين المجاورين) ليجلب المستدعي ألوانها */
+  onViewRangeChange?: (range: { from: string; to: string }) => void;
 }
 
 const weekDays = ["س", "ح", "ن", "ث", "ر", "خ", "ج"];
@@ -65,12 +68,22 @@ function getDayClass({
   return inMonth ? "text-text hover:bg-border/50" : "text-muted/40 hover:bg-border/30";
 }
 
-export function DateNavigator({ value, dateStates = {}, onChange }: DateNavigatorProps) {
+export function DateNavigator({ value, dateStates = {}, onChange, onViewRangeChange }: DateNavigatorProps) {
   const [open, setOpen] = useState(false);
   const [viewDate, setViewDate] = useState(() => new Date(`${value}T12:00:00`));
   const currentDate = todayISO();
   const isTodaySelected = value === currentDate;
   const days = useMemo(() => getMonthDays(viewDate), [viewDate]);
+
+  const firstIso = days[0]?.iso;
+  const lastIso = days[days.length - 1]?.iso;
+  const onRangeRef = useRef(onViewRangeChange);
+  useEffect(() => {
+    onRangeRef.current = onViewRangeChange;
+  });
+  useEffect(() => {
+    if (firstIso && lastIso) onRangeRef.current?.({ from: firstIso, to: lastIso });
+  }, [firstIso, lastIso]);
 
   const moveMonth = (months: number) => {
     setViewDate((current) => {

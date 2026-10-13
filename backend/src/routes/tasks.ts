@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { isStaff, requireAuth, requireStaff } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { badRequest, conflict, forbidden, notFound } from "../utils/httpError.js";
+import { computeDailyTime } from "../utils/timeStats.js";
 import { serializeTask, taskInclude } from "../utils/taskSerialize.js";
 import { assertAttachmentsAllowed, deleteUnreferencedObjects } from "../utils/attachments.js";
 import { keysOf, removedKeys } from "../utils/attachmentKeys.ts";
@@ -29,6 +30,32 @@ function addDaysISO(iso: string, n: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+
+const MAX_RANGE_DAYS = 45; // الحد الأقصى لفترة جلب المهام الكاملة (شبكة التقويم 42 يوماً وشهر الفريق ≤ 31)
+const MAX_STATS_DAYS = 400; // الحد الأقصى لفترة الإحصائيات المجمّعة (أرقام صغيرة فقط، تكفي سنة كاملة)
+const LIST_HARD_CAP = 5000; // سقف أمان: عند بلوغه نرفض بدل القص الصامت
+
+function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
+}
+
+// نطاق صالح أو خطأ واضح
+function requireRange(q: { date?: string; from?: string; to?: string }, maxDays: number = MAX_RANGE_DAYS) {
+  if (q.date) return { gte: q.date, lte: q.date };
+  if (!q.from || !q.to) throw badRequest("حدّد يوماً (date) أو فترة كاملة (from و to)");
+  if (q.to < q.from) throw badRequest("تاريخ النهاية قبل تاريخ البداية");
+  if (daysBetween(q.from, q.to) > maxDays) throw badRequest(`الفترة لا يمكن أن تتجاوز ${maxDays} يوماً`);
+  return { gte: q.from, lte: q.to };
+}
+
+// المرحلة C: عند TASKS_REQUIRE_RANGE=true يرفض GET /api/tasks أي طلب بلا فترة أو بفترة > 45 يوماً.
+// يُقرأ عند كل طلب (لا يُخزَّن) ليسهل اختباره. فعّله بعد انتشار الواجهة الجديدة على كل العملاء.
+const strictRangeEnabled = () => process.env.TASKS_REQUIRE_RANGE?.trim().toLowerCase() === "true";
+
+// المصمم: مهامه فقط مهما كانت الفلاتر؛ الإدارة: الكل أو مسؤول محدد
+function scopeOf(me: User, assigneeId?: string) {
+  return isStaff(me) ? (assigneeId ? { assignedToId: assigneeId } : {}) : { assignedToId: me.id };
 }
 
 async function loadTask(id: string) {
@@ -77,18 +104,109 @@ tasksRouter.get(
   asyncHandler(async (req, res) => {
     const q = listQuerySchema.parse(req.query);
     const me = req.user!;
+
+    // الوضع الصارم (TASKS_REQUIRE_RANGE=true): يرفض الطلب بلا فترة أو بفترة طويلة بدل القص الصامت.
+    if (strictRangeEnabled()) {
+      const strictRange = requireRange(q);
+      const rows = await prisma().task.findMany({
+        where: { date: strictRange, ...scopeOf(me, q.assigneeId) },
+        include: taskInclude,
+        orderBy: [{ date: "asc" }, { sortOrder: "asc" }, { createdAt: "asc" }],
+        take: LIST_HARD_CAP + 1,
+      });
+      if (rows.length > LIST_HARD_CAP) throw badRequest("عدد المهام في هذه الفترة كبير جداً؛ ضيّق الفترة");
+      res.json({ tasks: rows.map(serializeTask) });
+      return;
+    }
+
+    // السلوك القديم (للتوافق مع واجهات قديمة مخزّنة) إلى أن يُفعَّل الوضع الصارم.
     const range = q.date ? q.date : q.from || q.to ? { ...(q.from ? { gte: q.from } : {}), ...(q.to ? { lte: q.to } : {}) } : undefined;
     const rows = await prisma().task.findMany({
       where: {
         ...(range ? { date: range } : {}),
-        // المصمم: مهامه فقط مهما كانت الفلاتر
-        ...(isStaff(me) ? (q.assigneeId ? { assignedToId: q.assigneeId } : {}) : { assignedToId: me.id }),
+        ...scopeOf(me, q.assigneeId),
       },
       include: taskInclude,
       orderBy: [{ date: "asc" }, { sortOrder: "asc" }, { createdAt: "asc" }],
-      take: 5000,
+      take: LIST_HARD_CAP,
     });
     res.json({ tasks: rows.map(serializeTask) });
+  })
+);
+
+// ⚠️ المسارات الثابتة التالية يجب أن تبقى قبل GET /:id وإلا يبتلعها ويرجع 404.
+
+// ---------- ألوان أيام التقويم (أحمر/أخضر) بلا جلب المهام ----------
+// القاعدة مطابقة لـ isTaskTreeCompleted في الواجهة: الأوردر مكتمل إن كانت كل فرعياته مكتملة (متداخلاً)،
+// وإلا status === COMPLETED. اليوم pending إن وُجد فيه أوردر غير مكتمل، وإلا completed.
+tasksRouter.get(
+  "/day-states",
+  asyncHandler(async (req, res) => {
+    const q = listQuerySchema.parse(req.query);
+    const range = requireRange({ from: q.from, to: q.to });
+    const me = req.user!;
+    const db = prisma();
+    const select = { id: true, parentId: true, status: true, date: true } as const;
+
+    const rows = await db.task.findMany({ where: { date: range, ...scopeOf(me, q.assigneeId) }, select });
+    const byId = new Map(rows.map((r) => [r.id, r]));
+
+    // الفرعية قد تقع في تاريخ مختلف عن أمّها (إنشاء المهمة لا يفرض تطابق التاريخ) — نجلبها بالتتبّع
+    let frontier = rows.map((r) => r.id);
+    while (frontier.length > 0) {
+      const kids = (await db.task.findMany({ where: { parentId: { in: frontier } }, select })).filter((k) => !byId.has(k.id));
+      kids.forEach((k) => byId.set(k.id, k));
+      frontier = kids.map((k) => k.id);
+    }
+
+    const children = new Map<string, (typeof rows)[number][]>();
+    for (const t of byId.values()) {
+      if (!t.parentId) continue;
+      const list = children.get(t.parentId);
+      if (list) list.push(t);
+      else children.set(t.parentId, [t]);
+    }
+    const done = (t: (typeof rows)[number]): boolean => {
+      const kids = children.get(t.id);
+      return kids && kids.length > 0 ? kids.every(done) : t.status === "COMPLETED";
+    };
+
+    const states: Record<string, "pending" | "completed"> = {};
+    for (const t of rows) {
+      if (t.parentId) continue;
+      if (!done(t)) states[t.date] = "pending";
+      else if (!states[t.date]) states[t.date] = "completed";
+    }
+    res.json({ states });
+  })
+);
+
+// ---------- الأشهر المتاحة (لصفحة الفريق) ----------
+tasksRouter.get(
+  "/months",
+  asyncHandler(async (req, res) => {
+    const groups = await prisma().task.groupBy({ by: ["date"], where: scopeOf(req.user!), orderBy: { date: "asc" } });
+    res.json({ months: [...new Set(groups.map((g) => g.date.slice(0, 7)))] });
+  })
+);
+
+// ---------- وقت العمل اليومي لكل موظف (إحصائيات طويلة الأمد) ----------
+// يرجع صفوفاً صغيرة { date, assigneeId, durationMs } بدل المهام. اليوم = Task.date، والموظف = assignedToId.
+tasksRouter.get(
+  "/stats/time",
+  asyncHandler(async (req, res) => {
+    const q = listQuerySchema.parse(req.query);
+    const range = requireRange({ from: q.from, to: q.to }, MAX_STATS_DAYS);
+    const tasks = await prisma().task.findMany({
+      where: { date: range, ...scopeOf(req.user!, q.assigneeId) },
+      select: {
+        date: true,
+        assignedToId: true,
+        status: true,
+        timeLogs: { select: { startTime: true, stopTime: true }, orderBy: { startTime: "asc" } },
+      },
+    });
+    res.json({ rows: computeDailyTime(tasks) });
   })
 );
 
