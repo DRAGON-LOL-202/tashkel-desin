@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
 
@@ -8,7 +8,15 @@ let db: PGlite;
 
 export async function setup() {
   db = await PGlite.create();
-  await db.exec(readFileSync(new URL("../prisma/migrations/0001_init/migration.sql", import.meta.url), "utf8"));
+  // كل المهاجرات بالترتيب (0001_init ثم 0002_products ...)
+  const migrationsDir = new URL("../prisma/migrations/", import.meta.url);
+  const migrations = readdirSync(migrationsDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name)
+    .sort();
+  for (const m of migrations) {
+    await db.exec(readFileSync(new URL(`${m}/migration.sql`, migrationsDir), "utf8"));
+  }
   server = new PGLiteSocketServer({ db, port: 54329, host: "127.0.0.1" });
   await server.start();
   process.env.DATABASE_URL = "postgresql://postgres@127.0.0.1:54329/postgres";

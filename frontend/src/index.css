@@ -246,3 +246,86 @@ body {
   padding: 0.875rem 1rem;
   box-shadow: 0 10px 22px -16px color-mix(in srgb, var(--primary-deep) 60%, transparent);
 }
+
+/* ===== صفحة أسعار المنتجات (pp-*) =====
+   فئات الشفافية مثل bg-primary/15 لا تُولَّد مع ألوان var(--x) في tailwind.config.js،
+   فنستخدم color-mix هنا بنفس أسلوب .task-card فتعمل في الوضعين. */
+.pp-panel {
+  border-radius: 22px;
+  border: 1px solid color-mix(in srgb, var(--primary-deep) 22%, var(--border));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 6%, var(--surface)) 0%, var(--surface) 100%);
+}
+.pp-card {
+  border-radius: 20px;
+  border: 1px solid color-mix(in srgb, var(--primary-deep) 18%, var(--border));
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 18px 36px -26px color-mix(in srgb, var(--primary-deep) 55%, transparent);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.pp-card:hover {
+  border-color: color-mix(in srgb, var(--primary-deep) 42%, var(--border));
+}
+.pp-tint {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.pp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 100%;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--primary-deep) 25%, var(--border));
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary-deep);
+  font-size: 0.72rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.pp-active {
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  color: var(--primary-deep);
+}
+.pp-box {
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--primary-deep) 16%, var(--border));
+  background: color-mix(in srgb, var(--primary) 4%, var(--background));
+}
+.pp-input {
+  width: 100%;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0.6rem 0.9rem;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.pp-input::placeholder { color: var(--muted); }
+.pp-input:focus {
+  border-color: color-mix(in srgb, var(--primary-deep) 55%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-deep) 22%, transparent);
+}
+.pp-hover-border:hover {
+  border-color: color-mix(in srgb, var(--primary-deep) 50%, var(--border));
+}
+.pp-hover-row:hover {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+.pp-hover-danger:hover {
+  color: var(--problem);
+  background: color-mix(in srgb, var(--problem) 10%, transparent);
+}
+.pp-menu {
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--primary-deep) 22%, var(--border));
+  background: var(--surface);
+  box-shadow: 0 14px 30px -12px rgba(0, 0, 0, 0.35);
+}
+.pp-price {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+  unicode-bidi: isolate;
+}

@@ -14,10 +14,10 @@ export const ALLOWED_IMAGE_TYPES = {
 export type AllowedImageType = keyof typeof ALLOWED_IMAGE_TYPES;
 export const ALLOWED_IMAGE_TYPE_LIST = Object.keys(ALLOWED_IMAGE_TYPES) as AllowedImageType[];
 
-export type AttachmentScope = "tasks" | "feedback";
+export type AttachmentScope = "tasks" | "feedback" | "products";
 
 // <scope>/<ownerUserId>/<uuid>.<ext> — اسم الملف الأصلي لا يدخل المفتاح إطلاقاً (لا حروف خاصة ولا تخمين)
-const KEY_RE = /^(tasks|feedback)\/([A-Za-z0-9_-]{1,64})\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.(jpg|png|webp|gif)$/;
+const KEY_RE = /^(tasks|feedback|products)\/([A-Za-z0-9_-]{1,64})\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.(jpg|png|webp|gif)$/;
 
 export interface ParsedKey {
   scope: AttachmentScope;

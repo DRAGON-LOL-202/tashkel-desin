@@ -19,7 +19,7 @@ interface ImageAttachmentsFieldProps {
 const MAX_ATTACHMENTS = 20; // نفس حد الـ backend
 
 /** صورة مرفق مع بديل عند فشل التحميل (كائن محذوف أو رابط منتهٍ) */
-function AttachmentImage({ attachment, className }: { attachment: ImageAttachment; className?: string }) {
+export function AttachmentImage({ attachment, className }: { attachment: ImageAttachment; className?: string }) {
   const src = attachmentSrc(attachment);
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   if (!src || failedSrc === src) {

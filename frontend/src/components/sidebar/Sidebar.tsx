@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { CalendarRange, Home, LogOut, MessageSquare, PanelRightClose, PanelRightOpen, Target, UserCog, UserRound, Users } from "lucide-react";
+import { CalendarRange, Home, LogOut, MessageSquare, PanelRightClose, PanelRightOpen, Tag, Target, UserCog, UserRound, Users } from "lucide-react";
 import { useAuth } from "../auth/AuthProvider";
 import type { AppPage } from "../../lib/permissions";
 
@@ -9,6 +9,7 @@ const navItems = [
   { to: "/goals", label: "الأهداف", icon: Target, page: "goals" as AppPage },
   { to: "/schedule", label: "الجدولة", icon: CalendarRange, page: "schedule" as AppPage },
   { to: "/users", label: "Dashboard", icon: Users, page: "users" as AppPage },
+  { to: "/products", label: "أسعار منتجات", icon: Tag, page: "products" as AppPage },
   { to: "/manage-users", label: "إدارة المستخدمين", icon: UserCog, page: "manageUsers" as AppPage },
 ];
 

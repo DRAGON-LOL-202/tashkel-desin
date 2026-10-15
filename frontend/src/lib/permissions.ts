@@ -1,10 +1,10 @@
 import type { UserRole } from "../types";
 
-export type AppPage = "dailyTasks" | "feedback" | "goals" | "schedule" | "users" | "manageUsers" | "profile";
+export type AppPage = "dailyTasks" | "feedback" | "goals" | "schedule" | "users" | "products" | "manageUsers" | "profile";
 
 const rolePages: Record<UserRole, AppPage[]> = {
-  admin: ["dailyTasks", "feedback", "goals", "schedule", "users", "manageUsers", "profile"],
-  manager: ["dailyTasks", "feedback", "goals", "schedule", "users", "manageUsers", "profile"],
+  admin: ["dailyTasks", "feedback", "goals", "schedule", "users", "products", "manageUsers", "profile"],
+  manager: ["dailyTasks", "feedback", "goals", "schedule", "users", "products", "manageUsers", "profile"],
   designer: ["dailyTasks", "feedback", "profile"],
 };
 

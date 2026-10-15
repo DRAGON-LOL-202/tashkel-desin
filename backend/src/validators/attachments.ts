@@ -24,7 +24,7 @@ const r2Attachment = z.object({
 export const attachmentsSchema = z.array(z.union([r2Attachment, legacyAttachment])).max(20);
 
 export const presignUploadSchema = z.object({
-  scope: z.enum(["tasks", "feedback"]),
+  scope: z.enum(["tasks", "feedback", "products"]),
   mimeType: z.enum(ALLOWED_IMAGE_TYPE_LIST as [AllowedImageType, ...AllowedImageType[]], { message: "نوع الملف غير مدعوم (JPG أو PNG أو WebP أو GIF)" }),
   size: z.number().int().positive(),
 });

@@ -2,7 +2,7 @@ import { api, ApiError } from "../lib/api";
 import { generateId } from "../lib/id";
 import type { ImageAttachment } from "../types";
 
-export type UploadScope = "tasks" | "feedback";
+export type UploadScope = "tasks" | "feedback" | "products";
 
 export interface FilesConfig {
   enabled: boolean;

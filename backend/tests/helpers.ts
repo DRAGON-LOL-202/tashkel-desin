@@ -9,7 +9,7 @@ export const PASSWORD = process.env.ADMIN_PASSWORD!;
 
 export async function resetDb() {
   await prisma().$executeRawUnsafe(
-    'TRUNCATE "TaskTimeLog","TaskComment","Task","Feedback","Goal","CalendarEvent","User" RESTART IDENTITY CASCADE'
+    'TRUNCATE "ProductVariant","Product","ProductCategory","TaskTimeLog","TaskComment","Task","Feedback","Goal","CalendarEvent","User" RESTART IDENTITY CASCADE'
   );
   await runSeed();
 }
