@@ -16,6 +16,11 @@ export const attendanceService = {
     return session;
   },
 
+  /** حذف جلسة: لمدير النظام فقط (403 لغيره) */
+  async remove(id: string): Promise<void> {
+    await api<{ ok: true }>(`/attendance/${id}`, { method: "DELETE" });
+  },
+
   /** جلسات شهر كامل لكل المستخدمين (للإدارة فقط) */
   month: (month: string): Promise<AttendanceMonth> => api<AttendanceMonth>("/attendance/month", { query: { month } }),
 };

@@ -40,6 +40,8 @@ interface TeamMemberCardProps {
   attendanceBusy: boolean;
   onCheckIn: () => void;
   onRequestCheckOut: () => void;
+  /** حذف جلسة حضور: يُمرَّر لمدير النظام فقط */
+  onRequestDeleteSession?: (session: AttendanceSession) => void;
 }
 
 export function TeamMemberCard({
@@ -69,6 +71,7 @@ export function TeamMemberCard({
   attendanceBusy,
   onCheckIn,
   onRequestCheckOut,
+  onRequestDeleteSession,
 }: TeamMemberCardProps) {
   const { canManageTasks } = usePermissions();
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -172,6 +175,7 @@ export function TeamMemberCard({
         busy={attendanceBusy}
         onCheckIn={onCheckIn}
         onCheckOut={onRequestCheckOut}
+        onDeleteSession={onRequestDeleteSession}
       />
 
       <div className="grid grid-cols-3 divide-x divide-x-reverse divide-border rounded-control border border-border bg-surface">

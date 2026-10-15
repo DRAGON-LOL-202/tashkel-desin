@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
-import { isStaff, requireAuth, requireStaff } from "../middleware/auth.js";
+import { isStaff, requireAuth, requireRole, requireStaff } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
-import { conflict } from "../utils/httpError.js";
+import { conflict, notFound } from "../utils/httpError.js";
 import { serializeSession, workDateOf } from "../utils/attendance.js";
 import { monthQuerySchema } from "../validators/attendance.js";
 
@@ -72,5 +72,17 @@ attendanceRouter.get(
       orderBy: [{ workDate: "asc" as const }, ...orderBy],
     });
     res.json({ month, today: workDateOf(new Date()), sessions: sessions.map(serializeSession) });
+  })
+);
+
+// حذف جلسة (أي مستخدم، مفتوحة أو مغلقة) — لمدير النظام ADMIN فقط، لتصحيح الأخطاء ونسيان الانصراف
+attendanceRouter.delete(
+  "/:id",
+  requireRole("ADMIN"),
+  asyncHandler(async (req, res) => {
+    const id = typeof req.params.id === "string" && req.params.id.length <= 64 ? req.params.id : "";
+    const deleted = await prisma().attendanceSession.deleteMany({ where: { id } });
+    if (deleted.count === 0) throw notFound("جلسة الحضور غير موجودة");
+    res.json({ ok: true });
   })
 );

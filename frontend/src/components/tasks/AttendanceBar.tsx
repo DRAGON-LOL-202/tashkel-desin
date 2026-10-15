@@ -1,9 +1,10 @@
-import { Clock, LogIn, LogOut, RotateCcw } from "lucide-react";
+import { Clock, LogIn, LogOut, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AttendanceSession } from "../../types";
 import { formatArabicDate, formatArabicTime, formatDuration } from "../../lib/date";
 import { sessionMs, summarizeDay } from "../../lib/attendance";
 import { Button } from "../ui/Button";
+import { IconButton } from "../ui/IconButton";
 
 interface AttendanceBarProps {
   /** جلسات هذا العضو: جلسات اليوم + أي جلسة ما زالت مفتوحة */
@@ -16,10 +17,12 @@ interface AttendanceBarProps {
   onCheckIn: () => void;
   /** يطلب الانصراف؛ التأكيد (هل أنت متأكد) تعرضه الصفحة */
   onCheckOut: () => void;
+  /** يظهر زر حذف الجلسة لمدير النظام فقط؛ التأكيد تعرضه الصفحة */
+  onDeleteSession?: (session: AttendanceSession) => void;
 }
 
 /** حضور وانصراف العضو في أعلى كرته: حضور ← انصراف (بتأكيد) ← عودة (جلسة منفصلة). */
-export function AttendanceBar({ sessions, today, canPunch, busy, onCheckIn, onCheckOut }: AttendanceBarProps) {
+export function AttendanceBar({ sessions, today, canPunch, busy, onCheckIn, onCheckOut, onDeleteSession }: AttendanceBarProps) {
   const open = sessions.find((session) => session.endTime === null);
   // يتحدث كل ثانية فقط أثناء وجود جلسة مفتوحة
   const [now, setNow] = useState(() => Date.now());
@@ -80,6 +83,16 @@ export function AttendanceBar({ sessions, today, canPunch, busy, onCheckIn, onCh
                 <Clock size={15} className="text-primary-deep" />
                 الساعات: <span className="font-mono font-bold text-text">{formatDuration(sessionMs(session, now))}</span>
               </span>
+              {onDeleteSession && (
+                <IconButton
+                  onClick={() => onDeleteSession(session)}
+                  aria-label="حذف الجلسة"
+                  title="حذف الجلسة"
+                  className="mr-auto h-8 w-8 shrink-0 text-problem"
+                >
+                  <Trash2 size={15} />
+                </IconButton>
+              )}
             </li>
           ))}
         </ul>

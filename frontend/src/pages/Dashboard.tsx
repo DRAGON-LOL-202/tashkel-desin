@@ -15,7 +15,7 @@ import { CopyTaskModal } from "../components/tasks/CopyTaskModal";
 import { applyMoveToMember, applyReorder, isTaskTreeCompleted, tasksService } from "../services/tasksService";
 import { attendanceService } from "../services/attendanceService";
 import { useResource } from "../hooks/useResource";
-import type { AttendanceToday, CalendarDateState, CreateTaskInput, Task, TeamMember } from "../types";
+import type { AttendanceSession, AttendanceToday, CalendarDateState, CreateTaskInput, Task, TeamMember } from "../types";
 import { getTaskElapsed } from "../hooks/useTaskTimer";
 import { todayISO } from "../lib/date";
 import { useToast } from "../components/ui/ToastProvider";
@@ -60,6 +60,7 @@ export default function Dashboard() {
   const [search, setSearch] = useState("");
   const [tick, setTick] = useState(0);
   const [checkOutOpen, setCheckOutOpen] = useState(false);
+  const [deleteSession, setDeleteSession] = useState<AttendanceSession | undefined>();
   const [attendanceBusy, setAttendanceBusy] = useState(false);
   const { show } = useToast();
   const { user } = useAuth();
@@ -146,6 +147,17 @@ export default function Dashboard() {
     await reloadAttendance();
     setAttendanceBusy(false);
     if (result.ok) show("تم تسجيل الحضور", "success");
+  };
+
+  const handleConfirmDeleteSession = async () => {
+    if (!deleteSession) return;
+    const id = deleteSession.id;
+    setDeleteSession(undefined);
+    setAttendanceBusy(true);
+    const result = await run(() => attendanceService.remove(id));
+    await reloadAttendance();
+    setAttendanceBusy(false);
+    if (result.ok) show("تم حذف الجلسة", "info");
   };
 
   const handleCheckOut = async () => {
@@ -415,6 +427,7 @@ export default function Dashboard() {
               attendanceBusy={attendanceBusy}
               onCheckIn={() => void handleCheckIn()}
               onRequestCheckOut={() => setCheckOutOpen(true)}
+              onRequestDeleteSession={user?.accessRole === "admin" ? setDeleteSession : undefined}
             />
           ))}
         </div>
@@ -456,6 +469,14 @@ export default function Dashboard() {
         title="تسجيل الانصراف"
         description="هل أنت متأكد من الانصراف؟ سيُسجَّل وقت الانصراف الآن، ويمكنك الضغط على «عودة» لبدء جلسة جديدة."
         confirmLabel="نعم، انصراف"
+      />
+      <ConfirmDialog
+        open={!!deleteSession}
+        onClose={() => setDeleteSession(undefined)}
+        onConfirm={() => void handleConfirmDeleteSession()}
+        title="حذف جلسة الحضور"
+        description="سيُحذف هذا التسجيل نهائياً من سجل الحضور والتقرير الشهري. هل أنت متأكد؟"
+        confirmLabel="حذف"
       />
       <MoveDateModal task={moveDateTask} onClose={() => setMoveDateTask(undefined)} onConfirm={handleMoveToDate} />
       <ConfirmDialog

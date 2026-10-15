@@ -103,3 +103,23 @@ describe("attendance: العزل والتقرير الشهري", () => {
     expect((await api(adminToken).delete(`/api/users/${u!.id}`)).status).toBe(409);
   });
 });
+
+describe("attendance: حذف الجلسات لمدير النظام فقط", () => {
+  it("ADMIN يحذف جلسة أي مستخدم (حتى المفتوحة)، والمدير والمصمم ← 403، وغير موجودة ← 404", async () => {
+    await resetDb();
+    await makeUser("del1");
+    await makeUser("mgr1", "MANAGER");
+    const designer = await login("del1");
+    const manager = await login("mgr1");
+    const adminToken = await login("lol");
+    const created = await api(designer).post("/api/attendance/check-in");
+    const id = created.body.session.id as string;
+
+    expect((await api(designer).delete(`/api/attendance/${id}`)).status).toBe(403);
+    expect((await api(manager).delete(`/api/attendance/${id}`)).status).toBe(403);
+    expect((await api(adminToken).delete(`/api/attendance/${id}`)).status).toBe(200);
+    expect((await api(adminToken).delete(`/api/attendance/${id}`)).status).toBe(404);
+    // بعد حذف المفتوحة يستطيع المستخدم تسجيل حضور جديد
+    expect((await api(designer).post("/api/attendance/check-in")).status).toBe(201);
+  });
+});
