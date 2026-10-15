@@ -57,7 +57,6 @@ function CategoryFilter({ categories, counts, total, value, onChange }: Category
 
   return (
     <div ref={ref} className="relative min-w-0 flex-1">
-      <Search size={16} className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-muted" />
       <input
         value={open ? query : (selected?.name ?? "")}
         onFocus={() => {
@@ -68,7 +67,7 @@ function CategoryFilter({ categories, counts, total, value, onChange }: Category
         placeholder="ابحث التصنيف..."
         aria-label="فلتر التصنيف"
         aria-expanded={open}
-        className="pp-input pr-10 pl-16"
+        className="pp-input pp-input--actions"
       />
       <div className="absolute left-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
         {selected && (
@@ -245,7 +244,7 @@ export default function ProductsPage() {
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="ابحث عن منتج..."
                 aria-label="بحث عن منتج"
-                className="pp-input pr-10"
+                className="pp-input pp-input--icon"
               />
             </div>
           </div>

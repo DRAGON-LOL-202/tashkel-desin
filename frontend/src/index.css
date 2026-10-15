@@ -302,6 +302,9 @@ body {
   outline: none;
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
+.pp-input.pp-input--icon { padding-right: 2.5rem; }
+.pp-input.pp-input--actions { padding-left: 4rem; }
+.pp-input.pp-input--select { padding-left: 2.25rem; }
 .pp-input::placeholder { color: var(--muted); }
 .pp-input:focus {
   border-color: color-mix(in srgb, var(--primary-deep) 55%, var(--border));

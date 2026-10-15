@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ImageOff, MoreVertical, Pencil, Tag, Trash2 } from "lucide-react";
+import { Modal } from "../ui/Modal";
 import type { Product } from "../../types";
 import { AttachmentImage } from "../ui/ImageAttachments";
 import { formatPrice } from "./format";
@@ -12,16 +13,16 @@ interface ProductCardProps {
 
 function PriceBox({ label, cost, price, showLabel }: { label: string; cost: number; price: number; showLabel: boolean }) {
   return (
-    <div className="pp-box px-3 py-2.5">
-      {showLabel && <p className="mb-1.5 truncate text-center text-[11px] font-semibold text-primary-deep">{label || "بدون اسم"}</p>}
+    <div className="pp-box px-2.5 py-1.5">
+      {showLabel && <p className="mb-1 truncate text-center text-[10px] font-semibold text-primary-deep">{label || "بدون اسم"}</p>}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 text-right">
-          <p className="text-[11px] text-muted">سعر التكلفة</p>
-          <p className="pp-price mt-0.5 text-[13px] font-semibold text-text">{formatPrice(cost)}</p>
+          <p className="text-[10px] text-muted">سعر التكلفة</p>
+          <p className="pp-price text-[12px] font-semibold text-text">{formatPrice(cost)}</p>
         </div>
         <div className="min-w-0 text-left">
-          <p className="text-[11px] text-muted">سعر البيع</p>
-          <p className="pp-price mt-0.5 text-[13px] font-semibold text-text">{formatPrice(price)}</p>
+          <p className="text-[10px] text-muted">سعر البيع</p>
+          <p className="pp-price text-[12px] font-semibold text-text">{formatPrice(price)}</p>
         </div>
       </div>
     </div>
@@ -30,6 +31,7 @@ function PriceBox({ label, cost, price, showLabel }: { label: string; cost: numb
 
 export function ProductCard({ product, onEdit, onDelete }: ProductCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [zoomed, setZoomed] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const image = product.attachments[0];
   const multiple = product.variants.length > 1;
@@ -52,12 +54,14 @@ export function ProductCard({ product, onEdit, onDelete }: ProductCardProps) {
 
   return (
     <article className="pp-card flex flex-col items-center gap-3 p-4">
-      <div className="h-24 w-24 shrink-0 overflow-hidden rounded-control border border-border bg-background">
+      <div className="h-44 w-44 shrink-0 overflow-hidden rounded-control border border-border bg-background">
         {image ? (
-          <AttachmentImage attachment={image} className="h-full w-full object-cover" />
+          <button type="button" onClick={() => setZoomed(true)} aria-label={`تكبير صورة ${product.name}`} title="اضغط للتكبير" className="h-full w-full cursor-zoom-in">
+            <AttachmentImage attachment={image} className="h-full w-full object-cover" />
+          </button>
         ) : (
           <div className="flex h-full w-full items-center justify-center text-muted" aria-label="بدون صورة">
-            <ImageOff size={22} />
+            <ImageOff size={28} />
           </div>
         )}
       </div>
@@ -71,7 +75,7 @@ export function ProductCard({ product, onEdit, onDelete }: ProductCardProps) {
         {product.name}
       </h3>
 
-      <div className="flex w-full flex-col gap-2">
+      <div className="flex w-44 max-w-full flex-col gap-1.5">
         {product.variants.map((variant, index) => (
           <PriceBox key={variant.id ?? index} label={variant.label} cost={variant.cost} price={variant.price} showLabel={multiple || !!variant.label} />
         ))}
@@ -115,6 +119,11 @@ export function ProductCard({ product, onEdit, onDelete }: ProductCardProps) {
           </div>
         )}
       </div>
+      {image && (
+        <Modal open={zoomed} onClose={() => setZoomed(false)} title={product.name} size="xl">
+          <AttachmentImage attachment={image} className="mx-auto max-h-[70vh] w-auto max-w-full rounded-control object-contain" />
+        </Modal>
+      )}
     </article>
   );
 }

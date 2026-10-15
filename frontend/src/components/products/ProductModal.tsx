@@ -121,7 +121,7 @@ export function ProductModal({ open, onClose, editing, categories, onCreateCateg
                 id="product-category"
                 value={categoryId}
                 onChange={(e) => setCategoryId(e.target.value)}
-                className="pp-input cursor-pointer appearance-none pl-9"
+                className="pp-input pp-input--select cursor-pointer appearance-none"
               >
                 <option value="">اختر التصنيف…</option>
                 {categories.map((c) => (
