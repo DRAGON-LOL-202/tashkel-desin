@@ -1,6 +1,6 @@
 import { CheckCircle2, ChevronDown, ListTodo, Maximize2, Minimize2, Plus, Timer, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { Task, TeamMember } from "../../types";
+import type { AttendanceSession, Task, TeamMember } from "../../types";
 import { getTaskElapsed } from "../../hooks/useTaskTimer";
 import { formatDuration } from "../../lib/date";
 import { Button } from "../ui/Button";
@@ -9,6 +9,7 @@ import { IconButton } from "../ui/IconButton";
 import { EmptyState } from "../ui/EmptyState";
 import { usePermissions } from "../../hooks/usePermissions";
 import { TaskCard } from "./TaskCard";
+import { AttendanceBar } from "./AttendanceBar";
 
 interface TeamMemberCardProps {
   member: TeamMember;
@@ -31,6 +32,14 @@ interface TeamMemberCardProps {
   onMoveTask: (id: string, assigneeId: TeamMember["id"], beforeTaskId?: string) => void;
   onReorder: (orderedIds: string[]) => void;
   taskNumbers: Map<string, number>;
+  /** جلسات حضور هذا العضو (اليوم + أي جلسة مفتوحة) */
+  attendanceSessions: AttendanceSession[];
+  attendanceToday: string;
+  /** الأزرار لصاحب الكرت فقط */
+  canPunchAttendance: boolean;
+  attendanceBusy: boolean;
+  onCheckIn: () => void;
+  onRequestCheckOut: () => void;
 }
 
 export function TeamMemberCard({
@@ -54,6 +63,12 @@ export function TeamMemberCard({
   onMoveTask,
   onReorder,
   taskNumbers,
+  attendanceSessions,
+  attendanceToday,
+  canPunchAttendance,
+  attendanceBusy,
+  onCheckIn,
+  onRequestCheckOut,
 }: TeamMemberCardProps) {
   const { canManageTasks } = usePermissions();
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -149,6 +164,15 @@ export function TeamMemberCard({
           {focusMode ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
         </IconButton>
       </div>
+
+      <AttendanceBar
+        sessions={attendanceSessions}
+        today={attendanceToday}
+        canPunch={canPunchAttendance}
+        busy={attendanceBusy}
+        onCheckIn={onCheckIn}
+        onCheckOut={onRequestCheckOut}
+      />
 
       <div className="grid grid-cols-3 divide-x divide-x-reverse divide-border rounded-control border border-border bg-surface">
         <div className="p-3 text-center">

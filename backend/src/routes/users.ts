@@ -171,15 +171,16 @@ usersRouter.delete(
     if (target.role === "ADMIN" && actor.role !== "ADMIN") throw forbidden("لا يمكنك حذف حساب المدير العام");
 
     // بيانات تاريخية مرتبطة ← التعطيل بدل الحذف
-    const [tasks, logs, comments, feedback, goals, events] = await Promise.all([
+    const [tasks, logs, comments, feedback, goals, events, attendance] = await Promise.all([
       db.task.count({ where: { OR: [{ createdById: target.id }, { assignedToId: target.id }] } }),
       db.taskTimeLog.count({ where: { userId: target.id } }),
       db.taskComment.count({ where: { userId: target.id } }),
       db.feedback.count({ where: { createdById: target.id } }),
       db.goal.count({ where: { createdById: target.id } }),
       db.calendarEvent.count({ where: { createdById: target.id } }),
+      db.attendanceSession.count({ where: { userId: target.id } }),
     ]);
-    if (tasks + logs + comments + feedback + goals + events > 0) {
+    if (tasks + logs + comments + feedback + goals + events + attendance > 0) {
       throw conflict("لهذا المستخدم بيانات مرتبطة (مهام/ملاحظات/...). عطّل الحساب بدلاً من حذفه");
     }
     await db.user.delete({ where: { id: target.id } });

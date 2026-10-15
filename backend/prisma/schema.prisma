@@ -71,6 +71,7 @@ model User {
   goals          Goal[]
   calendarEvents CalendarEvent[]
   products       Product[]
+  attendance     AttendanceSession[]
 }
 
 // المهام الفرعية = Task بـ parentId (قرار موثّق في HANDOFF: الفرعية لها تايمر وتعليقات ومسؤول).
@@ -218,4 +219,21 @@ model ProductVariant {
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId])
+}
+
+// جلسة حضور: تبدأ بزر حضور/عودة وتنتهي بزر انصراف. المستخدم قد يملك عدة جلسات في اليوم (حضور ثم عودة)،
+// وتُنسب الجلسة كلها ليوم بدايتها (workDate بتوقيت ATTENDANCE_TZ) حتى لو عبرت منتصف الليل.
+// endTime = null تعني أن الجلسة مفتوحة (لم يُسجَّل انصراف). مفتوحة واحدة كحد أقصى لكل مستخدم (يضمنها الـ route بقفل صف المستخدم).
+model AttendanceSession {
+  id        String    @id @default(cuid())
+  userId    String
+  workDate  String    @db.VarChar(10)
+  startTime DateTime
+  endTime   DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, workDate])
+  @@index([workDate])
 }

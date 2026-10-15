@@ -10,6 +10,7 @@ import { goalsRouter } from "./routes/goals.js";
 import { productsRouter } from "./routes/products.js";
 import { calendarEventsRouter } from "./routes/calendarEvents.js";
 import { filesRouter } from "./routes/files.js";
+import { attendanceRouter } from "./routes/attendance.js";
 import { syncRouter } from "./routes/sync.js";
 import { bumpDataVersion } from "./utils/syncVersion.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
@@ -43,6 +44,7 @@ export function createApp() {
   app.use("/api/products", productsRouter);
   app.use("/api/calendar-events", calendarEventsRouter);
   app.use("/api/files", filesRouter);
+  app.use("/api/attendance", attendanceRouter);
   app.use("/api/sync", syncRouter);
 
   app.use(notFoundHandler);

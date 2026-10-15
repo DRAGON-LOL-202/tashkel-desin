@@ -13,6 +13,7 @@ import type { Task } from "../types";
 import { getTaskElapsed } from "../hooks/useTaskTimer";
 import { formatArabicDate, formatDuration, monthRange, todayISO } from "../lib/date";
 import { LongTermTimePanel } from "../components/tasks/LongTermTimePanel";
+import { AttendanceMonthPanel } from "../components/tasks/AttendanceMonthPanel";
 
 export default function TeamDashboardPage() {
   // الإحصائيات الشهرية تُحسب لشهر واحد في كل مرة (الافتراضي: الشهر الحالي)؛ والطويلة الأمد من لوحة التجميع أسفل الصفحة.
@@ -170,6 +171,7 @@ export default function TeamDashboardPage() {
             </Card>
           ))}
         </div>
+        <AttendanceMonthPanel month={month} members={teamMembers} />
         <LongTermTimePanel members={teamMembers} />
       </div>
       )}

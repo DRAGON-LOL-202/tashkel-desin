@@ -13,7 +13,9 @@ import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { MoveDateModal } from "../components/tasks/MoveDateModal";
 import { CopyTaskModal } from "../components/tasks/CopyTaskModal";
 import { applyMoveToMember, applyReorder, isTaskTreeCompleted, tasksService } from "../services/tasksService";
-import type { CalendarDateState, CreateTaskInput, Task, TeamMember } from "../types";
+import { attendanceService } from "../services/attendanceService";
+import { useResource } from "../hooks/useResource";
+import type { AttendanceToday, CalendarDateState, CreateTaskInput, Task, TeamMember } from "../types";
 import { getTaskElapsed } from "../hooks/useTaskTimer";
 import { todayISO } from "../lib/date";
 import { useToast } from "../components/ui/ToastProvider";
@@ -26,6 +28,8 @@ import { usePermissions } from "../hooks/usePermissions";
 import { errorMessage } from "../lib/api";
 import { downloadDailyReport } from "../lib/exportDailyReport";
 import { buildNumberMap, getSiblings, insertAtPosition } from "../lib/taskOrder";
+
+const NO_ATTENDANCE: AttendanceToday = { today: "", sessions: [] };
 
 function sortTasks(a: Task, b: Task): number {
   if (a.status === "completed" && b.status !== "completed") return 1;
@@ -55,6 +59,8 @@ export default function Dashboard() {
   const [filter, setFilter] = useState<TaskFilterValue>("all");
   const [search, setSearch] = useState("");
   const [tick, setTick] = useState(0);
+  const [checkOutOpen, setCheckOutOpen] = useState(false);
+  const [attendanceBusy, setAttendanceBusy] = useState(false);
   const { show } = useToast();
   const { user } = useAuth();
   const { isStaff } = usePermissions();
@@ -125,6 +131,30 @@ export default function Dashboard() {
     const id = setInterval(() => setTick((value) => value + 1), 1000);
     return () => clearInterval(id);
   }, []);
+
+  // الحضور والانصراف: يتحدث تلقائياً عند أي تغيير من أي مستخدم، وكل 5 دقائق ليلتقط تغيّر اليوم بعد منتصف الليل.
+  // فشل تحميله لا يعطّل صفحة المهام (تظهر الكروت بدون جلسات).
+  const { data: attendance, reload: reloadAttendance } = useResource<AttendanceToday>(attendanceService.today, NO_ATTENDANCE);
+  useEffect(() => {
+    const id = setInterval(() => void reloadAttendance(), 5 * 60_000);
+    return () => clearInterval(id);
+  }, [reloadAttendance]);
+
+  const handleCheckIn = async () => {
+    setAttendanceBusy(true);
+    const result = await run(() => attendanceService.checkIn());
+    await reloadAttendance();
+    setAttendanceBusy(false);
+    if (result.ok) show("تم تسجيل الحضور", "success");
+  };
+
+  const handleCheckOut = async () => {
+    setAttendanceBusy(true);
+    const result = await run(() => attendanceService.checkOut());
+    await reloadAttendance();
+    setAttendanceBusy(false);
+    if (result.ok) show("تم تسجيل الانصراف", "info");
+  };
 
   const dayTasks = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -379,6 +409,12 @@ export default function Dashboard() {
               onMoveTask={handleMoveTask}
               onReorder={handleReorder}
               taskNumbers={taskNumbers}
+              attendanceSessions={attendance.sessions.filter((session) => session.userId === member.id)}
+              attendanceToday={attendance.today}
+              canPunchAttendance={member.id === user?.id}
+              attendanceBusy={attendanceBusy}
+              onCheckIn={() => void handleCheckIn()}
+              onRequestCheckOut={() => setCheckOutOpen(true)}
             />
           ))}
         </div>
@@ -413,6 +449,14 @@ export default function Dashboard() {
         onConfirm={handleAddComment}
       />
       <CopyTaskModal task={copyTask} members={teamMembers.filter((member) => member.isActive)} onClose={() => setCopyTask(undefined)} onConfirm={handleCopyTo} />
+      <ConfirmDialog
+        open={checkOutOpen}
+        onClose={() => setCheckOutOpen(false)}
+        onConfirm={() => void handleCheckOut()}
+        title="تسجيل الانصراف"
+        description="هل أنت متأكد من الانصراف؟ سيُسجَّل وقت الانصراف الآن، ويمكنك الضغط على «عودة» لبدء جلسة جديدة."
+        confirmLabel="نعم، انصراف"
+      />
       <MoveDateModal task={moveDateTask} onClose={() => setMoveDateTask(undefined)} onConfirm={handleMoveToDate} />
       <ConfirmDialog
         open={!!deleteTask}

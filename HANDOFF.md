@@ -114,6 +114,15 @@ real PostgreSQL environment, then preparing production deployment.
 
 ------------------------------------------------------------------------
 
+## 2.1 Attendance (Checkpoint 22)
+
+الحضور والانصراف بنظام الجلسات (حضور / انصراف بتأكيد / عودة) في أعلى كرت كل مستخدم، وجدول الحضور الشهري في صفحة لوحة الفريق (`/users`). التفاصيل في `CHANGES.md` (Checkpoint 22).
+
+**قبل الاستخدام:** تشغيل `prisma migrate deploy` (الهجرة `0003_attendance`) على Aiven، ومتغير اختياري `ATTENDANCE_TZ` (الافتراضي `Africa/Cairo`).
+**متبقٍّ:** تشغيل `npm test` و`vite build` محلياً (لم يُشغَّلا في جلسة التنفيذ)، واختبار المتصفح لتدفق حضور ← انصراف ← عودة، وقرار لاحق: تعديل الإدارة لجلسة نُسي انصرافها.
+
+------------------------------------------------------------------------
+
 # 3. Critical Remaining Work
 
 ## 3.1 Full Browser Verification --- HIGH PRIORITY
