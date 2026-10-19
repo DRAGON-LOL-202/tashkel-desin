@@ -15,7 +15,14 @@ productsRouter.use(requireAuth, requireStaff);
 const idOf = (v: unknown) => (typeof v === "string" && v.length > 0 && v.length <= 64 ? v : "");
 
 const variantRows = (variants: VariantInput[]) =>
-  variants.map((v, i) => ({ label: v.label, cost: round2(v.cost), price: round2(v.price), sortOrder: i }));
+  variants.map((v, i) => ({
+    label: v.label,
+    materialCost: v.materialCost,
+    machineCost: v.machineCost,
+    cost: round2(v.materialCost + v.machineCost),
+    price: round2(v.price),
+    sortOrder: i,
+  }));
 
 async function assertCategoryExists(categoryId: string) {
   const c = await prisma().productCategory.findUnique({ where: { id: idOf(categoryId) }, select: { id: true } });

@@ -9,11 +9,27 @@ const price = z
   .min(0, "السعر لا يمكن أن يكون سالباً")
   .max(MAX_PRICE, "السعر كبير جداً");
 
-const variantSchema = z.object({
-  label: z.string().trim().max(100, "اسم الخامة طويل جداً").default(""),
-  cost: price,
-  price,
-});
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+// التكلفة = تكلفة الخامة + تكلفة وقت الماكينة. للتوافق مع العملاء القدامى: إن وصل `cost` فقط يُعتبر كله تكلفة خامة.
+const variantSchema = z
+  .object({
+    label: z.string().trim().max(100, "اسم الخامة طويل جداً").default(""),
+    materialCost: price.optional(),
+    machineCost: price.optional(),
+    cost: price.optional(),
+    price,
+  })
+  .superRefine((v, ctx) => {
+    if (v.materialCost === undefined && v.cost === undefined) {
+      ctx.addIssue({ code: "custom", path: ["materialCost"], message: "تكلفة الخامة مطلوبة" });
+    }
+  })
+  .transform((v) => {
+    const materialCost = round2(v.materialCost ?? v.cost ?? 0);
+    const machineCost = round2(v.machineCost ?? 0);
+    return { label: v.label, materialCost, machineCost, cost: round2(materialCost + machineCost), price: v.price };
+  });
 
 const name = z.string().trim().min(1, "اسم المنتج مطلوب").max(200);
 const categoryId = z.string().min(1, "التصنيف مطلوب").max(64);

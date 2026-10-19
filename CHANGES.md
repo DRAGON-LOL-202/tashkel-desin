@@ -384,3 +384,18 @@
 ### حُذفت
 - `src/{components/` و`src/{components/{layout,...}}` — مجلدان فارغان بأسماء خاطئة ناتجان عن brace expansion فاشل.
 - `dist/` و`node_modules/` القديمة (ناتج بناء، تُعاد بـ `npm install`/`npm run build`).
+
+
+---
+
+## تقسيم تكلفة المنتج: خامة + وقت ماكينة
+
+### أُنشئت
+- `backend/prisma/migrations/0004_product_cost_split/migration.sql` — عمودان `materialCost` و`machineCost` في `ProductVariant`؛ المنتجات الحالية: `materialCost = cost` و`machineCost = 0` (الإجمالي لا يتغير).
+
+### عُدّلت
+- `backend/prisma/schema.prisma` — `ProductVariant`: إضافة `materialCost` و`machineCost` (`cost` يبقى = الإجمالي).
+- `backend/src/validators/products.ts` — يقبل `materialCost` + `machineCost` (الماكينة اختيارية = 0)، و`cost` وحده يُعامل كتكلفة خامة (توافق)، ويحسب الإجمالي.
+- `backend/src/routes/products.ts`, `backend/src/utils/productSerialize.ts` — حفظ وإرجاع الحقلين، و`cost = materialCost + machineCost`.
+- `backend/tests/products.test.ts` — 3 اختبارات جديدة للتقسيم.
+- `frontend/src/types/product.ts`, `components/products/ProductModal.tsx`, `ProductCard.tsx` — حقلا «تكلفة الخامة» و«تكلفة وقت الماكينة» + إجمالي تكلفة محسوب تلقائياً، وعرض التفصيل في الكارت.

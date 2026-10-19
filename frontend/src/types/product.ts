@@ -5,10 +5,15 @@ export interface ProductCategory {
   name: string;
 }
 
-/** خامة/نسخة من المنتج: لكل خامة سعر تكلفة وسعر بيع */
+/** خامة/نسخة من المنتج: التكلفة = تكلفة الخامة + تكلفة وقت الماكينة، ثم سعر البيع */
 export interface ProductVariant {
   id?: string;
   label: string;
+  /** تكلفة الخامة */
+  materialCost: number;
+  /** تكلفة وقت الماكينة */
+  machineCost: number;
+  /** إجمالي التكلفة (materialCost + machineCost) يحسبه الـ backend */
   cost: number;
   price: number;
 }
@@ -27,7 +32,7 @@ export interface Product {
 export interface ProductInput {
   name: string;
   categoryId: string;
-  variants: { label: string; cost: number; price: number }[];
+  variants: { label: string; materialCost: number; machineCost: number; price: number }[];
   attachments: ImageAttachment[];
 }
 

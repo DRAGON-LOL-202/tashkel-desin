@@ -63,6 +63,31 @@ describe("products: التصنيفات", () => {
   });
 });
 
+describe("products: تقسيم التكلفة (خامة + وقت ماكينة)", () => {
+  it("الإجمالي = الخامة + الماكينة ويُقرَّب لخانتين", async () => {
+    const cat = await mkCategory(admin, "تقسيم التكلفة");
+    const p = await mkProduct(admin, cat.id, { variants: [{ label: "خشب", materialCost: 50.456, machineCost: 29.999, price: 180 }] });
+    expect(p.variants[0]).toMatchObject({ materialCost: 50.46, machineCost: 30, cost: 80.46, price: 180 });
+  });
+  it("وقت الماكينة اختياري (الافتراضي 0) و cost القديم يُعتبر خامة", async () => {
+    const cat = await mkCategory(admin, "توافق التكلفة");
+    const a = await mkProduct(admin, cat.id, { variants: [{ materialCost: 12, price: 30 }] });
+    expect(a.variants[0]).toMatchObject({ materialCost: 12, machineCost: 0, cost: 12 });
+    const b = await mkProduct(admin, cat.id, { variants: [{ cost: 8, price: 20 }] });
+    expect(b.variants[0]).toMatchObject({ materialCost: 8, machineCost: 0, cost: 8 });
+  });
+  it("قيم سالبة أو بدون أي تكلفة ← 400، والتعديل يعيد حساب الإجمالي", async () => {
+    const cat = await mkCategory(admin, "تحقق التكلفة");
+    const post = (variants: unknown) => api(admin).post("/api/products").send({ name: "م", categoryId: cat.id, variants });
+    expect((await post([{ materialCost: 1, machineCost: -1, price: 2 }])).status).toBe(400);
+    expect((await post([{ machineCost: 5, price: 2 }])).status).toBe(400);
+    const p = await mkProduct(admin, cat.id);
+    const res = await api(admin).patch(`/api/products/${p.id}`).send({ variants: [{ label: "جلد", materialCost: 20, machineCost: 15, price: 60 }] });
+    expect(res.status).toBe(200);
+    expect(res.body.product.variants[0]).toMatchObject({ materialCost: 20, machineCost: 15, cost: 35 });
+  });
+});
+
 describe("products: الإنشاء", () => {
   it("منتج بخامتين: الأسعار تُقرَّب لخانتين والترتيب محفوظ", async () => {
     const cat = await mkCategory(admin, "إنشاء");

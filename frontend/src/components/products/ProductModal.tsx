@@ -6,6 +6,7 @@ import { Button } from "../ui/Button";
 import { FieldWrap, Input } from "../ui/Field";
 import { Modal } from "../ui/Modal";
 import { ProductImageField } from "./ProductImageField";
+import { formatPrice } from "./format";
 
 interface ProductModalProps {
   open: boolean;
@@ -21,7 +22,8 @@ interface ProductModalProps {
 interface VariantRow {
   key: number;
   label: string;
-  cost: string;
+  material: string;
+  machine: string;
   price: string;
 }
 
@@ -29,19 +31,28 @@ const MAX_VARIANTS = 20; // نفس حد الـ backend
 const MAX_PRICE = 10_000_000;
 
 let rowKey = 0;
-const emptyRow = (): VariantRow => ({ key: ++rowKey, label: "", cost: "", price: "" });
+const emptyRow = (): VariantRow => ({ key: ++rowKey, label: "", material: "", machine: "", price: "" });
 
 const parsePrice = (raw: string): number | null => {
   const n = Number(raw.trim().replace(",", "."));
   return raw.trim() !== "" && Number.isFinite(n) && n >= 0 && n <= MAX_PRICE ? n : null;
 };
 
+/** إجمالي التكلفة المعروض في النموذج = الخامة + وقت الماكينة (الفارغ = 0) */
+const rowTotal = (row: VariantRow): number => (parsePrice(row.material) ?? 0) + (parsePrice(row.machine) ?? 0);
+
 export function ProductModal({ open, onClose, editing, categories, onCreateCategory, onSubmit }: ProductModalProps) {
   const [name, setName] = useState(editing?.name ?? "");
   const [categoryId, setCategoryId] = useState(editing?.categoryId ?? "");
   const [rows, setRows] = useState<VariantRow[]>(() =>
     editing && editing.variants.length > 0
-      ? editing.variants.map((v) => ({ key: ++rowKey, label: v.label, cost: String(v.cost), price: String(v.price) }))
+      ? editing.variants.map((v) => ({
+          key: ++rowKey,
+          label: v.label,
+          material: String(v.materialCost),
+          machine: v.machineCost ? String(v.machineCost) : "",
+          price: String(v.price),
+        }))
       : [emptyRow()]
   );
   const [image, setImage] = useState<ImageAttachment | null>(editing?.attachments[0] ?? null);
@@ -83,13 +94,14 @@ export function ProductModal({ open, onClose, editing, categories, onCreateCateg
     if (!categoryId) next.category = "اختر تصنيفاً أو أضف تصنيفاً جديداً";
     const variants: ProductInput["variants"] = [];
     for (const row of rows) {
-      const cost = parsePrice(row.cost);
+      const materialCost = parsePrice(row.material);
+      const machineCost = row.machine.trim() === "" ? 0 : parsePrice(row.machine); // وقت الماكينة اختياري (الفارغ = 0)
       const price = parsePrice(row.price);
-      if (cost === null || price === null) {
-        next.variants = "أدخل سعر التكلفة وسعر البيع لكل خامة (أرقام صحيحة غير سالبة).";
+      if (materialCost === null || machineCost === null || price === null) {
+        next.variants = "أدخل تكلفة الخامة وسعر البيع لكل خامة، وتكلفة وقت الماكينة إن وُجدت (أرقام غير سالبة).";
         break;
       }
-      variants.push({ label: row.label.trim(), cost, price });
+      variants.push({ label: row.label.trim(), materialCost, machineCost, price });
     }
     setErrors(next);
     if (Object.keys(next).length > 0) return;
@@ -192,15 +204,31 @@ export function ProductModal({ open, onClose, editing, categories, onCreateCateg
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <label className="block">
-                    <span className="mb-1 block text-xs text-muted">سعر التكلفة</span>
+                    <span className="mb-1 block text-xs text-muted">تكلفة الخامة</span>
                     <input
-                      value={row.cost}
+                      value={row.material}
                       inputMode="decimal"
-                      onChange={(e) => updateRow(row.key, { cost: e.target.value })}
+                      onChange={(e) => updateRow(row.key, { material: e.target.value })}
                       placeholder="0.00"
                       className="pp-input pp-price text-right"
                     />
                   </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-muted">تكلفة وقت الماكينة</span>
+                    <input
+                      value={row.machine}
+                      inputMode="decimal"
+                      onChange={(e) => updateRow(row.key, { machine: e.target.value })}
+                      placeholder="0.00"
+                      className="pp-input pp-price text-right"
+                    />
+                  </label>
+                  <div className="block">
+                    <span className="mb-1 block text-xs text-muted">إجمالي التكلفة</span>
+                    <div className="pp-input pp-price flex items-center text-right opacity-80" aria-live="polite">
+                      {formatPrice(rowTotal(row))}
+                    </div>
+                  </div>
                   <label className="block">
                     <span className="mb-1 block text-xs text-muted">سعر البيع</span>
                     <input

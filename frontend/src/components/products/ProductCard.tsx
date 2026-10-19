@@ -11,7 +11,7 @@ interface ProductCardProps {
   onDelete: (product: Product) => void;
 }
 
-function PriceBox({ label, cost, price, showLabel }: { label: string; cost: number; price: number; showLabel: boolean }) {
+function PriceBox({ label, materialCost, machineCost, cost, price, showLabel }: { label: string; materialCost: number; machineCost: number; cost: number; price: number; showLabel: boolean }) {
   return (
     <div className="pp-box px-2.5 py-1.5">
       {showLabel && <p className="mb-1 truncate text-center text-[10px] font-semibold text-primary-deep">{label || "بدون اسم"}</p>}
@@ -23,6 +23,16 @@ function PriceBox({ label, cost, price, showLabel }: { label: string; cost: numb
         <div className="min-w-0 text-left">
           <p className="text-[10px] text-muted">سعر البيع</p>
           <p className="pp-price text-[12px] font-semibold text-text">{formatPrice(price)}</p>
+        </div>
+      </div>
+      <div className="mt-1.5 flex items-start justify-between gap-2 border-t border-border pt-1.5">
+        <div className="min-w-0 text-right">
+          <p className="text-[10px] text-muted">خامة</p>
+          <p className="pp-price text-[11px] text-text">{formatPrice(materialCost)}</p>
+        </div>
+        <div className="min-w-0 text-left">
+          <p className="text-[10px] text-muted">وقت ماكينة</p>
+          <p className="pp-price text-[11px] text-text">{formatPrice(machineCost)}</p>
         </div>
       </div>
     </div>
@@ -77,7 +87,7 @@ export function ProductCard({ product, onEdit, onDelete }: ProductCardProps) {
 
       <div className="flex w-44 max-w-full flex-col gap-1.5">
         {product.variants.map((variant, index) => (
-          <PriceBox key={variant.id ?? index} label={variant.label} cost={variant.cost} price={variant.price} showLabel={multiple || !!variant.label} />
+          <PriceBox key={variant.id ?? index} label={variant.label} materialCost={variant.materialCost} machineCost={variant.machineCost} cost={variant.cost} price={variant.price} showLabel={multiple || !!variant.label} />
         ))}
       </div>
 
