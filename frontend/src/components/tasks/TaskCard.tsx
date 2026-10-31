@@ -291,6 +291,8 @@ const pillLabels: Record<Exclude<CardState, "idle">, string> = {
   completed: "مكتملة",
 };
 
+const priorityLabels = { low: "منخفضة", medium: "متوسطة", high: "عالية" } as const;
+
 export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, onRequestStop, onFinish, onReopen, onMoveToDate, onCopy, onDelete, onEdit, onSetCurrent, onAddSubtask, onAddComment, onDeleteComment }: TaskCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -344,7 +346,9 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
 
         <div className="tc-titlebox">
           <h3 className={"tc-title " + (displayCompleted ? "tc-title--done" : "")}>{task.title}</h3>
-          <PriorityTag priority={task.priority} outlined className="px-2.5 py-0.5 text-xs font-semibold" />
+          <span className="tc-prio" title={"الأولوية: " + priorityLabels[task.priority]}>
+            <PriorityTag priority={task.priority} outlined className="text-xs font-semibold" />
+          </span>
         </div>
 
         <div className="tc-status">
@@ -396,9 +400,9 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
         {!hasSubtasks && isCompleted && (
           <button type="button" className="tc-btn tc-btn--neutral" onClick={() => onReopen(task.id)}><RotateCcw size={16} />إعادة فتح</button>
         )}
-        <button type="button" className="tc-btn tc-btn--ghost" onClick={() => onAddSubtask(task)}><Plus size={16} />{hasSubtasks ? "إضافة مهمة فرعية" : "مهمة فرعية"}</button>
+        <button type="button" className={"tc-btn tc-btn--ghost" + (hasSubtasks ? "" : " tc-btn--icon")} onClick={() => onAddSubtask(task)} aria-label={hasSubtasks ? "إضافة مهمة فرعية" : "مهمة فرعية"} title={hasSubtasks ? "إضافة مهمة فرعية" : "مهمة فرعية"}><Plus size={16} /><span className="tc-btn-label">{hasSubtasks ? "إضافة مهمة فرعية" : "مهمة فرعية"}</span></button>
         {!hasSubtasks && (
-          <button type="button" className="tc-btn tc-btn--neutral" onClick={() => onAddComment(task.id)}><MessageSquarePlus size={16} />تعليق</button>
+          <button type="button" className="tc-btn tc-btn--neutral tc-btn--icon" onClick={() => onAddComment(task.id)} aria-label="تعليق" title="تعليق"><MessageSquarePlus size={16} /><span className="tc-btn-label">تعليق</span></button>
         )}
         {!hasSubtasks && <ProgressControls task={task} onSetCurrent={onSetCurrent} />}
       </div>
@@ -411,7 +415,7 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
             onClick={() => setDetailsOpen((value) => !value)}
             aria-expanded={detailsOpen}
           >
-            <ChevronDown size={18} className="tc-chev" aria-hidden />
+            <ChevronDown size={16} className="tc-chev" aria-hidden />
             <span>{detailsOpen ? "إخفاء التفاصيل" : "عرض التفاصيل"}</span>
             {hasComments && <span className="tc-chip">تعليقات {task.comments.length}</span>}
             {hasStopNotes && <span className="tc-chip">توقفات {task.stopNotes.length}</span>}
