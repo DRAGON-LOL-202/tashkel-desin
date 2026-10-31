@@ -405,3 +405,13 @@
 - frontend: مكوّن جديد components/users/DeleteUserDialog.tsx بخيارين + إلغاء، وusersService.remove(id, purge).
 - tests/users.test.ts: اختباران جديدان لـ purge.
 - التحقق: build الواجهة نجح. اختبارات الـ backend غير مُتحقَّق منها (لا يوجد Postgres/Prisma engine في هذه البيئة).
+
+## الإشعارات — الدفعة 1 (backend) والدفعة 2 (الواجهة)
+- قاعدة البيانات: جدول `Notification` + migration `0005_notifications` (تحقق منها بتشغيل كل الـ migrations على Postgres حقيقي في الذاكرة PGlite، وحذف المستلم يحذف إشعاراته).
+- backend/src/utils/notify.ts: إنشاء الإشعارات (يستثني المنفِّذ والمعطّلين ويمنع تكرار المستلم؛ فشله لا يُفشل العملية).
+- backend/src/routes/notifications.ts: GET / (filter, category, q, from, to, limit)، GET /unread-count، POST /read-all، DELETE /read، PATCH /:id/read، DELETE /:id — كلها مقيّدة بصاحب الإشعار، ولا يوجد POST لإنشاء إشعار من المتصفح.
+- أحداث مربوطة: إسناد مهمة، مهمة فرعية جديدة، نقل المهمة لمسؤول آخر، تغيير يوم المهمة، بدء/إيقاف (للمنشئ)، إكمال/إعادة فتح، إكمال فرعية، تعليق جديد، @username، مرفق جديد، موظف جديد (للإدارة)، تغيير الدور.
+- الواجهة: صفحة /notifications (تبويبات، بحث، فلتر تاريخ، تحديد/حذف/تحديد الكل/حذف المقروءة، Loading/Empty/Error)، عنصر «الإشعارات» بالجرس في القائمة الجانبية أسفل المهام اليومية مع عدّاد غير المقروء (يتحدث لحظياً عبر المزامنة الحالية)، والانتقال للمهمة عبر /daily-tasks?date=.
+- tests/notifications.test.ts: 10 اختبارات جديدة.
+- التحقق: build الواجهة نجح، والـ migration نجح على PGlite. اختبارات الـ backend كاملة (ومنها الجديدة) غير مُتحقَّق منها: لا يمكن توليد Prisma client في هذه البيئة (لا اتصال بـ binaries.prisma.sh).
+- لم يُنفَّذ بعد (دفعات لاحقة): اقتراب/تجاوز موعد التسليم (لا يوجد وقت تسليم للمهمة)، إعلان إداري، الرد على تعليق، المؤقت، Push، الإعدادات.

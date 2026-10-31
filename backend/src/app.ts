@@ -12,6 +12,7 @@ import { calendarEventsRouter } from "./routes/calendarEvents.js";
 import { filesRouter } from "./routes/files.js";
 import { attendanceRouter } from "./routes/attendance.js";
 import { syncRouter } from "./routes/sync.js";
+import { notificationsRouter } from "./routes/notifications.js";
 import { bumpDataVersion } from "./utils/syncVersion.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
 
@@ -46,6 +47,7 @@ export function createApp() {
   app.use("/api/files", filesRouter);
   app.use("/api/attendance", attendanceRouter);
   app.use("/api/sync", syncRouter);
+  app.use("/api/notifications", notificationsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

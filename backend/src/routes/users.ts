@@ -7,6 +7,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { badRequest, conflict, forbidden, HttpError, notFound } from "../utils/httpError.js";
 import { publicUser } from "../utils/serialize.js";
 import { deleteUnreferencedObjects } from "../utils/attachments.js";
+import { notify, staffIds } from "../utils/notify.js";
 import { keysOf } from "../utils/attachmentKeys.ts";
 import { createUserSchema, statusSchema, updateProfileSchema, updateUserSchema } from "../validators/users.js";
 
@@ -76,6 +77,13 @@ usersRouter.post(
           ...(body.jobTitle ? { jobTitle: body.jobTitle } : {}),
           isSystemUser: false,
         },
+      });
+      await notify({
+        recipients: await staffIds(),
+        actor: req.user!,
+        type: "USER_CREATED",
+        title: "موظف جديد",
+        message: `أضاف ${req.user!.name} الحساب «${user.name}»`,
       });
       res.status(201).json({ user: publicUser(user) });
     } catch (e) {
@@ -153,6 +161,15 @@ usersRouter.patch(
     }
     try {
       const updated = await db.user.update({ where: { id: target.id }, data });
+      if (body.role !== undefined && body.role !== target.role) {
+        await notify({
+          recipients: [target.id],
+          actor,
+          type: "ROLE_CHANGED",
+          title: "تغيير الصلاحيات",
+          message: `غيّر ${actor.name} صلاحيات حسابك إلى «${body.role}»`,
+        });
+      }
       res.json({ user: publicUser(updated) });
     } catch (e) {
       if (isUniqueViolation(e)) throw conflict("اسم المستخدم أو البريد الإلكتروني مستخدم بالفعل");

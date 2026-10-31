@@ -8,6 +8,7 @@ import { computeDailyTime } from "../utils/timeStats.js";
 import { serializeTask, taskInclude } from "../utils/taskSerialize.js";
 import { assertAttachmentsAllowed, deleteUnreferencedObjects } from "../utils/attachments.js";
 import { keysOf, removedKeys } from "../utils/attachmentKeys.ts";
+import { mentionedUserIds, notify } from "../utils/notify.js"; // الإشعارات: أفضل جهد، لا تُفشل العملية
 import {
   commentSchema,
   copyTaskSchema,
@@ -210,6 +211,44 @@ tasksRouter.get(
   })
 );
 
+// ---------- إشعارات أحداث المهمة (أفضل جهد) ----------
+type TaskRef = { id: string; title: string; parentId: string | null; assignedToId: string; createdById: string };
+
+const linkOf = (t: TaskRef) => ({ taskId: t.parentId ?? t.id, subtaskId: t.parentId ? t.id : null });
+
+async function notifyCompleted(actor: User, t: TaskRef) {
+  await notify({
+    recipients: [t.assignedToId, t.createdById],
+    actor,
+    type: t.parentId ? "SUBTASK_COMPLETED" : "TASK_COMPLETED",
+    title: t.parentId ? "اكتملت مهمة فرعية" : "اكتملت مهمة",
+    message: `أنهى ${actor.name} «${t.title}»`,
+    ...linkOf(t),
+  });
+}
+
+async function notifyReopened(actor: User, t: TaskRef) {
+  await notify({
+    recipients: [t.assignedToId, t.createdById],
+    actor,
+    type: "TASK_REOPENED",
+    title: "إعادة فتح مهمة",
+    message: `أعاد ${actor.name} فتح «${t.title}»`,
+    ...linkOf(t),
+  });
+}
+
+async function notifyStatus(actor: User, t: TaskRef, verb: string) {
+  await notify({
+    recipients: [t.createdById],
+    actor,
+    type: "TASK_STATUS_CHANGED",
+    title: "تغيّرت حالة مهمة",
+    message: `${verb} «${t.title}»: ${actor.name}`,
+    ...linkOf(t),
+  });
+}
+
 // ---------- إنشاء ----------
 tasksRouter.post(
   "/",
@@ -266,6 +305,27 @@ tasksRouter.post(
         parentId: body.parentId ?? null,
       },
     });
+    if (created.parentId) {
+      const parent = await db.task.findUnique({ where: { id: created.parentId }, select: { id: true, title: true, createdById: true } });
+      await notify({
+        recipients: [assigneeId, parent?.createdById],
+        actor: me,
+        type: "SUBTASK_ADDED",
+        title: "مهمة فرعية جديدة",
+        message: `أضاف ${me.name} مهمة فرعية «${created.title}» إلى «${parent?.title ?? ""}»`,
+        taskId: created.parentId,
+        subtaskId: created.id,
+      });
+    } else {
+      await notify({
+        recipients: [assigneeId],
+        actor: me,
+        type: "TASK_ASSIGNED",
+        title: "مهمة جديدة",
+        message: `أسند إليك ${me.name} المهمة «${created.title}»`,
+        taskId: created.id,
+      });
+    }
     const fresh = await loadTask(created.id);
     res.status(201).json({ task: serializeTask(fresh!) });
   })
@@ -447,6 +507,14 @@ tasksRouter.post(
     if (task.parentId) throw badRequest("يمكن نقل المهمة الرئيسية فقط");
     if (task.date === date) throw badRequest("المهمة موجودة في هذا اليوم بالفعل");
     await moveRootsToDate(task.date, date, task.id);
+    await notify({
+      recipients: [task.assignedToId],
+      actor: req.user!,
+      type: "TASK_DATE_CHANGED",
+      title: "تغيير موعد المهمة",
+      message: `نقل ${req.user!.name} المهمة «${task.title}» من ${task.date} إلى ${date}`,
+      taskId: task.id,
+    });
     await respondTask(res, task.id);
   })
 );
@@ -502,6 +570,19 @@ tasksRouter.patch(
     await db.$transaction(ops);
     // المرفقات التي أُزيلت من المهمة تُحذف من R2 بعد نجاح الحفظ (أفضل جهد)
     if (body.attachments !== undefined) await deleteUnreferencedObjects(removedKeys(task.attachments, body.attachments));
+    if (becomesDone) await notifyCompleted(req.user!, task);
+    if (leavesDone) await notifyReopened(req.user!, task);
+    if (body.attachments !== undefined && keysOf(body.attachments).length > keysOf(task.attachments).length) {
+      await notify({
+        recipients: [task.assignedToId, task.createdById],
+        actor: req.user!,
+        type: "ATTACHMENT_ADDED",
+        title: "مرفق جديد",
+        message: `أضاف ${req.user!.name} مرفقاً إلى «${task.title}»`,
+        taskId: task.parentId ? task.parentId : task.id,
+        subtaskId: task.parentId ? task.id : null,
+      });
+    }
     await respondTask(res, task.id);
   })
 );
@@ -545,6 +626,8 @@ tasksRouter.patch(
     } else {
       await db.task.update({ where: { id: task.id }, data: { current } });
     }
+    if (done && task.status !== "COMPLETED") await notifyCompleted(req.user!, task);
+    if (!done && task.status === "COMPLETED") await notifyReopened(req.user!, task);
     await respondTask(res, task.id);
   })
 );
@@ -566,6 +649,7 @@ tasksRouter.post(
         data: { status: "RUNNING", startedAt: task.startedAt ?? now, endTime: null },
       }),
     ]);
+    await notifyStatus(me, task, "بدأ العمل على");
     await respondTask(res, task.id);
   })
 );
@@ -585,6 +669,7 @@ tasksRouter.post(
       }),
       db.task.update({ where: { id: task.id }, data: { status: "PAUSED" } }),
     ]);
+    await notifyStatus(req.user!, task, "أوقف مؤقتاً العمل على");
     await respondTask(res, task.id);
   })
 );
@@ -603,6 +688,7 @@ tasksRouter.post(
         data: { status: "COMPLETED", current: task.target, endTime: now, sortOrder: await bottomOrder(task) },
       }),
     ]);
+    await notifyCompleted(req.user!, task);
     await respondTask(res, task.id);
   })
 );
@@ -623,6 +709,7 @@ tasksRouter.post(
         current: Math.min(task.current, Math.max(task.target - 1, 0)),
       },
     });
+    await notifyReopened(req.user!, task);
     await respondTask(res, task.id);
   })
 );
@@ -634,6 +721,19 @@ tasksRouter.post(
     const { text } = commentSchema.parse(req.body);
     const task = await getTaskFor(req.user!, req.params.id);
     await prisma().taskComment.create({ data: { taskId: task.id, userId: req.user!.id, text } });
+    const me = req.user!;
+    const preview = text.length > 120 ? `${text.slice(0, 120)}…` : text;
+    const mentioned = await mentionedUserIds(text);
+    const link = { taskId: task.parentId ?? task.id, subtaskId: task.parentId ? task.id : null };
+    await notify({ recipients: mentioned, actor: me, type: "MENTION", title: "تمت الإشارة إليك", message: `ذكرك ${me.name} في تعليق على «${task.title}»: ${preview}`, ...link });
+    await notify({
+      recipients: [task.assignedToId, task.createdById].filter((id) => !mentioned.includes(id)),
+      actor: me,
+      type: "COMMENT_ADDED",
+      title: "تعليق جديد",
+      message: `علّق ${me.name} على «${task.title}»: ${preview}`,
+      ...link,
+    });
     await respondTask(res, task.id);
   })
 );
@@ -684,6 +784,26 @@ tasksRouter.post(
         })
       ),
     ]);
+    if (assignee.id !== moving.assignedToId) {
+      await notify({
+        recipients: [assignee.id],
+        actor: req.user!,
+        type: "TASK_REASSIGNED",
+        title: "مهمة نُقلت إليك",
+        message: `نقل ${req.user!.name} المهمة «${moving.title}» إليك`,
+        taskId: moving.parentId ?? moving.id,
+        subtaskId: moving.parentId ? moving.id : null,
+      });
+      await notify({
+        recipients: [moving.assignedToId],
+        actor: req.user!,
+        type: "TASK_REASSIGNED",
+        title: "تغيير مسؤول المهمة",
+        message: `لم تعد مسؤولاً عن «${moving.title}» (نقلها ${req.user!.name} إلى ${assignee.name})`,
+        taskId: moving.parentId ?? moving.id,
+        subtaskId: moving.parentId ? moving.id : null,
+      });
+    }
     await respondTask(res, moving.id);
   })
 );

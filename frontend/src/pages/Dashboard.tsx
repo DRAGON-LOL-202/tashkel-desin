@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { UserCheck } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { AppLayout } from "../components/layout/AppLayout";
 import { Header } from "../components/header/Header";
 import { TaskStats } from "../components/tasks/TaskStats";
@@ -46,7 +47,12 @@ export default function Dashboard() {
   const [dayLoading, setDayLoading] = useState(false);
   const [dateStates, setDateStates] = useState<Record<string, CalendarDateState>>({});
   const [calendarRange, setCalendarRange] = useState<{ from: string; to: string } | null>(null);
-  const [selectedDate, setSelectedDate] = useState(todayISO());
+  // الانتقال من صفحة الإشعارات: /daily-tasks?date=YYYY-MM-DD
+  const [searchParams] = useSearchParams();
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const d = searchParams.get("date");
+    return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : todayISO();
+  });
   const [newTaskAssignee, setNewTaskAssignee] = useState<TeamMember | undefined>();
   const [newTaskParent, setNewTaskParent] = useState<Task | undefined>();
   const [newTaskMode, setNewTaskMode] = useState<"normal" | "main" | "subtask">("normal");

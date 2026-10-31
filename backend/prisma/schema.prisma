@@ -72,6 +72,9 @@ model User {
   calendarEvents CalendarEvent[]
   products       Product[]
   attendance     AttendanceSession[]
+
+  notificationsReceived Notification[] @relation("NotificationRecipient")
+  notificationsCaused   Notification[] @relation("NotificationActor")
 }
 
 // المهام الفرعية = Task بـ parentId (قرار موثّق في HANDOFF: الفرعية لها تايمر وتعليقات ومسؤول).
@@ -100,6 +103,7 @@ model Task {
   assignedTo User          @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: Restrict)
   timeLogs   TaskTimeLog[]
   comments   TaskComment[]
+  notifications Notification[]
 
   @@index([date])
   @@index([assignedToId, date])
@@ -239,4 +243,29 @@ model AttendanceSession {
 
   @@index([userId, workDate])
   @@index([workDate])
+}
+
+// إشعار داخل الموقع لمستلم واحد. type = نوع الحدث (انظر utils/notify.ts)، category = tasks | reminders | comments | admin.
+// حذف المستلم يحذف إشعاراته؛ حذف من تسبب بالإشعار أو المهمة يُبقي الإشعار بدون ربط.
+model Notification {
+  id               String    @id @default(cuid())
+  recipientId      String
+  actorId          String?
+  type             String
+  category         String
+  title            String
+  message          String
+  relatedTaskId    String?
+  relatedSubtaskId String?
+  isRead           Boolean   @default(false)
+  readAt           DateTime?
+  createdAt        DateTime  @default(now())
+
+  recipient User  @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  actor     User? @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  task      Task? @relation(fields: [relatedTaskId], references: [id], onDelete: SetNull)
+
+  @@index([recipientId, isRead, createdAt])
+  @@index([recipientId, createdAt])
+  @@index([relatedTaskId])
 }

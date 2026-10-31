@@ -1,3 +1,8 @@
+## ▶ RESUME POINT (2026-10-31)
+- ✅ الإشعارات الدفعة 1+2 كُتبت (انظر CHANGES.md)؛ الواجهة build ناجح، اختبارات backend غير مُتحقَّق منها.
+- التالي: شغّل `npm test` في backend وأصلح أي فشل، ثم الدفعة 3: TaskTimer (تنازلي) + APIs + واجهة البطاقة.
+- قرار معلّق: Render المجاني ينام ← يلزم ping خارجي أو خطة مدفوعة قبل مراقب المؤقتات (الدفعة 4).
+
 # HANDOFF.md --- Laser System
 
 ## Current Project Status & Remaining Work

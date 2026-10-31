@@ -12,6 +12,7 @@ import TeamDashboardPage from "./pages/TeamDashboard";
 import ManageUsersPage from "./pages/ManageUsers";
 import LoginPage from "./pages/Login";
 import ProfilePage from "./pages/Profile";
+import NotificationsPage from "./pages/Notifications";
 
 function HomeRoute() {
   const { user } = useAuth();
@@ -33,6 +34,7 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/" element={<HomeRoute />} />
             <Route path="/daily-tasks" element={<ProtectedRoute page="dailyTasks"><Dashboard /></ProtectedRoute>} />
+            <Route path="/notifications" element={<ProtectedRoute page="notifications"><NotificationsPage /></ProtectedRoute>} />
             <Route path="/feedback" element={<ProtectedRoute page="feedback"><FeedbackPage /></ProtectedRoute>} />
             <Route path="/goals" element={<ProtectedRoute page="goals"><GoalsPage /></ProtectedRoute>} />
             <Route path="/schedule" element={<ProtectedRoute page="schedule"><SchedulePage /></ProtectedRoute>} />

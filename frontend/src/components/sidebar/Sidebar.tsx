@@ -1,10 +1,13 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { CalendarRange, Home, LogOut, MessageSquare, PanelRightClose, PanelRightOpen, Tag, Target, UserCog, UserRound, Users } from "lucide-react";
+import { Bell, CalendarRange, Home, LogOut, MessageSquare, PanelRightClose, PanelRightOpen, Tag, Target, UserCog, UserRound, Users } from "lucide-react";
 import { useAuth } from "../auth/AuthProvider";
 import type { AppPage } from "../../lib/permissions";
+import { useResource } from "../../hooks/useResource";
+import { notificationsService } from "../../services/notificationsService";
 
 const navItems = [
   { to: "/", label: "المهام اليومية", icon: Home, end: true, page: "dailyTasks" as AppPage },
+  { to: "/notifications", label: "الإشعارات", icon: Bell, page: "notifications" as AppPage },
   { to: "/feedback", label: "Feedback", icon: MessageSquare, page: "feedback" as AppPage },
   { to: "/goals", label: "الأهداف", icon: Target, page: "goals" as AppPage },
   { to: "/schedule", label: "الجدولة", icon: CalendarRange, page: "schedule" as AppPage },
@@ -23,9 +26,12 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const isDesigner = user?.accessRole === "designer";
+  // عدّاد غير المقروء: يتحدث تلقائياً مع كل تغيير في النظام (useResource مشترك مع المزامنة اللحظية)
+  const { data: counts } = useResource(notificationsService.counts, { total: 0, unread: 0 });
   const visibleItems = isDesigner
     ? [
         { to: "/daily-tasks", label: "المهام اليومية", icon: Home, page: "dailyTasks" as AppPage },
+        { to: "/notifications", label: "الإشعارات", icon: Bell, page: "notifications" as AppPage },
         { to: "/feedback", label: "Feedback", icon: MessageSquare, page: "feedback" as AppPage },
         { to: "/profile", label: "صفحتي", icon: UserRound, page: "profile" as AppPage },
       ]
@@ -65,8 +71,22 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
                 {isActive && (
                   <span className="absolute right-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-full bg-primary-deep" />
                 )}
-                <item.icon size={18} className="shrink-0" />
+                <span className="relative shrink-0">
+                  <item.icon size={18} />
+                  {item.page === "notifications" && counts.unread > 0 && collapsed && (
+                    <span className="absolute -right-1.5 -top-1.5 h-2.5 w-2.5 rounded-full bg-problem" aria-hidden />
+                  )}
+                </span>
                 {!collapsed && <span className="truncate">{item.label}</span>}
+                {!collapsed && item.page === "notifications" && counts.unread > 0 && (
+                  <span
+                    className="mr-auto min-w-[20px] rounded-full bg-problem px-1.5 py-0.5 text-center text-[11px] font-bold leading-none text-white"
+                    aria-label={`${counts.unread} إشعار غير مقروء`}
+                    data-testid="unread-badge"
+                  >
+                    {counts.unread > 99 ? "99+" : counts.unread}
+                  </span>
+                )}
               </>
             )}
           </NavLink>
