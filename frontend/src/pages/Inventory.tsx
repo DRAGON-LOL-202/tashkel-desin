@@ -7,6 +7,7 @@ import { MovementModal } from "../components/inventory/MovementModal";
 import { MovementsModal } from "../components/inventory/MovementsModal";
 import { fmtQty } from "../components/inventory/format";
 import { Badge } from "../components/ui/Badge";
+import { ImageAttachmentGallery } from "../components/ui/ImageAttachments";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { EmptyState } from "../components/ui/EmptyState";
 import { ErrorState, LoadingState } from "../components/ui/StatusViews";
@@ -15,13 +16,15 @@ import { useAuth } from "../components/auth/AuthProvider";
 import { usePermissions } from "../hooks/usePermissions";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
+import { ApiError, errorMessage } from "../lib/api";
 import { inventoryService } from "../services/inventoryService";
-import type { InventoryItem, InventoryItemInput, InventoryMovementInput } from "../types";
+import type { InventoryCategory, InventoryData, InventoryItem, InventoryItemInput, InventoryMovementInput } from "../types";
 
-const EMPTY: InventoryItem[] = [];
+const EMPTY: InventoryData = { items: [], categories: [] };
 
 export default function InventoryPage() {
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [lowOnly, setLowOnly] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
   const [itemModal, setItemModal] = useState<{ editing: InventoryItem | null } | null>(null);
@@ -32,7 +35,10 @@ export default function InventoryPage() {
   const run = useSafeAction();
   const { user } = useAuth();
   const { canManageInventory, canDeleteInventory } = usePermissions();
-  const { data: items, loading, error, reload, retry } = useResource<InventoryItem[]>(inventoryService.list, EMPTY);
+  const { data, loading, error, reload, retry } = useResource<InventoryData>(inventoryService.list, EMPTY);
+  const { items, categories } = data;
+  // تصنيف محدد اختفى: نعود إلى «الكل»
+  const activeCategory = categoryFilter === "all" || categories.some((c) => c.id === categoryFilter) ? categoryFilter : "all";
 
   const lowCount = useMemo(() => items.filter((i) => i.isActive && i.isLow).length, [items]);
 
@@ -41,13 +47,38 @@ export default function InventoryPage() {
     return items
       .filter((i) => showInactive || i.isActive)
       .filter((i) => !lowOnly || i.isLow)
+      .filter((i) => activeCategory === "all" || i.categoryId === activeCategory)
       .filter((i) => !q || `${i.name} ${i.sku ?? ""}`.toLowerCase().includes(q));
-  }, [items, search, lowOnly, showInactive]);
+  }, [items, search, lowOnly, showInactive, activeCategory]);
 
   // العنصر المفتوح في النوافذ يُؤخذ من القائمة الحية ليظهر رصيده المحدَّث دائماً
   const live = (i: InventoryItem | null) => (i ? (items.find((x) => x.id === i.id) ?? i) : null);
   const movingLive = live(moving);
   const historyLive = live(history);
+
+  const handleCreateCategory = async (name: string): Promise<InventoryCategory | null> => {
+    try {
+      const created = await inventoryService.createCategory(name);
+      await reload(); // يظهر في القائمة والفلتر فوراً
+      show("تمت إضافة التصنيف");
+      return created;
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        // موجود مسبقاً (بغض النظر عن حالة الأحرف): نختاره بدل الرفض
+        const fresh = await inventoryService.list().catch(() => null);
+        if (fresh) {
+          const existing = fresh.categories.find((c) => c.name.toLowerCase() === name.trim().toLowerCase());
+          await reload();
+          if (existing) {
+            show("هذا التصنيف موجود، تم اختياره", "info");
+            return existing;
+          }
+        }
+      }
+      show(errorMessage(err), "error");
+      return null;
+    }
+  };
 
   const handleItemSubmit = async (input: InventoryItemInput) => {
     const editing = itemModal?.editing ?? null;
@@ -113,6 +144,14 @@ export default function InventoryPage() {
               <Search size={16} className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-muted" />
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث بالاسم أو الكود..." aria-label="بحث في المخزون" className="pp-input pp-input--icon" />
             </div>
+            <select value={activeCategory} onChange={(e) => setCategoryFilter(e.target.value)} aria-label="فلتر التصنيف" className="pp-input pp-input--select cursor-pointer sm:w-48">
+              <option value="all">كل التصنيفات</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
             <label className="flex items-center gap-2 text-sm text-text">
               <input type="checkbox" checked={lowOnly} onChange={(e) => setLowOnly(e.target.checked)} />
               النقص فقط
@@ -133,6 +172,7 @@ export default function InventoryPage() {
                 <thead>
                   <tr className="border-b border-border text-right text-xs text-muted">
                     <th className="px-4 py-3 font-medium">العنصر</th>
+                    <th className="px-4 py-3 font-medium">التصنيف</th>
                     <th className="px-4 py-3 font-medium">الرصيد</th>
                     <th className="px-4 py-3 font-medium">الحد الأدنى</th>
                     <th className="px-4 py-3 font-medium">الحالة</th>
@@ -145,7 +185,13 @@ export default function InventoryPage() {
                       <td className="px-4 py-3">
                         <div className="font-semibold text-text">{i.name}</div>
                         <div className="text-xs text-muted">{i.sku ?? ""}</div>
+                        {i.attachments.length > 0 && (
+                          <div className="mt-2">
+                            <ImageAttachmentGallery attachments={i.attachments} />
+                          </div>
+                        )}
                       </td>
+                      <td className="px-4 py-3 text-muted">{i.categoryName}</td>
                       <td className="px-4 py-3 font-semibold text-text">
                         {fmtQty(i.quantity)} <span className="text-xs font-normal text-muted">{i.unit}</span>
                       </td>
@@ -193,7 +239,7 @@ export default function InventoryPage() {
       )}
 
       {itemModal && (
-        <ItemModal key={itemModal.editing?.id ?? "new"} open onClose={() => setItemModal(null)} editing={itemModal.editing} onSubmit={handleItemSubmit} />
+        <ItemModal key={itemModal.editing?.id ?? "new"} open onClose={() => setItemModal(null)} editing={itemModal.editing} categories={categories} onCreateCategory={handleCreateCategory} onSubmit={handleItemSubmit} />
       )}
       {movingLive && <MovementModal key={movingLive.id} open onClose={() => setMoving(null)} item={movingLive} onSubmit={handleMove} />}
       {historyLive && <MovementsModal open onClose={() => setHistory(null)} item={historyLive} />}

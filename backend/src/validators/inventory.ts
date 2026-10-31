@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { attachmentsSchema } from "./attachments.js";
 
 const MAX_QTY = 1_000_000_000;
 export const round3 = (n: number) => Math.round(n * 1000) / 1000;
@@ -12,6 +13,13 @@ const qty = (label: string) =>
     .transform(round3);
 
 const name = z.string().trim().min(1, "الاسم مطلوب").max(150, "الاسم طويل جداً");
+const categoryId = z.string().min(1, "التصنيف مطلوب").max(64);
+const attachments = attachmentsSchema.max(10, "الحد الأقصى 10 صور للعنصر");
+
+export const createCategorySchema = z.object({
+  name: z.string().trim().min(1, "اسم التصنيف مطلوب").max(60, "اسم التصنيف طويل جداً"),
+});
+
 const unit = z.string().trim().min(1, "الوحدة مطلوبة").max(30, "اسم الوحدة طويل جداً");
 const notes = z.string().trim().max(1000, "الملاحظات طويلة جداً");
 const sku = z
@@ -23,6 +31,8 @@ const sku = z
 
 export const createItemSchema = z.object({
   name,
+  categoryId,
+  attachments: attachments.default([]),
   sku: sku.optional(),
   unit: unit.default("قطعة"),
   minQuantity: qty("الحد الأدنى").default(0),
@@ -33,6 +43,8 @@ export const createItemSchema = z.object({
 export const updateItemSchema = z
   .object({
     name: name.optional(),
+    categoryId: categoryId.optional(),
+    attachments: attachments.optional(),
     sku: sku.optional(),
     unit: unit.optional(),
     minQuantity: qty("الحد الأدنى").optional(),

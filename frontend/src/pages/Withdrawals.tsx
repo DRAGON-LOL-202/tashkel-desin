@@ -4,6 +4,7 @@ import { AppLayout } from "../components/layout/AppLayout";
 import { Header } from "../components/header/Header";
 import { fmtQty } from "../components/inventory/format";
 import { Badge } from "../components/ui/Badge";
+import { AttachmentImage } from "../components/ui/ImageAttachments";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { ErrorState, LoadingState } from "../components/ui/StatusViews";
@@ -19,7 +20,7 @@ const NO_LOG: InventoryMovement[] = [];
 
 // صفحة السحب: اختر أصنافاً من المخزون وكمياتها ثم أكّد السحب. الرصيد يُخصم فوراً من المخزون (كله أو لا شيء).
 async function listActive() {
-  return (await inventoryService.list()).filter((i) => i.isActive);
+  return (await inventoryService.list()).items.filter((i) => i.isActive);
 }
 
 export default function WithdrawalsPage() {
@@ -114,11 +115,18 @@ export default function WithdrawalsPage() {
                 <ul className="flex max-h-[26rem] flex-col gap-1 overflow-y-auto">
                   {visible.map((i) => (
                     <li key={i.id} className="flex items-center justify-between gap-3 rounded-control px-3 py-2 pp-hover-row">
-                      <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-3">
+                        {i.attachments[0] && (
+                          <div className="h-11 w-11 shrink-0 overflow-hidden rounded-control border border-border bg-background">
+                            <AttachmentImage attachment={i.attachments[0]} className="h-full w-full object-cover" />
+                          </div>
+                        )}
+                        <div className="min-w-0">
                         <div className="truncate text-sm font-semibold text-text">{i.name}</div>
                         <div className="text-xs text-muted">
-                          المتاح {fmtQty(i.quantity)} {i.unit}
+                          {i.categoryName} · المتاح {fmtQty(i.quantity)} {i.unit}
                           {i.isLow && <span className="mr-2 text-problem">· نقص</span>}
+                        </div>
                         </div>
                       </div>
                       <Button type="button" size="sm" variant="secondary" disabled={i.quantity <= 0 || i.id in cart} onClick={() => add(i)} icon={<Plus size={14} />}>

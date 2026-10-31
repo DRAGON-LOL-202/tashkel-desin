@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { ImageOff, ImagePlus, Loader2, Paperclip, Trash2 } from "lucide-react";
 import type { ImageAttachment } from "../../types";
@@ -14,6 +14,8 @@ interface ImageAttachmentsFieldProps {
   onChange: (attachments: ImageAttachment[]) => void;
   /** نطاق التخزين في R2 (مسار الملفات): مهام أو ملاحظات */
   scope: UploadScope;
+  /** اختياري: مفاتيح الجلسة من النافذة الأم لتحذف ما رُفع ولم يُحفظ عند إلغاء النموذج (وإلا تُدار داخلياً) */
+  sessionKeys?: RefObject<Set<string>>;
 }
 
 const MAX_ATTACHMENTS = 20; // نفس حد الـ backend
@@ -46,7 +48,7 @@ function PreviewModal({ attachment, onClose }: { attachment: ImageAttachment | n
   );
 }
 
-export function ImageAttachmentsField({ value, onChange, scope }: ImageAttachmentsFieldProps) {
+export function ImageAttachmentsField({ value, onChange, scope, sessionKeys: externalKeys }: ImageAttachmentsFieldProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -54,7 +56,8 @@ export function ImageAttachmentsField({ value, onChange, scope }: ImageAttachmen
   // آخر قيمة (الرفع غير متزامن وقد يتغير value أثناءه) + مفاتيح رُفعت في هذه الجلسة ولم تُحفظ بعد
   const valueRef = useRef(value);
   valueRef.current = value;
-  const sessionKeys = useRef(new Set<string>());
+  const ownKeys = useRef(new Set<string>());
+  const sessionKeys = externalKeys ?? ownKeys;
 
   const readAsDataUrl = (file: File) =>
     new Promise<ImageAttachment>((resolve, reject) => {

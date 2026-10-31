@@ -4,12 +4,16 @@ import { requireAuth, requireRole, requireStaff } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { badRequest, conflict, notFound } from "../utils/httpError.js";
 import {
+  inventoryItemInclude,
   num3,
+  serializeInventoryCategory,
   serializeInventoryItem,
   serializeInventoryMovement,
 } from "../utils/inventorySerialize.js";
+import { assertAttachmentsAllowed, deleteStoredObjects } from "../utils/attachments.js";
+import { keysOf, removedKeys } from "../utils/attachmentKeys.ts";
 import { randomUUID } from "node:crypto";
-import { createItemSchema, createMovementSchema, round3, updateItemSchema, withdrawSchema } from "../validators/inventory.js";
+import { createCategorySchema, createItemSchema, createMovementSchema, round3, updateItemSchema, withdrawSchema } from "../validators/inventory.js";
 
 // الصلاحيات (مبدئية — تُطابَق مع untitled.txt): أي مستخدم مسجّل يرى المخزون،
 // والإضافة/التعديل/الحركات اليدوية للإدارة (ADMIN/MANAGER)، والحذف النهائي للمدير العام فقط.
@@ -23,8 +27,13 @@ const idOf = (v: unknown) => (typeof v === "string" && v.length > 0 && v.length 
 
 const isUniqueViolation = (e: unknown) => (e as { code?: string })?.code === "P2002";
 
+async function assertCategoryExists(categoryId: string) {
+  const c = await prisma().inventoryCategory.findUnique({ where: { id: idOf(categoryId) }, select: { id: true } });
+  if (!c) throw badRequest("التصنيف غير موجود");
+}
+
 async function getItem(rawId: unknown) {
-  const item = await prisma().inventoryItem.findUnique({ where: { id: idOf(rawId) } });
+  const item = await prisma().inventoryItem.findUnique({ where: { id: idOf(rawId) }, include: inventoryItemInclude });
   if (!item) throw notFound("عنصر المخزون غير موجود");
   return item;
 }
@@ -38,15 +47,38 @@ inventoryRouter.get(
     const items = await prisma().inventoryItem.findMany({
       where: {
         ...(includeInactive ? {} : { isActive: true }),
+        ...(typeof req.query.categoryId === "string" && req.query.categoryId ? { categoryId: idOf(req.query.categoryId) } : {}),
         ...(q
           ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { sku: { contains: q, mode: "insensitive" } }] }
           : {}),
       },
+      include: inventoryItemInclude,
       orderBy: [{ name: "asc" }, { id: "asc" }],
     });
     let rows = items.map(serializeInventoryItem);
     if (req.query.lowOnly === "true") rows = rows.filter((i) => i.isLow);
     res.json({ items: rows });
+  })
+);
+
+// ===== التصنيفات (المسارات الثابتة قبل /:id) =====
+inventoryRouter.get(
+  "/categories",
+  asyncHandler(async (_req, res) => {
+    const items = await prisma().inventoryCategory.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+    res.json({ categories: items.map(serializeInventoryCategory) });
+  })
+);
+
+inventoryRouter.post(
+  "/categories",
+  requireStaff,
+  asyncHandler(async (req, res) => {
+    const { name } = createCategorySchema.parse(req.body);
+    const dup = await prisma().inventoryCategory.findFirst({ where: { name: { equals: name, mode: "insensitive" } } });
+    if (dup) throw conflict("هذا التصنيف موجود مسبقاً");
+    const created = await prisma().inventoryCategory.create({ data: { name } });
+    res.status(201).json({ category: serializeInventoryCategory(created) });
   })
 );
 
@@ -132,11 +164,15 @@ inventoryRouter.post(
   requireStaff,
   asyncHandler(async (req, res) => {
     const body = createItemSchema.parse(req.body);
+    await assertCategoryExists(body.categoryId);
+    await assertAttachmentsAllowed(req.user!.id, "inventory", body.attachments, []);
     try {
       const created = await prisma().$transaction(async (tx) => {
         const item = await tx.inventoryItem.create({
           data: {
             name: body.name,
+            categoryId: body.categoryId,
+            attachments: body.attachments,
             sku: body.sku ?? null,
             unit: body.unit,
             minQuantity: body.minQuantity,
@@ -157,7 +193,7 @@ inventoryRouter.post(
             },
           });
         }
-        return tx.inventoryItem.findUniqueOrThrow({ where: { id: item.id } });
+        return tx.inventoryItem.findUniqueOrThrow({ where: { id: item.id }, include: inventoryItemInclude });
       });
       res.status(201).json({ item: serializeInventoryItem(created) });
     } catch (e) {
@@ -174,18 +210,24 @@ inventoryRouter.patch(
   asyncHandler(async (req, res) => {
     const existing = await getItem(req.params.id);
     const body = updateItemSchema.parse(req.body);
+    if (body.categoryId !== undefined) await assertCategoryExists(body.categoryId);
+    if (body.attachments !== undefined) await assertAttachmentsAllowed(req.user!.id, "inventory", body.attachments, existing.attachments);
     try {
       const updated = await prisma().inventoryItem.update({
         where: { id: existing.id },
         data: {
           ...(body.name !== undefined ? { name: body.name } : {}),
+          ...(body.categoryId !== undefined ? { categoryId: body.categoryId } : {}),
+          ...(body.attachments !== undefined ? { attachments: body.attachments } : {}),
           ...(body.sku !== undefined ? { sku: body.sku } : {}),
           ...(body.unit !== undefined ? { unit: body.unit } : {}),
           ...(body.minQuantity !== undefined ? { minQuantity: body.minQuantity } : {}),
           ...(body.notes !== undefined ? { notes: body.notes } : {}),
           ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
         },
+        include: inventoryItemInclude,
       });
+      if (body.attachments !== undefined) await deleteStoredObjects(removedKeys(existing.attachments, body.attachments));
       res.json({ item: serializeInventoryItem(updated) });
     } catch (e) {
       if (isUniqueViolation(e)) throw conflict("كود المنتج مستخدم مسبقاً");
@@ -225,7 +267,7 @@ inventoryRouter.post(
         data: { itemId, type: body.type, delta, balanceAfter: after, note: body.note, createdById: userId },
         include: MOVEMENT_INCLUDE,
       });
-      const item = await tx.inventoryItem.findUniqueOrThrow({ where: { id: itemId } });
+      const item = await tx.inventoryItem.findUniqueOrThrow({ where: { id: itemId }, include: inventoryItemInclude });
       return { item, movement };
     });
 
@@ -240,6 +282,7 @@ inventoryRouter.delete(
   asyncHandler(async (req, res) => {
     const existing = await getItem(req.params.id);
     await prisma().inventoryItem.delete({ where: { id: existing.id } });
+    await deleteStoredObjects(keysOf(existing.attachments));
     res.json({ ok: true });
   })
 );

@@ -328,10 +328,22 @@ enum InventoryMovementType {
   ADJUST
 }
 
+// تصنيف عناصر المخزون (يُضاف من نموذج العنصر مباشرة). لا يُحذف تصنيف عليه عناصر.
+model InventoryCategory {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  items InventoryItem[]
+}
+
 // عنصر مخزون (خامة أو منتج جاهز). الرصيد quantity لا يهبط تحت الصفر (قيد CHECK في الـ migration + فحص داخل معاملة).
 model InventoryItem {
   id          String   @id @default(cuid())
   name        String
+  categoryId  String
+  // صور العنصر (حتى 10) بنفس شكل مرفقات المهام والمنتجات
+  attachments Json     @default("[]")
   sku         String?  @unique
   unit        String   @default("قطعة")
   quantity    Decimal  @default(0) @db.Decimal(14, 3)
@@ -341,8 +353,10 @@ model InventoryItem {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  category  InventoryCategory  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   movements InventoryMovement[]
 
+  @@index([categoryId])
   @@index([isActive])
 }
 

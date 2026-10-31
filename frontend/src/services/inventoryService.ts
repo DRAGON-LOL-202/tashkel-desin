@@ -1,20 +1,34 @@
 import { api } from "../lib/api";
-import type { InventoryItem, InventoryItemInput, InventoryMovement, InventoryMovementInput, WithdrawLine } from "../types";
+import { toAttachmentPayload } from "../lib/attachments";
+import type { InventoryCategory, InventoryData, InventoryItem, InventoryItemInput, InventoryMovement, InventoryMovementInput, WithdrawLine } from "../types";
+
+const toBody = <T extends { attachments?: InventoryItemInput["attachments"] }>(input: T) => ({
+  ...input,
+  ...(input.attachments ? { attachments: input.attachments.map(toAttachmentPayload) } : {}),
+});
 
 export const inventoryService = {
-  /** كل العناصر (بما فيها المعطّلة) ليفلترها الواجهة؛ مرجع ثابت لاستخدامه مع useResource */
-  async list(): Promise<InventoryItem[]> {
-    const { items } = await api<{ items: InventoryItem[] }>("/inventory?includeInactive=true");
-    return items;
+  /** كل العناصر (بما فيها المعطّلة) والتصنيفات معاً ليعمل مع useResource والمزامنة الحية */
+  async list(): Promise<InventoryData> {
+    const [{ items }, { categories }] = await Promise.all([
+      api<{ items: InventoryItem[] }>("/inventory?includeInactive=true"),
+      api<{ categories: InventoryCategory[] }>("/inventory/categories"),
+    ]);
+    return { items, categories };
+  },
+
+  async createCategory(name: string): Promise<InventoryCategory> {
+    const { category } = await api<{ category: InventoryCategory }>("/inventory/categories", { method: "POST", body: { name } });
+    return category;
   },
 
   async create(input: InventoryItemInput): Promise<InventoryItem> {
-    const { item } = await api<{ item: InventoryItem }>("/inventory", { method: "POST", body: input });
+    const { item } = await api<{ item: InventoryItem }>("/inventory", { method: "POST", body: toBody(input) });
     return item;
   },
 
   async update(id: string, input: Partial<InventoryItemInput>): Promise<InventoryItem> {
-    const { item } = await api<{ item: InventoryItem }>(`/inventory/${id}`, { method: "PATCH", body: input });
+    const { item } = await api<{ item: InventoryItem }>(`/inventory/${id}`, { method: "PATCH", body: toBody(input) });
     return item;
   },
 

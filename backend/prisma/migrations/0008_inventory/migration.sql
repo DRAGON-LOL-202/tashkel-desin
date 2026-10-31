@@ -2,9 +2,19 @@
 CREATE TYPE "InventoryMovementType" AS ENUM ('IN', 'OUT', 'ADJUST');
 
 -- CreateTable
+CREATE TABLE "InventoryCategory" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "InventoryCategory_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "InventoryItem" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
+    "categoryId" TEXT NOT NULL,
+    "attachments" JSONB NOT NULL DEFAULT '[]',
     "sku" TEXT,
     "unit" TEXT NOT NULL DEFAULT 'قطعة',
     "quantity" DECIMAL(14,3) NOT NULL DEFAULT 0,
@@ -34,10 +44,12 @@ CREATE TABLE "InventoryMovement" (
 
 -- CreateIndex
 CREATE UNIQUE INDEX "InventoryItem_sku_key" ON "InventoryItem"("sku");
+CREATE INDEX "InventoryItem_categoryId_idx" ON "InventoryItem"("categoryId");
 CREATE INDEX "InventoryItem_isActive_idx" ON "InventoryItem"("isActive");
 CREATE INDEX "InventoryMovement_itemId_createdAt_idx" ON "InventoryMovement"("itemId", "createdAt");
 CREATE INDEX "InventoryMovement_batchId_idx" ON "InventoryMovement"("batchId");
 
 -- AddForeignKey
+ALTER TABLE "InventoryItem" ADD CONSTRAINT "InventoryItem_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "InventoryCategory"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "InventoryMovement" ADD CONSTRAINT "InventoryMovement_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "InventoryItem"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "InventoryMovement" ADD CONSTRAINT "InventoryMovement_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

@@ -96,14 +96,15 @@ export async function deleteUnreferencedObjects(keys: string[]): Promise<void> {
   await deleteStoredObjects(orphaned);
 }
 
-/** هل المفتاح مُشار إليه من أي مهمة أو ملاحظة أو منتج؟ (يمنع حذف ملف مستخدم فعلاً) */
+/** هل المفتاح مُشار إليه من أي مهمة أو ملاحظة أو منتج أو عنصر مخزون؟ (يمنع حذف ملف مستخدم فعلاً) */
 export async function isKeyReferenced(key: string): Promise<boolean> {
   const db = prisma();
   const probe = { array_contains: [{ objectKey: key }] };
-  const [task, feedback, product] = await Promise.all([
+  const [task, feedback, product, inventoryItem] = await Promise.all([
     db.task.findFirst({ where: { attachments: probe }, select: { id: true } }),
     db.feedback.findFirst({ where: { attachments: probe }, select: { id: true } }),
     db.product.findFirst({ where: { attachments: probe }, select: { id: true } }),
+    db.inventoryItem.findFirst({ where: { attachments: probe }, select: { id: true } }),
   ]);
-  return !!(task || feedback || product);
+  return !!(task || feedback || product || inventoryItem);
 }

@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { api, login, makeUser, resetDb } from "./helpers.ts";
 
 let admin: string, manager: string, designer: string;
+let catId: string;
 
 beforeAll(async () => {
   await resetDb();
@@ -9,10 +10,13 @@ beforeAll(async () => {
   admin = await login("lol");
   manager = await login("amr");
   designer = await login("invdes");
+  const cat = await api(manager).post("/api/inventory/categories").send({ name: "خشب" });
+  expect(cat.status).toBe(201);
+  catId = cat.body.category.id;
 });
 
 const mkItem = async (token: string, o: Record<string, unknown> = {}) => {
-  const res = await api(token).post("/api/inventory").send({ name: "خشب MDF 3مم", unit: "لوح", ...o });
+  const res = await api(token).post("/api/inventory").send({ name: "خشب MDF 3مم", unit: "لوح", categoryId: catId, ...o });
   expect(res.status).toBe(201);
   return res.body.item as { id: string; [k: string]: any };
 };
@@ -26,7 +30,7 @@ describe("inventory: الوصول", () => {
   it("المصمم يقرأ فقط ولا يكتب ← 403", async () => {
     const item = await mkItem(manager, { name: "وصول" });
     expect((await api(designer).get("/api/inventory")).status).toBe(200);
-    expect((await api(designer).post("/api/inventory").send({ name: "x" })).status).toBe(403);
+    expect((await api(designer).post("/api/inventory").send({ name: "x", categoryId: catId })).status).toBe(403);
     expect((await api(designer).patch(`/api/inventory/${item.id}`).send({ name: "y" })).status).toBe(403);
     expect((await move(designer, item.id, "IN", 1)).status).toBe(403);
     expect((await api(designer).delete(`/api/inventory/${item.id}`)).status).toBe(403);
@@ -118,6 +122,47 @@ describe("inventory: الحركات", () => {
     expect(list.body.items.find((i: any) => i.id === item.id).quantity).toBe(0);
     const log = await api(manager).get(`/api/inventory/${item.id}/movements`);
     expect(log.body.movements).toHaveLength(6); // افتتاحي + 5 إخراجات
+  });
+});
+
+const IMG = (n: number) => ({ id: `img-${n}`, name: `صورة${n}.png`, dataUrl: "data:image/png;base64,iVBORw0KGgo=" });
+
+describe("inventory: التصنيفات والصور", () => {
+  it("إنشاء تصنيف وقائمة؛ الاسم المكرر (بغض النظر عن الحالة) ← 409؛ المصمم ممنوع من الإنشاء", async () => {
+    const a = await api(manager).post("/api/inventory/categories").send({ name: "  أكريليك  " });
+    expect(a.status).toBe(201);
+    expect(a.body.category.name).toBe("أكريليك");
+    expect((await api(manager).post("/api/inventory/categories").send({ name: "أكريليك" })).status).toBe(409);
+    expect((await api(designer).post("/api/inventory/categories").send({ name: "ممنوع" })).status).toBe(403);
+    const list = await api(designer).get("/api/inventory/categories");
+    expect(list.status).toBe(200);
+    expect(list.body.categories.map((c: any) => c.name)).toContain("أكريليك");
+  });
+  it("التصنيف مطلوب وموجود", async () => {
+    expect((await api(manager).post("/api/inventory").send({ name: "بلا تصنيف" })).status).toBe(400);
+    expect((await api(manager).post("/api/inventory").send({ name: "تصنيف وهمي", categoryId: "nope" })).status).toBe(400);
+  });
+  it("العنصر يحمل اسم تصنيفه ويمكن تغييره والفلترة به", async () => {
+    const other = (await api(manager).post("/api/inventory/categories").send({ name: "جلد" })).body.category;
+    const item = await mkItem(manager, { name: "قطعة جلد" });
+    expect(item.categoryName).toBe("خشب");
+    const upd = await api(manager).patch(`/api/inventory/${item.id}`).send({ categoryId: other.id });
+    expect(upd.body.item.categoryName).toBe("جلد");
+    const filtered = await api(manager).get(`/api/inventory?categoryId=${other.id}`);
+    expect(filtered.body.items.map((i: any) => i.id)).toContain(item.id);
+    expect(filtered.body.items.every((i: any) => i.categoryId === other.id)).toBe(true);
+  });
+  it("عدة صور للعنصر الواحد: إنشاء وتعديل وإزالة", async () => {
+    const item = await mkItem(manager, { name: "بصور", attachments: [IMG(1), IMG(2), IMG(3)] });
+    expect(item.attachments).toHaveLength(3);
+    const two = await api(manager).patch(`/api/inventory/${item.id}`).send({ attachments: [IMG(1), IMG(4)] });
+    expect(two.body.item.attachments.map((a: any) => a.id)).toEqual(["img-1", "img-4"]);
+    const none = await api(manager).patch(`/api/inventory/${item.id}`).send({ attachments: [] });
+    expect(none.body.item.attachments).toHaveLength(0);
+  });
+  it("أكثر من 10 صور ← 400", async () => {
+    const res = await api(manager).post("/api/inventory").send({ name: "كثير", categoryId: catId, attachments: Array.from({ length: 11 }, (_, i) => IMG(i)) });
+    expect(res.status).toBe(400);
   });
 });
 

@@ -1,6 +1,13 @@
 import type { Prisma } from "../generated/prisma/client.ts";
+import { serializeAttachments } from "./attachments.js";
 
-export type InventoryItemRow = Prisma.InventoryItemGetPayload<object>;
+export const inventoryItemInclude = { category: true } satisfies Prisma.InventoryItemInclude;
+
+export type InventoryItemRow = Prisma.InventoryItemGetPayload<{ include: typeof inventoryItemInclude }>;
+
+export function serializeInventoryCategory(c: { id: string; name: string }) {
+  return { id: c.id, name: c.name };
+}
 
 /** Decimal → رقم بثلاث خانات عشرية */
 export const num3 = (d: { toString(): string }) => Math.round(Number(d.toString()) * 1000) / 1000;
@@ -12,6 +19,9 @@ export function serializeInventoryItem(i: InventoryItemRow) {
     id: i.id,
     name: i.name,
     sku: i.sku,
+    categoryId: i.categoryId,
+    categoryName: i.category.name,
+    attachments: serializeAttachments(i.attachments),
     unit: i.unit,
     quantity,
     minQuantity,
