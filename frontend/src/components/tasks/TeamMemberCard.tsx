@@ -1,6 +1,6 @@
 import { CheckCircle2, ChevronDown, ListTodo, Maximize2, Minimize2, Plus, Timer, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { AttendanceSession, Task, TeamMember } from "../../types";
+import type { AttendanceSession, Task, TeamMember, TimerAction } from "../../types";
 import { getTaskElapsed } from "../../hooks/useTaskTimer";
 import { formatDuration } from "../../lib/date";
 import { Button } from "../ui/Button";
@@ -29,6 +29,7 @@ interface TeamMemberCardProps {
   onSetCurrent: (id: string, current: number) => void;
   onAddComment: (id: string) => void;
   onDeleteComment: (id: string, commentTime: number) => void;
+  onTimer: (id: string, action: TimerAction) => void;
   onMoveTask: (id: string, assigneeId: TeamMember["id"], beforeTaskId?: string) => void;
   onReorder: (orderedIds: string[]) => void;
   taskNumbers: Map<string, number>;
@@ -51,6 +52,7 @@ export function TeamMemberCard({
   onAddMainTask,
   onAddSubtask,
   onStart,
+  onTimer,
   onRequestStop,
   onFinish,
   onReopen,
@@ -288,6 +290,7 @@ export function TeamMemberCard({
                 onAddSubtask={onAddSubtaskToParent}
                 onAddComment={onAddComment}
                 onDeleteComment={onDeleteComment}
+                onTimer={onTimer}
               />
             </div>
           ))

@@ -29,6 +29,7 @@ export const createTaskSchema = z.object({
   date: isoDate,
   assigneeId: id.optional(),
   parentId: id.optional(),
+  plannedMinutes: z.number().int().min(1).max(1440).optional(),
 });
 
 export const updateTaskSchema = z
@@ -56,3 +57,8 @@ export const reorderSchema = z.object({ orderedIds: z.array(id).min(1).max(2000)
 export const moveSchema = z.object({ assigneeId: id, beforeTaskId: id.optional() });
 export const copyTaskSchema = z.object({ assigneeId: id });
 export const moveUnfinishedSchema = z.object({ date: isoDate });
+
+const timerMinutes = z.number().int("المدة بالدقائق (عدد صحيح)").min(1, "أقل مدة دقيقة واحدة").max(1440, "أقصى مدة 24 ساعة");
+export const timerSetSchema = z.object({ minutes: timerMinutes });
+export const timerStartSchema = z.object({ minutes: timerMinutes.optional() });
+export const timerExtendSchema = z.object({ minutes: timerMinutes });

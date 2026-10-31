@@ -1,9 +1,10 @@
 import { CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, GripVertical, MessageSquarePlus, Minus, Pause, Pencil, Play, Plus, RotateCcw, Square, Timer, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import type { Task } from "../../types";
+import type { Task, TimerAction } from "../../types";
 import { calculateParentProgress, calculateTaskProgress } from "../../lib/taskProgress";
 import { formatArabicTime, formatDuration } from "../../lib/date";
 import { getTaskElapsed, useElapsed } from "../../hooks/useTaskTimer";
+import { TaskTimerPanel } from "./TaskTimerPanel";
 import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
 import { PriorityTag } from "../ui/Badge";
@@ -28,6 +29,7 @@ interface TaskCardProps {
   onAddSubtask: (task: Task) => void;
   onAddComment: (id: string) => void;
   onDeleteComment: (id: string, commentTime: number) => void;
+  onTimer: (id: string, action: TimerAction) => void;
 }
 
 const statusLabels = {
@@ -164,7 +166,7 @@ function subtasksLabel(count: number): string {
   return `${count} مهمة فرعية`;
 }
 
-function SubtaskRow({ task, getSubtasks, taskNumbers, onStart, onRequestStop, onFinish, onReopen, onDelete, onEdit, onSetCurrent, onAddSubtask, onAddComment, onDeleteComment }: Pick<TaskCardProps, "getSubtasks" | "taskNumbers" | "onStart" | "onRequestStop" | "onFinish" | "onReopen" | "onDelete" | "onEdit" | "onSetCurrent" | "onAddSubtask" | "onAddComment" | "onDeleteComment"> & { task: Task }) {
+function SubtaskRow({ task, getSubtasks, taskNumbers, onStart, onRequestStop, onFinish, onReopen, onDelete, onEdit, onSetCurrent, onAddSubtask, onAddComment, onDeleteComment, onTimer }: Pick<TaskCardProps, "getSubtasks" | "taskNumbers" | "onStart" | "onRequestStop" | "onFinish" | "onReopen" | "onDelete" | "onEdit" | "onSetCurrent" | "onAddSubtask" | "onAddComment" | "onDeleteComment" | "onTimer"> & { task: Task }) {
   const [expanded, setExpanded] = useState(false);
   const { canManageTasks, canDeleteComment } = usePermissions();
   const elapsed = useElapsed(task);
@@ -223,6 +225,7 @@ function SubtaskRow({ task, getSubtasks, taskNumbers, onStart, onRequestStop, on
             <span>بدأت: {formatArabicTime(task.startedAt ?? task.startTime)}</span>
             <span>انتهت: {formatArabicTime(task.endTime)}</span>
           </div>
+          <TaskTimerPanel task={task} onAction={onTimer} />
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {!isCompleted && (
               isRunning
@@ -252,6 +255,7 @@ function SubtaskRow({ task, getSubtasks, taskNumbers, onStart, onRequestStop, on
                   onAddSubtask={onAddSubtask}
                   onAddComment={onAddComment}
                   onDeleteComment={onDeleteComment}
+                  onTimer={onTimer}
                 />
               ))}
             </div>
@@ -293,7 +297,7 @@ const pillLabels: Record<Exclude<CardState, "idle">, string> = {
 
 const priorityLabels = { low: "منخفضة", medium: "متوسطة", high: "عالية" } as const;
 
-export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, onRequestStop, onFinish, onReopen, onMoveToDate, onCopy, onDelete, onEdit, onSetCurrent, onAddSubtask, onAddComment, onDeleteComment }: TaskCardProps) {
+export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, onRequestStop, onFinish, onReopen, onMoveToDate, onCopy, onDelete, onEdit, onSetCurrent, onAddSubtask, onAddComment, onDeleteComment, onTimer }: TaskCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const { canManageTasks, canDeleteComment } = usePermissions();
@@ -386,6 +390,8 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
         </div>
       </div>
 
+      {!hasSubtasks && <TaskTimerPanel task={task} onAction={onTimer} />}
+
       <div className="tc-actions">
         {!hasSubtasks && !isCompleted && (
           isRunning ? (
@@ -473,6 +479,7 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
               onAddSubtask={onAddSubtask}
               onAddComment={onAddComment}
               onDeleteComment={onDeleteComment}
+              onTimer={onTimer}
             />
           ))}
         </section>

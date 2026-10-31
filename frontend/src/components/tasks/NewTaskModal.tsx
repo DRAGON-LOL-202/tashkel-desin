@@ -46,6 +46,8 @@ export function NewTaskModal({
   const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
   // "" = القيمة الافتراضية (الرقم التالي عند الإضافة، أو الرقم الحالي عند التعديل)
   const [position, setPosition] = useState("");
+  // مدة مخططة بالدقائق (اختيارية، عند الإضافة فقط)؛ تنشئ مؤقتاً معلّقاً يبدأ مع تشغيل المهمة
+  const [plannedMinutes, setPlannedMinutes] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const isSubtask = mode === "subtask";
@@ -57,6 +59,7 @@ export function NewTaskModal({
     setPriority(editing?.priority ?? "medium");
     setTarget(String(editing?.target ?? 1));
     setCurrent(String(editing?.current ?? 0));
+    setPlannedMinutes("");
     setSelectedParentId(parentTask?.id ?? "");
     setAttachments(editing?.attachments ?? []);
     setPosition("");
@@ -98,6 +101,12 @@ export function NewTaskModal({
       return;
     }
 
+    const parsedPlanned = plannedMinutes.trim() === "" ? undefined : Number(plannedMinutes);
+    if (!editing && parsedPlanned !== undefined && (!Number.isInteger(parsedPlanned) || parsedPlanned < 1 || parsedPlanned > 1440)) {
+      setError("المدة المخططة رقم صحيح بين 1 و1440 دقيقة");
+      return;
+    }
+
     const input: CreateTaskInput = {
       parentId: isSubtask ? parentTask?.id ?? selectedParentId : undefined,
       title: title.trim(),
@@ -109,6 +118,7 @@ export function NewTaskModal({
       date,
       assigneeId: assignee.id,
       position: orderLocked ? undefined : effectivePosition,
+      plannedMinutes: editing ? undefined : parsedPlanned,
     };
 
     setSubmitting(true);
@@ -199,6 +209,11 @@ export function NewTaskModal({
           </>
         )}
       </div>
+      {!editing && (
+        <FieldWrap label="المدة المخططة بالدقائق (اختياري)">
+          <Input type="number" min="1" max="1440" step="1" inputMode="numeric" value={plannedMinutes} onChange={(event) => setPlannedMinutes(event.target.value)} placeholder="مثال: 45 — يبدأ العدّ التنازلي عند بدء المهمة" />
+        </FieldWrap>
+      )}
       <FieldWrap label="المرفقات">
         <ImageAttachmentsField value={attachments} onChange={setAttachments} scope="tasks" />
       </FieldWrap>

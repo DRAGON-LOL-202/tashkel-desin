@@ -18,6 +18,22 @@ export interface TaskComment {
   userName?: string;
 }
 
+/** مؤقت تنازلي لمهمة. remainingMs محسوب عند serverNow؛ الواجهة تنقص منه ما مرّ منذ استلام الرد. */
+export interface TaskTimerState {
+  status: "pending" | "running" | "paused" | "expired";
+  plannedMs: number;
+  remainingMs: number;
+  serverNow: number;
+  expiresAt?: number;
+}
+
+export type TimerAction =
+  | { type: "start"; minutes?: number }
+  | { type: "pause" }
+  | { type: "resume" }
+  | { type: "extend"; minutes: number }
+  | { type: "cancel" };
+
 export interface Task {
   id: string;
   parentId?: string;
@@ -41,6 +57,7 @@ export interface Task {
   comments: TaskComment[];
   sortOrder: number;
   createdAt: string;
+  timer?: TaskTimerState;
 }
 
 export interface TeamMember {
@@ -65,6 +82,8 @@ export interface CreateTaskInput {
   assigneeId: TeamMemberId;
   priority: TaskPriority;
   date: string;
+  /** مدة مخططة بالدقائق (إنشاء فقط): ينشئ مؤقتاً معلّقاً يبدأ مع تشغيل المهمة */
+  plannedMinutes?: number;
   /** الرقم المطلوب للمهمة بين أشقائها (يبدأ من 1)؛ يُعالَج في الواجهة عبر reorder */
   position?: number;
 }

@@ -1,4 +1,5 @@
 import { serializeAttachments } from "./attachments.js";
+import { serializeTimer, type TimerRow } from "./timerMath.js";
 
 // تحويل صف Task (مع العلاقات) إلى الشكل الذي تتوقعه الواجهة (src/types/task.ts).
 // المدد بالميلي ثانية، والحالة/الأولوية بحروف صغيرة. totalDuration يُحسب من TaskTimeLog ولا يُخزَّن.
@@ -8,6 +9,7 @@ export const taskInclude = {
   comments: { orderBy: { createdAt: "asc" as const }, include: { user: { select: { id: true, name: true } } } },
   assignedTo: { select: { id: true, name: true } },
   createdBy: { select: { id: true, name: true } },
+  timer: true,
 };
 
 interface TaskRow {
@@ -31,6 +33,7 @@ interface TaskRow {
   comments: { text: string; createdAt: Date; userId: string; id: string; user: { id: string; name: string } }[];
   assignedTo: { id: string; name: string };
   createdBy: { id: string; name: string };
+  timer?: TimerRow | null;
 }
 
 export function serializeTask(t: TaskRow) {
@@ -68,5 +71,6 @@ export function serializeTask(t: TaskRow) {
     comments: t.comments.map((c) => ({ id: c.id, text: c.text, time: c.createdAt.getTime(), userId: c.userId, userName: c.user.name })),
     sortOrder: t.sortOrder,
     createdAt: t.createdAt.toISOString(),
+    timer: t.timer ? serializeTimer(t.timer) : undefined,
   };
 }

@@ -1,6 +1,6 @@
 import { api } from "../lib/api";
 import { toAttachmentPayload } from "../lib/attachments";
-import type { CalendarDateState, CreateTaskInput, DailyTimeStat, Task, TeamMemberId } from "../types";
+import type { CalendarDateState, CreateTaskInput, DailyTimeStat, Task, TeamMemberId, TimerAction } from "../types";
 
 interface TaskResponse {
   task: Task;
@@ -114,6 +114,7 @@ export const tasksService = {
         date: input.date,
         assigneeId: input.assigneeId,
         parentId: input.parentId,
+        plannedMinutes: input.plannedMinutes,
       },
     });
     return task;
@@ -141,6 +142,13 @@ export const tasksService = {
 
   async finish(id: string): Promise<Task> {
     const { task } = await api<TaskResponse>(`/tasks/${id}/end`, { method: "POST" });
+    return task;
+  },
+
+  async timer(id: string, action: TimerAction): Promise<Task> {
+    const path = action.type === "cancel" ? "stop" : action.type;
+    const body = action.type === "start" ? { minutes: action.minutes } : action.type === "extend" ? { minutes: action.minutes } : undefined;
+    const { task } = await api<TaskResponse>(`/tasks/${id}/timer/${path}`, { method: "POST", body });
     return task;
   },
 

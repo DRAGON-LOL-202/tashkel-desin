@@ -26,6 +26,14 @@ enum TaskStatus {
   COMPLETED
 }
 
+// حالة المؤقت التنازلي لمهمة. PENDING = مُحدَّد المدة ولم يبدأ، EXPIRED = انتهى وقته (يضبطها المراقب أو أي إجراء لاحق).
+enum TimerStatus {
+  PENDING
+  RUNNING
+  PAUSED
+  EXPIRED
+}
+
 enum FeedbackType {
   PROBLEM
   OPERATIONAL
@@ -104,6 +112,7 @@ model Task {
   timeLogs   TaskTimeLog[]
   comments   TaskComment[]
   notifications Notification[]
+  timer      TaskTimer?
 
   @@index([date])
   @@index([assignedToId, date])
@@ -268,4 +277,26 @@ model Notification {
   @@index([recipientId, isRead, createdAt])
   @@index([recipientId, createdAt])
   @@index([relatedTaskId])
+}
+
+// مؤقت تنازلي لمهمة (واحد كحد أقصى). remainingMs = المتبقي عند آخر نقطة حفظ (بدء/إيقاف/تمديد)،
+// والمتبقي الفعلي أثناء العمل = remainingMs - (الآن - runningSince). لا نخزّن العدّ نفسه.
+// warned10/warned1/expiredNotified تمنع تكرار التنبيه (تُصفَّر عند التمديد).
+model TaskTimer {
+  id              String      @id @default(cuid())
+  taskId          String      @unique
+  plannedMs       Int
+  remainingMs     Int
+  status          TimerStatus @default(PENDING)
+  runningSince    DateTime?
+  warned10        Boolean     @default(false)
+  warned1         Boolean     @default(false)
+  expiredNotified Boolean     @default(false)
+  createdById     String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([status])
 }

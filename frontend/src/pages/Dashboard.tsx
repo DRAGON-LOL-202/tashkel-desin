@@ -16,7 +16,7 @@ import { CopyTaskModal } from "../components/tasks/CopyTaskModal";
 import { applyMoveToMember, applyReorder, isTaskTreeCompleted, tasksService } from "../services/tasksService";
 import { attendanceService } from "../services/attendanceService";
 import { useResource } from "../hooks/useResource";
-import type { AttendanceSession, AttendanceToday, CalendarDateState, CreateTaskInput, Task, TeamMember } from "../types";
+import type { AttendanceSession, AttendanceToday, CalendarDateState, CreateTaskInput, Task, TeamMember, TimerAction } from "../types";
 import { getTaskElapsed } from "../hooks/useTaskTimer";
 import { todayISO } from "../lib/date";
 import { useToast } from "../components/ui/ToastProvider";
@@ -271,6 +271,13 @@ export default function Dashboard() {
 
   const handleStart = (id: string) => void mutate(() => tasksService.start(id));
 
+  const TIMER_MESSAGES: Partial<Record<TimerAction["type"], string>> = {
+    start: "بدأ المؤقت",
+    extend: "تم تمديد المؤقت",
+    cancel: "أُلغي المؤقت",
+  };
+  const handleTimer = (id: string, action: TimerAction) => void mutate(() => tasksService.timer(id, action), TIMER_MESSAGES[action.type], "info");
+
   const handleRequestStop = (id: string) => setStopTaskId(id);
 
   const handleConfirmStop = async (note: string) => {
@@ -413,6 +420,7 @@ export default function Dashboard() {
               onAddMainTask={handleOpenNewTask}
               onAddSubtask={handleOpenNewSubtask}
               onStart={handleStart}
+              onTimer={handleTimer}
               onRequestStop={handleRequestStop}
               onFinish={handleFinish}
               onReopen={handleReopen}

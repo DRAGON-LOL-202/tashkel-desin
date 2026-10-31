@@ -9,6 +9,7 @@ import { serializeTask, taskInclude } from "../utils/taskSerialize.js";
 import { assertAttachmentsAllowed, deleteUnreferencedObjects } from "../utils/attachments.js";
 import { keysOf, removedKeys } from "../utils/attachmentKeys.ts";
 import { mentionedUserIds, notify } from "../utils/notify.js"; // الإشعارات: أفضل جهد، لا تُفشل العملية
+import { MAX_TIMER_MINUTES, MS_PER_MINUTE, effectiveStatus, remainingAt } from "../utils/timerMath.js";
 import {
   commentSchema,
   copyTaskSchema,
@@ -19,6 +20,9 @@ import {
   progressSchema,
   reorderSchema,
   stopSchema,
+  timerExtendSchema,
+  timerSetSchema,
+  timerStartSchema,
   updateTaskSchema,
 } from "../validators/tasks.js";
 
@@ -249,6 +253,43 @@ async function notifyStatus(actor: User, t: TaskRef, verb: string) {
   });
 }
 
+// ---------- المؤقت التنازلي: ربطه بحالة المهمة ----------
+// القاعدة: المؤقت يعدّ فقط والمهمة تعمل. تشغيل المهمة يُشغّل مؤقتها المعلّق/الموقوف، وإيقافها يوقفه،
+// وإنهاؤها يحذفه. هذه الدوال تُستدعى بعد نجاح العملية الأصلية ولا تُفشلها.
+async function pauseTimerIfRunning(taskId: string) {
+  try {
+    const db = prisma();
+    const t = await db.taskTimer.findUnique({ where: { taskId } });
+    if (!t || t.status !== "RUNNING") return;
+    const rem = remainingAt(t, Date.now());
+    await db.taskTimer.updateMany({
+      where: { id: t.id, status: "RUNNING" },
+      data: { status: rem <= 0 ? "EXPIRED" : "PAUSED", remainingMs: rem, runningSince: null },
+    });
+  } catch (e) {
+    console.error("pauseTimerIfRunning failed", e instanceof Error ? e.message : e);
+  }
+}
+
+async function resumeTimerIfIdle(taskId: string) {
+  try {
+    const db = prisma();
+    const t = await db.taskTimer.findUnique({ where: { taskId } });
+    if (!t || (t.status !== "PENDING" && t.status !== "PAUSED") || t.remainingMs <= 0) return;
+    await db.taskTimer.updateMany({ where: { id: t.id, status: t.status }, data: { status: "RUNNING", runningSince: new Date() } });
+  } catch (e) {
+    console.error("resumeTimerIfIdle failed", e instanceof Error ? e.message : e);
+  }
+}
+
+async function dropTimer(taskId: string) {
+  try {
+    await prisma().taskTimer.deleteMany({ where: { taskId } });
+  } catch (e) {
+    console.error("dropTimer failed", e instanceof Error ? e.message : e);
+  }
+}
+
 // ---------- إنشاء ----------
 tasksRouter.post(
   "/",
@@ -305,6 +346,10 @@ tasksRouter.post(
         parentId: body.parentId ?? null,
       },
     });
+    if (body.plannedMinutes && !done) {
+      const ms = body.plannedMinutes * MS_PER_MINUTE;
+      await db.taskTimer.create({ data: { taskId: created.id, plannedMs: ms, remainingMs: ms, createdById: me.id } });
+    }
     if (created.parentId) {
       const parent = await db.task.findUnique({ where: { id: created.parentId }, select: { id: true, title: true, createdById: true } });
       await notify({
@@ -626,7 +671,10 @@ tasksRouter.patch(
     } else {
       await db.task.update({ where: { id: task.id }, data: { current } });
     }
-    if (done && task.status !== "COMPLETED") await notifyCompleted(req.user!, task);
+    if (done && task.status !== "COMPLETED") {
+      await dropTimer(task.id);
+      await notifyCompleted(req.user!, task);
+    }
     if (!done && task.status === "COMPLETED") await notifyReopened(req.user!, task);
     await respondTask(res, task.id);
   })
@@ -649,6 +697,7 @@ tasksRouter.post(
         data: { status: "RUNNING", startedAt: task.startedAt ?? now, endTime: null },
       }),
     ]);
+    await resumeTimerIfIdle(task.id);
     await notifyStatus(me, task, "بدأ العمل على");
     await respondTask(res, task.id);
   })
@@ -669,6 +718,7 @@ tasksRouter.post(
       }),
       db.task.update({ where: { id: task.id }, data: { status: "PAUSED" } }),
     ]);
+    await pauseTimerIfRunning(task.id);
     await notifyStatus(req.user!, task, "أوقف مؤقتاً العمل على");
     await respondTask(res, task.id);
   })
@@ -688,6 +738,7 @@ tasksRouter.post(
         data: { status: "COMPLETED", current: task.target, endTime: now, sortOrder: await bottomOrder(task) },
       }),
     ]);
+    await dropTimer(task.id);
     await notifyCompleted(req.user!, task);
     await respondTask(res, task.id);
   })
@@ -710,6 +761,158 @@ tasksRouter.post(
       },
     });
     await notifyReopened(req.user!, task);
+    await respondTask(res, task.id);
+  })
+);
+
+// ---------- المؤقت التنازلي (مدة مخصصة لكل مهمة) ----------
+// تحكّم المسؤول عن المهمة أو الإدارة (نفس قاعدة getTaskFor). المتبقي يُحسب من الخادم ولا يعتمد على ساعة الجهاز.
+const MAX_REMAINING_MS = MAX_TIMER_MINUTES * MS_PER_MINUTE;
+
+async function requireOpenTask(user: User, rawId: unknown) {
+  const task = await getTaskFor(user, rawId);
+  if (task.status === "COMPLETED") throw conflict("المهمة مكتملة");
+  return task;
+}
+
+// تحديد المدة (أو استبدالها) دون تشغيل؛ يُرفض أثناء العدّ حتى لا يُفقد الوقت المنقضي
+tasksRouter.post(
+  "/:id/timer",
+  asyncHandler(async (req, res) => {
+    const { minutes } = timerSetSchema.parse(req.body);
+    const task = await requireOpenTask(req.user!, req.params.id);
+    const t = task.timer;
+    if (t && effectiveStatus(t, Date.now()) === "RUNNING") throw conflict("المؤقت يعمل؛ أوقفه أولاً أو استخدم التمديد");
+    const ms = minutes * MS_PER_MINUTE;
+    const data = { plannedMs: ms, remainingMs: ms, status: "PENDING" as const, runningSince: null, warned10: false, warned1: false, expiredNotified: false };
+    await prisma().taskTimer.upsert({ where: { taskId: task.id }, create: { taskId: task.id, createdById: req.user!.id, ...data }, update: data });
+    await respondTask(res, task.id);
+  })
+);
+
+// بدء العدّ: مؤقت جديد (minutes مطلوبة)، أو معلّق/موقوف (يكمل من المتبقي)، أو منتهٍ (minutes مطلوبة لمدة جديدة).
+// يُشغّل المهمة أيضاً إن لم تكن تعمل.
+async function startTimer(me: User, rawId: unknown, minutes: number | undefined, mode: "start" | "resume") {
+  const db = prisma();
+  const task = await requireOpenTask(me, rawId);
+  const now = new Date();
+  const t = task.timer;
+  const eff = t ? effectiveStatus(t, now.getTime()) : null;
+  if (eff === "RUNNING") throw conflict("المؤقت يعمل بالفعل");
+  if (mode === "resume" && eff !== "PAUSED") throw conflict("لا يوجد مؤقت موقوف لاستكماله");
+
+  if (!t) {
+    if (!minutes) throw badRequest("حدّد مدة المؤقت بالدقائق");
+    const ms = minutes * MS_PER_MINUTE;
+    await db.taskTimer.create({ data: { taskId: task.id, plannedMs: ms, remainingMs: ms, status: "RUNNING", runningSince: now, createdById: me.id } });
+  } else if (eff === "EXPIRED") {
+    if (!minutes) throw conflict("انتهى المؤقت؛ حدّد مدة جديدة أو مدّده");
+    const ms = minutes * MS_PER_MINUTE;
+    await db.taskTimer.update({
+      where: { id: t.id },
+      data: { plannedMs: ms, remainingMs: ms, status: "RUNNING", runningSince: now, warned10: false, warned1: false, expiredNotified: false },
+    });
+  } else {
+    if (eff === "PAUSED" && minutes) throw badRequest("المؤقت موقوف؛ استخدم التمديد لإضافة وقت");
+    const data: { status: "RUNNING"; runningSince: Date; plannedMs?: number; remainingMs?: number } = { status: "RUNNING", runningSince: now };
+    if (minutes) {
+      data.plannedMs = minutes * MS_PER_MINUTE;
+      data.remainingMs = minutes * MS_PER_MINUTE;
+    }
+    // شرط الحالة يمنع سباق ضغطتين متزامنتين
+    const r = await db.taskTimer.updateMany({ where: { id: t.id, status: t.status }, data });
+    if (r.count === 0) throw conflict("تغيّر المؤقت للتو، أعد المحاولة");
+  }
+
+  if (task.status !== "RUNNING") {
+    await db.$transaction([
+      db.taskTimeLog.create({ data: { taskId: task.id, userId: me.id, startTime: now } }),
+      db.task.update({ where: { id: task.id }, data: { status: "RUNNING", startedAt: task.startedAt ?? now, endTime: null } }),
+    ]);
+    await notifyStatus(me, task, "بدأ العمل على");
+  }
+  return task.id;
+}
+
+tasksRouter.post(
+  "/:id/timer/start",
+  asyncHandler(async (req, res) => {
+    const { minutes } = timerStartSchema.parse(req.body ?? {});
+    await respondTask(res, await startTimer(req.user!, req.params.id, minutes, "start"));
+  })
+);
+
+tasksRouter.post(
+  "/:id/timer/resume",
+  asyncHandler(async (req, res) => {
+    await respondTask(res, await startTimer(req.user!, req.params.id, undefined, "resume"));
+  })
+);
+
+// إيقاف مؤقت للعدّ: يحفظ المتبقي ويوقف المهمة أيضاً (يُغلق سجل وقت العمل)
+tasksRouter.post(
+  "/:id/timer/pause",
+  asyncHandler(async (req, res) => {
+    const me = req.user!;
+    const db = prisma();
+    const task = await requireOpenTask(me, req.params.id);
+    const t = task.timer;
+    const now = new Date();
+    if (!t) throw conflict("لا يوجد مؤقت لهذه المهمة");
+    if (effectiveStatus(t, now.getTime()) !== "RUNNING") throw conflict("المؤقت ليس قيد العمل");
+    const r = await db.taskTimer.updateMany({
+      where: { id: t.id, status: "RUNNING" },
+      data: { status: "PAUSED", remainingMs: remainingAt(t, now.getTime()), runningSince: null },
+    });
+    if (r.count === 0) throw conflict("تغيّر المؤقت للتو، أعد المحاولة");
+    if (task.status === "RUNNING") {
+      await db.$transaction([
+        db.taskTimeLog.updateMany({ where: { taskId: task.id, stopTime: null }, data: { stopTime: now, stopReason: "إيقاف المؤقت" } }),
+        db.task.update({ where: { id: task.id }, data: { status: "PAUSED" } }),
+      ]);
+      await notifyStatus(me, task, "أوقف مؤقتاً العمل على");
+    }
+    await respondTask(res, task.id);
+  })
+);
+
+// تمديد: يضيف دقائق إلى المتبقي (حتى بعد الانتهاء) ويعيد تفعيل تنبيهات الاقتراب
+tasksRouter.post(
+  "/:id/timer/extend",
+  asyncHandler(async (req, res) => {
+    const { minutes } = timerExtendSchema.parse(req.body);
+    const db = prisma();
+    const task = await requireOpenTask(req.user!, req.params.id);
+    const t = task.timer;
+    const now = new Date();
+    if (!t) throw conflict("لا يوجد مؤقت لهذه المهمة");
+    const remaining = remainingAt(t, now.getTime()) + minutes * MS_PER_MINUTE;
+    if (remaining > MAX_REMAINING_MS) throw badRequest(`المتبقي لا يمكن أن يتجاوز ${MAX_TIMER_MINUTES} دقيقة`);
+    const keepPending = t.status === "PENDING";
+    const counting = !keepPending && task.status === "RUNNING";
+    const status = keepPending ? "PENDING" : counting ? "RUNNING" : "PAUSED";
+    await db.taskTimer.update({
+      where: { id: t.id },
+      data: {
+        status,
+        remainingMs: remaining,
+        plannedMs: t.plannedMs + minutes * MS_PER_MINUTE,
+        runningSince: status === "RUNNING" ? now : null,
+        warned10: remaining > 10 * MS_PER_MINUTE ? false : t.warned10,
+        warned1: remaining > MS_PER_MINUTE ? false : t.warned1,
+        expiredNotified: false,
+      },
+    });
+    await respondTask(res, task.id);
+  })
+);
+
+// إلغاء المؤقت: يحذفه دون المساس بحالة المهمة ووقت عملها
+tasksRouter.post(
+  "/:id/timer/stop",
+  asyncHandler(async (req, res) => {
+    const task = await getTaskFor(req.user!, req.params.id);
+    await prisma().taskTimer.deleteMany({ where: { taskId: task.id } });
     await respondTask(res, task.id);
   })
 );
