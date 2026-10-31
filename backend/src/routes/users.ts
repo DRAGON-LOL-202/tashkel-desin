@@ -6,6 +6,8 @@ import { requireAuth, requireStaff } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { badRequest, conflict, forbidden, HttpError, notFound } from "../utils/httpError.js";
 import { publicUser } from "../utils/serialize.js";
+import { deleteUnreferencedObjects } from "../utils/attachments.js";
+import { keysOf } from "../utils/attachmentKeys.ts";
 import { createUserSchema, statusSchema, updateProfileSchema, updateUserSchema } from "../validators/users.js";
 
 export const usersRouter = Router();
@@ -164,26 +166,69 @@ usersRouter.delete(
   asyncHandler(async (req, res) => {
     const actor = req.user!;
     const db = prisma();
+    const purge = req.query.purge === "true";
     const target = await db.user.findUnique({ where: { id: idOf(req.params.id) } });
     if (!target) throw notFound("المستخدم غير موجود");
     if (target.isSystemUser) throw new HttpError(403, "مستخدمو النظام لا يُحذفون", "SYSTEM_USER");
     if (target.id === actor.id) throw badRequest("لا يمكنك حذف حسابك بنفسك");
     if (target.role === "ADMIN" && actor.role !== "ADMIN") throw forbidden("لا يمكنك حذف حساب المدير العام");
 
-    // بيانات تاريخية مرتبطة ← التعطيل بدل الحذف
-    const [tasks, logs, comments, feedback, goals, events, attendance] = await Promise.all([
-      db.task.count({ where: { OR: [{ createdById: target.id }, { assignedToId: target.id }] } }),
-      db.taskTimeLog.count({ where: { userId: target.id } }),
-      db.taskComment.count({ where: { userId: target.id } }),
-      db.feedback.count({ where: { createdById: target.id } }),
-      db.goal.count({ where: { createdById: target.id } }),
-      db.calendarEvent.count({ where: { createdById: target.id } }),
-      db.attendanceSession.count({ where: { userId: target.id } }),
-    ]);
-    if (tasks + logs + comments + feedback + goals + events + attendance > 0) {
-      throw conflict("لهذا المستخدم بيانات مرتبطة (مهام/ملاحظات/...). عطّل الحساب بدلاً من حذفه");
+    if (!purge) {
+      // بيانات تاريخية مرتبطة ← التعطيل بدل الحذف (الواجهة تعرض خيار حذف الكل أو التعطيل)
+      const [tasks, logs, comments, feedback, goals, events, attendance, products] = await Promise.all([
+        db.task.count({ where: { OR: [{ createdById: target.id }, { assignedToId: target.id }] } }),
+        db.taskTimeLog.count({ where: { userId: target.id } }),
+        db.taskComment.count({ where: { userId: target.id } }),
+        db.feedback.count({ where: { createdById: target.id } }),
+        db.goal.count({ where: { createdById: target.id } }),
+        db.calendarEvent.count({ where: { createdById: target.id } }),
+        db.attendanceSession.count({ where: { userId: target.id } }),
+        db.product.count({ where: { createdById: target.id } }),
+      ]);
+      if (tasks + logs + comments + feedback + goals + events + attendance + products > 0) {
+        throw new HttpError(409, "لهذا المستخدم بيانات مرتبطة (مهام/ملاحظات/...). عطّل الحساب بدلاً من حذفه", "HAS_DATA");
+      }
+      await db.user.delete({ where: { id: target.id } });
+      res.json({ ok: true });
+      return;
     }
-    await db.user.delete({ where: { id: target.id } });
+
+    // ---- حذف الحساب مع كل بياناته ----
+    // مرفقات المهام (وكل أحفادها بالـ cascade) والملاحظات تُجمع قبل الحذف لتنظيف R2 بعده.
+    const rootTasks = await db.task.findMany({
+      where: { OR: [{ createdById: target.id }, { assignedToId: target.id }] },
+      select: { id: true, attachments: true },
+    });
+    const keys = rootTasks.flatMap((t) => keysOf(t.attachments));
+    let frontier = rootTasks.map((t) => t.id);
+    const seen = new Set(frontier);
+    while (frontier.length > 0) {
+      const kids = await db.task.findMany({
+        where: { parentId: { in: frontier }, id: { notIn: [...seen] } },
+        select: { id: true, attachments: true },
+      });
+      kids.forEach((k) => seen.add(k.id));
+      keys.push(...kids.flatMap((k) => keysOf(k.attachments)));
+      frontier = kids.map((k) => k.id);
+    }
+    const feedbackRows = await db.feedback.findMany({ where: { createdById: target.id }, select: { attachments: true } });
+    keys.push(...feedbackRows.flatMap((r) => keysOf(r.attachments)));
+
+    await db.$transaction([
+      // مهام المستخدم (أنشأها أو مُسندة إليه): الفرعية والسجلات والتعليقات تُحذف بالـ cascade
+      db.task.deleteMany({ where: { OR: [{ createdById: target.id }, { assignedToId: target.id }] } }),
+      // سجلاته وتعليقاته على مهام الآخرين
+      db.taskTimeLog.deleteMany({ where: { userId: target.id } }),
+      db.taskComment.deleteMany({ where: { userId: target.id } }),
+      db.feedback.deleteMany({ where: { createdById: target.id } }),
+      db.goal.deleteMany({ where: { createdById: target.id } }),
+      db.calendarEvent.deleteMany({ where: { createdById: target.id } }),
+      db.attendanceSession.deleteMany({ where: { userId: target.id } }),
+      // المنتجات كتالوج مشترك: لا تُحذف، تُنقل نسبتها لمن يجري الحذف
+      db.product.updateMany({ where: { createdById: target.id }, data: { createdById: actor.id } }),
+      db.user.delete({ where: { id: target.id } }),
+    ]);
+    await deleteUnreferencedObjects(keys);
     res.json({ ok: true });
   })
 );

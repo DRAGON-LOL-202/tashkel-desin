@@ -8,11 +8,11 @@ import { Button } from "../components/ui/Button";
 import { IconButton } from "../components/ui/IconButton";
 import { Input } from "../components/ui/Field";
 import { EmptyState } from "../components/ui/EmptyState";
-import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { useToast } from "../components/ui/ToastProvider";
 import { useAuth } from "../components/auth/AuthProvider";
 import { UserModal } from "../components/users/UserModal";
+import { DeleteUserDialog } from "../components/users/DeleteUserDialog";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
 import { roleLabel, usersService } from "../services/usersService";
@@ -63,11 +63,18 @@ export default function ManageUsersPage() {
     await reload();
   };
 
-  const handleDelete = async (target: TeamMember) => {
-    const result = await safe(() => usersService.remove(target.id));
+  const handleDeleteAll = async (target: TeamMember) => {
+    const result = await safe(() => usersService.remove(target.id, true));
     if (!result.ok) return;
-    show("تم حذف المستخدم");
+    setDeleteTarget(null);
+    show("تم حذف المستخدم وكل بياناته");
     await reload();
+  };
+
+  const handleDisableInstead = async (target: TeamMember) => {
+    setDeleteTarget(null);
+    if (target.isActive) await handleToggleActive(target);
+    else show("الحساب معطّل بالفعل وبياناته محفوظة");
   };
 
   return (
@@ -196,17 +203,11 @@ export default function ManageUsersPage() {
         />
       )}
 
-      <ConfirmDialog
-        open={!!deleteTarget}
+      <DeleteUserDialog
+        target={deleteTarget}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={() => deleteTarget && void handleDelete(deleteTarget)}
-        title="حذف المستخدم"
-        description={
-          deleteTarget
-            ? `سيُحذف حساب «${deleteTarget.name}» نهائياً. إن كانت له مهام أو ملاحظات مرتبطة فسيُرفض الحذف ويُنصح بالتعطيل.`
-            : undefined
-        }
-        confirmLabel="حذف"
+        onDeleteAll={(t) => void handleDeleteAll(t)}
+        onDisable={(t) => void handleDisableInstead(t)}
       />
     </AppLayout>
   );

@@ -118,6 +118,36 @@ describe("users: حذف", () => {
     expect((await api(manager).delete(`/api/users/${u.id}`)).status).toBe(409);
     expect(await prisma().user.findUnique({ where: { id: u.id } })).not.toBeNull();
   });
+  it("purge=true ← يحذف الحساب مع كل بياناته وينقل المنتجات لمن يحذف", async () => {
+    const u = await makeUser("purgeme");
+    const me = await prisma().user.findUnique({ where: { username: "amr" } });
+    await prisma().feedback.create({
+      data: { title: "t", description: "d", type: "IDEA", date: "2026-01-01", createdById: u.id },
+    });
+    await prisma().goal.create({
+      data: { title: "g", type: "WEEKLY", startDate: "2026-01-01", endDate: "2026-01-07", createdById: u.id },
+    });
+    const task = await prisma().task.create({
+      data: { title: "task", date: "2026-01-01", createdById: u.id, assignedToId: u.id },
+    });
+    await prisma().taskComment.create({ data: { taskId: task.id, userId: u.id, text: "c" } });
+    const cat = await prisma().productCategory.create({ data: { name: "cat-purge" } });
+    const product = await prisma().product.create({ data: { name: "p", categoryId: cat.id, createdById: u.id } });
+
+    const res = await api(manager).delete(`/api/users/${u.id}?purge=true`);
+    expect(res.status).toBe(200);
+    expect(await prisma().user.findUnique({ where: { id: u.id } })).toBeNull();
+    expect(await prisma().feedback.count({ where: { createdById: u.id } })).toBe(0);
+    expect(await prisma().task.findUnique({ where: { id: task.id } })).toBeNull();
+    const kept = await prisma().product.findUnique({ where: { id: product.id } });
+    expect(kept).not.toBeNull();
+    expect(kept!.createdById).not.toBe(u.id);
+    expect(me).not.toBeNull();
+  });
+  it("purge=true لا يتجاوز حماية مستخدم النظام أو الحساب الذاتي", async () => {
+    const s = await prisma().user.findUnique({ where: { username: "amr" } });
+    expect((await api(admin).delete(`/api/users/${s!.id}?purge=true`)).status).toBe(403);
+  });
   it("MANAGER لا يحذف ADMIN غير نظامي", async () => {
     const a = await makeUser("adm3", "ADMIN");
     expect((await api(manager).delete(`/api/users/${a.id}`)).status).toBe(403);

@@ -399,3 +399,9 @@
 - `backend/src/routes/products.ts`, `backend/src/utils/productSerialize.ts` — حفظ وإرجاع الحقلين، و`cost = materialCost + machineCost`.
 - `backend/tests/products.test.ts` — 3 اختبارات جديدة للتقسيم.
 - `frontend/src/types/product.ts`, `components/products/ProductModal.tsx`, `ProductCard.tsx` — حقلا «تكلفة الخامة» و«تكلفة وقت الماكينة» + إجمالي تكلفة محسوب تلقائياً، وعرض التفصيل في الكارت.
+
+## حذف المستخدم: خيار (حذف كل البيانات) أو (تعطيل مع الإبقاء على البيانات)
+- backend/src/routes/users.ts: `DELETE /users/:id?purge=true` يحذف الحساب مع مهامه (أنشأها أو أُسندت له) وسجلات الوقت والتعليقات والملاحظات والأهداف والأحداث والحضور في transaction واحدة، ثم ينظّف مرفقات R2. المنتجات لا تُحذف وتُنقل نسبتها لمن يجري الحذف. بدون purge يبقى السلوك القديم (409 برمز HAS_DATA)، وأُضيف فحص المنتجات إليه (كان يسبب خطأ FK).
+- frontend: مكوّن جديد components/users/DeleteUserDialog.tsx بخيارين + إلغاء، وusersService.remove(id, purge).
+- tests/users.test.ts: اختباران جديدان لـ purge.
+- التحقق: build الواجهة نجح. اختبارات الـ backend غير مُتحقَّق منها (لا يوجد Postgres/Prisma engine في هذه البيئة).

@@ -43,8 +43,9 @@ export const usersService = {
     return toMember(user);
   },
 
-  async remove(id: string): Promise<void> {
-    await api<{ ok: true }>(`/users/${id}`, { method: "DELETE" });
+  /** purge=true: حذف الحساب مع كل بياناته. بدونه: يُرفض الحذف (409) إن كانت له بيانات مرتبطة. */
+  async remove(id: string, purge = false): Promise<void> {
+    await api<{ ok: true }>(`/users/${id}${purge ? "?purge=true" : ""}`, { method: "DELETE" });
   },
 
   /** الملف الشخصي: الاسم/البريد/المسمى + تغيير كلمة المرور (بالحالية). لا دور ولا صلاحيات. */
