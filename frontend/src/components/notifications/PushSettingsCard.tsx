@@ -103,7 +103,7 @@ export function PushSettingsCard() {
     }
     if (blocker === "unsupported") return <p className="text-sm text-muted">هذا المتصفح لا يدعم تنبيهات الهاتف. جرّب Chrome أو Edge أو Firefox، أو Safari بعد تثبيت الموقع على iPhone.</p>;
     if (blocker === "dev-build") return <p className="text-sm text-muted">تنبيهات الهاتف تعمل في النسخة المنشورة فقط (خدمة التنبيهات لا تُشغَّل في وضع التطوير).</p>;
-    if (config && !config.enabled) return <p className="text-sm text-muted">تنبيهات الهاتف غير مفعّلة على الخادم بعد (مفاتيح VAPID). تواصل مع مدير النظام.</p>;
+    if (config && !config.enabled) return <p className="text-sm text-muted"></p>;
     if (permission === "denied") {
       return <p className="text-sm text-problem">الإذن مرفوض لهذا الموقع. افتح إعدادات المتصفح ← إعدادات الموقع ← الإشعارات ← اسمح، ثم عُد وحدّث الصفحة.</p>;
     }
