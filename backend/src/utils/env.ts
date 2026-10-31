@@ -26,6 +26,8 @@ const schema = z
     R2_SECRET_ACCESS_KEY: optionalText,
     R2_BUCKET_NAME: optionalText,
     R2_ENDPOINT: optionalText, // بديل للعنوان الافتراضي (اختباري/محلي فقط)
+    // سر endpoint المراقبة الخارجي (/api/internal/tick). غير مضبوط = الـ endpoint معطّل (404).
+    CRON_SECRET: z.string().trim().min(16, "CRON_SECRET يجب ألا يقل عن 16 حرفاً").optional().or(z.literal("").transform(() => undefined)),
     R2_MAX_FILE_MB: z.coerce.number().positive().max(50).default(10),
   })
   .superRefine((v, ctx) => {
