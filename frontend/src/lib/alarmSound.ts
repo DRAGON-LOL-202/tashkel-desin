@@ -78,13 +78,25 @@ export function claimOnce(key: string): boolean {
 const LOOP_MAX_MS = 15 * 60_000;
 /** فاصل صمت بين كل دورة ودورة في الإنذار المتكرر */
 const LOOP_GAP_S = 1.2;
+/** نجدول الصوت مقدّماً بهذا القدر على ساعة الصوت نفسها، فلا يتوقف الرنين إن تأخرت أحداث الصفحة (تبويب خلفي) */
+const LOOKAHEAD_S = 30;
+const WATCHDOG_MS = 1000;
+
+let loopActive = false;
+
+/** هل يرنّ الآن إنذار متكرر (انتهاء وقت) لم يوافق عليه المستخدم بعد؟ */
+export function isAlarmLooping(): boolean {
+  return loopActive;
+}
 
 /**
  * يشغّل الإنذار. يعيد true إن بدأ التشغيل فعلاً (false إن كان مكتوماً أو لم يُفتح الصوت بعد).
  * مع `loop: true` تتكرر النغمة بلا توقف حتى يُستدعى `stopAlarm()` (أو تمرّ 15 دقيقة).
- * التكرار يتم بحدث نهاية الصوت نفسه لا بمؤقت JavaScript، فلا تخنقه المتصفحات في التبويب الخلفي.
+ * أثناء رنين إنذار متكرر لا يقطعه أي صوت قصير آخر (تنبيه «باقي دقيقة» المتأخر، تجربة، ...): يُتجاهل.
  */
 export function playAlarm(kind: AlarmKind, options: { loop?: boolean } = {}): boolean {
+  const loop = options.loop === true;
+  if (loopActive && !loop) return false; // لا نقطع إنذار «انتهى الوقت» الجاري
   if (isAlarmMuted()) return false;
   const c = context();
   if (!c) return false;
@@ -92,32 +104,18 @@ export function playAlarm(kind: AlarmKind, options: { loop?: boolean } = {}): bo
   if (c.state === "suspended") return false; // لم يُفتح الصوت بعد (لا تفاعل سابق)
 
   stopAlarm();
-  const loop = options.loop === true;
   const { freqs, beep, gap, repeats } = PATTERNS[kind];
   const startedAt = Date.now();
   let stopped = false;
-  let current: { oscillators: OscillatorNode[]; gain: GainNode } | null = null;
+  let scheduledUntil = c.currentTime + 0.02; // آخر لحظة (بساعة الصوت) جُدول عندها صوت
+  let watchdog: ReturnType<typeof setInterval> | null = null;
+  const live = new Set<{ oscillators: OscillatorNode[]; gain: GainNode }>();
 
-  const teardown = () => {
-    if (!current) return;
-    for (const o of current.oscillators) {
-      try {
-        o.stop();
-      } catch {
-        // انتهى بالفعل
-      }
-    }
-    current.gain.disconnect();
-    current = null;
-  };
-
-  const cycle = (delay: number) => {
-    if (stopped) return;
+  const scheduleCycle = () => {
     const gain = c.createGain();
     gain.gain.value = 0.0001;
     gain.connect(c.destination);
-
-    let t = c.currentTime + 0.02 + delay;
+    let t = scheduledUntil;
     const oscillators: OscillatorNode[] = [];
     for (let r = 0; r < repeats; r++) {
       for (const f of freqs) {
@@ -135,33 +133,69 @@ export function playAlarm(kind: AlarmKind, options: { loop?: boolean } = {}): bo
         t += beep + gap;
       }
     }
-    current = { oscillators, gain };
+    scheduledUntil = t + (loop ? LOOP_GAP_S : 0);
+    const cycle = { oscillators, gain };
+    live.add(cycle);
     const last = oscillators[oscillators.length - 1];
     if (last) {
       last.onended = () => {
-        if (stopped) return;
+        if (!live.delete(cycle)) return;
         gain.disconnect();
-        current = null;
-        if (!loop) {
-          if (activeStop === stop) activeStop = null;
-          return;
-        }
-        if (Date.now() - startedAt >= LOOP_MAX_MS) {
+        if (!loop && live.size === 0 && !stopped) {
+          // انتهى الإنذار غير المتكرر بنفسه
           stop();
-          if (activeStop === stop) activeStop = null;
-          return;
         }
-        cycle(LOOP_GAP_S);
       };
     }
-    if (kind !== "chime" && "vibrate" in navigator) navigator.vibrate?.([300, 150, 300, 150, 600]);
+  };
+
+  // نملأ ساعة الصوت حتى LOOKAHEAD_S؛ يستدعيها المراقب كل ثانية، فلا نعتمد على أحداث onended وحدها
+  const topUp = () => {
+    if (stopped) return;
+    if (Date.now() - startedAt >= LOOP_MAX_MS) {
+      stop();
+      return;
+    }
+    if (c.state !== "running") void c.resume().catch(() => undefined); // قطعه النظام (مثلاً iOS) ← نحاول استئنافه
+    while (scheduledUntil - c.currentTime < LOOKAHEAD_S) scheduleCycle();
+  };
+
+  const wake = () => {
+    if (document.visibilityState === "visible") topUp();
   };
 
   const stop = () => {
+    if (stopped) return;
     stopped = true;
-    teardown();
+    if (watchdog !== null) clearInterval(watchdog);
+    if (typeof document !== "undefined") document.removeEventListener("visibilitychange", wake);
+    c.removeEventListener?.("statechange", topUp);
+    for (const cycle of live) {
+      for (const o of cycle.oscillators) {
+        try {
+          o.stop();
+        } catch {
+          // انتهى بالفعل
+        }
+      }
+      cycle.gain.disconnect();
+    }
+    live.clear();
+    if (loop) loopActive = false;
+    if (activeStop === stop) activeStop = null;
   };
+
   activeStop = stop;
-  cycle(0);
+  if (loop) {
+    loopActive = true;
+    topUp();
+    watchdog = setInterval(topUp, WATCHDOG_MS);
+    // العودة للتبويب أو استئناف الصوت بعد انقطاع: نكمل الرنين فوراً
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", wake);
+    c.addEventListener?.("statechange", topUp);
+  } else {
+    scheduleCycle();
+  }
+  if (kind !== "chime" && "vibrate" in navigator) navigator.vibrate?.([300, 150, 300, 150, 600]);
   return true;
 }
