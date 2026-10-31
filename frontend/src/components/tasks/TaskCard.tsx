@@ -99,7 +99,7 @@ function StopNotesHistory({ task, trailing }: { task: Task; trailing?: ReactNode
 
   return (
     <>
-      <div className="task-stop-card mt-4">
+      <div className="task-stop-card mt-2">
         <button
           type="button"
           dir="ltr"
@@ -107,15 +107,15 @@ function StopNotesHistory({ task, trailing }: { task: Task; trailing?: ReactNode
           aria-expanded={open}
           className="flex w-full items-center gap-3 text-left"
         >
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary-deep">
-            <Pause size={22} />
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary-deep">
+            <Pause size={17} />
           </span>
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-2">
-              <span className="rounded-full border border-primary-deep/30 px-2.5 py-0.5 font-mono text-sm font-bold text-text">( {task.stopNotes.length} )</span>
-              <span className="text-base font-bold text-text">سجل التوقفات</span>
+              <span className="rounded-full border border-primary-deep/30 px-2 font-mono text-xs font-bold text-text">( {task.stopNotes.length} )</span>
+              <span className="text-sm font-bold text-text">سجل التوقفات</span>
             </span>
-            <span dir="auto" className="mt-0.5 block truncate text-sm text-muted">{latest.note}</span>
+            <span dir="auto" className="block truncate text-xs text-muted">{latest.note}</span>
           </span>
           {open ? <ChevronDown size={20} className="shrink-0 text-muted" /> : <ChevronRight size={20} className="shrink-0 text-muted" />}
         </button>
@@ -139,7 +139,7 @@ function StopNotesHistory({ task, trailing }: { task: Task; trailing?: ReactNode
         )}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border pt-3 text-sm text-muted">
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-border pt-2 text-xs text-muted">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <span className="flex items-center gap-1.5"><Timer size={16} />توقف: <span className="font-semibold text-text">{formatArabicTime(latest.time)}</span></span>
           <span className="h-4 w-px bg-border" aria-hidden />
@@ -178,7 +178,7 @@ function SubtaskRow({ task, getSubtasks, taskNumbers, onStart, onRequestStop, on
   const percentage = hasChildren ? calculateParentProgress(children) : calculateTaskProgress(task);
 
   return (
-    <div className="rounded-2xl border border-primary-deep/25 bg-primary/5 p-3.5 shadow-soft">
+    <div className="rounded-xl border border-primary-deep/25 bg-primary/5 p-2.5">
       <div className="flex items-start gap-2">
         <button
           type="button"
@@ -217,7 +217,7 @@ function SubtaskRow({ task, getSubtasks, taskNumbers, onStart, onRequestStop, on
             {!hasChildren && <ProgressControls task={task} onSetCurrent={onSetCurrent} />}
           </div>
           <div className="mt-2 flex items-center gap-3">
-            <ProgressBar percentage={percentage} className="h-2.5" />
+            <ProgressBar percentage={percentage} className="h-2" />
             <span className="w-11 shrink-0 text-left font-mono text-xs font-bold text-text">{percentage}%</span>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
@@ -462,7 +462,7 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
       )}
 
       {hasSubtasks && expanded && (
-        <section className="task-subtasks-enter mt-4 space-y-3 border-t border-border pt-4">
+        <section className="task-subtasks-enter mt-2 space-y-2 border-t border-border pt-2">
           {subtasks.map((subtask) => (
             <SubtaskRow
               key={subtask.id}
