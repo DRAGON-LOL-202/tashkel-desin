@@ -118,6 +118,21 @@ describe("users: حذف", () => {
     expect((await api(manager).delete(`/api/users/${u.id}`)).status).toBe(409);
     expect(await prisma().user.findUnique({ where: { id: u.id } })).not.toBeNull();
   });
+  it("مستخدم نفّذ حركات مخزون: حذف عادي ← 409 (لا 500)، وpurge ← 200 وتبقى الحركات منسوبة لمن حذف", async () => {
+    const u = await makeUser("stockuser");
+    const me = await prisma().user.findUnique({ where: { username: "amr" } });
+    const cat = await prisma().inventoryCategory.create({ data: { name: "حذف-مستخدم" } });
+    const item = await prisma().inventoryItem.create({ data: { name: "صنف حذف", categoryId: cat.id, quantity: 5 } });
+    await prisma().inventoryMovement.create({
+      data: { itemId: item.id, type: "OUT", delta: -1, balanceAfter: 4, previousBalance: 5, createdById: u.id },
+    });
+    expect((await api(manager).delete(`/api/users/${u.id}`)).status).toBe(409);
+    expect((await api(manager).delete(`/api/users/${u.id}?purge=true`)).status).toBe(200);
+    expect(await prisma().user.findUnique({ where: { id: u.id } })).toBeNull();
+    const mv = await prisma().inventoryMovement.findMany({ where: { itemId: item.id } });
+    expect(mv).toHaveLength(1);
+    expect(mv[0].createdById).toBe(me!.id);
+  });
   it("purge=true ← يحذف الحساب مع كل بياناته وينقل المنتجات لمن يحذف", async () => {
     const u = await makeUser("purgeme");
     const me = await prisma().user.findUnique({ where: { username: "amr" } });

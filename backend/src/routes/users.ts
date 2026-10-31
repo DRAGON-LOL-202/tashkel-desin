@@ -192,7 +192,7 @@ usersRouter.delete(
 
     if (!purge) {
       // بيانات تاريخية مرتبطة ← التعطيل بدل الحذف (الواجهة تعرض خيار حذف الكل أو التعطيل)
-      const [tasks, logs, comments, feedback, goals, events, attendance, products] = await Promise.all([
+      const [tasks, logs, comments, feedback, goals, events, attendance, products, stockMoves] = await Promise.all([
         db.task.count({ where: { OR: [{ createdById: target.id }, { assignedToId: target.id }] } }),
         db.taskTimeLog.count({ where: { userId: target.id } }),
         db.taskComment.count({ where: { userId: target.id } }),
@@ -201,8 +201,9 @@ usersRouter.delete(
         db.calendarEvent.count({ where: { createdById: target.id } }),
         db.attendanceSession.count({ where: { userId: target.id } }),
         db.product.count({ where: { createdById: target.id } }),
+        db.inventoryMovement.count({ where: { createdById: target.id } }),
       ]);
-      if (tasks + logs + comments + feedback + goals + events + attendance + products > 0) {
+      if (tasks + logs + comments + feedback + goals + events + attendance + products + stockMoves > 0) {
         throw new HttpError(409, "لهذا المستخدم بيانات مرتبطة (مهام/ملاحظات/...). عطّل الحساب بدلاً من حذفه", "HAS_DATA");
       }
       await db.user.delete({ where: { id: target.id } });
@@ -243,6 +244,8 @@ usersRouter.delete(
       db.attendanceSession.deleteMany({ where: { userId: target.id } }),
       // المنتجات كتالوج مشترك: لا تُحذف، تُنقل نسبتها لمن يجري الحذف
       db.product.updateMany({ where: { createdById: target.id }, data: { createdById: actor.id } }),
+      // حركات المخزون سجل تدقيق مشترك: لا تُحذف، تُنقل نسبتها لمن يجري الحذف
+      db.inventoryMovement.updateMany({ where: { createdById: target.id }, data: { createdById: actor.id } }),
       db.user.delete({ where: { id: target.id } }),
     ]);
     await deleteUnreferencedObjects(keys);

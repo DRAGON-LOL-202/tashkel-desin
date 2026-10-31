@@ -35,7 +35,7 @@ export function DeleteUserDialog({ target, busy = false, onClose, onDeleteAll, o
             <span>
               <span className="block text-sm font-semibold text-problem">حذف الحساب وكل بياناته</span>
               <span className="block text-xs text-muted">
-                تُحذف مهامه وسجلات وقته وتعليقاته وملاحظاته وأهدافه وأحداثه وحضوره نهائياً ولا يمكن التراجع. المنتجات التي أضافها تبقى في الكتالوج.
+                تُحذف مهامه وسجلات وقته وتعليقاته وملاحظاته وأهدافه وأحداثه وحضوره نهائياً ولا يمكن التراجع. المنتجات التي أضافها تبقى في الكتالوج، وحركات المخزون التي نفّذها تبقى وتُنسب إليك.
               </span>
             </span>
           </button>
