@@ -14,6 +14,7 @@ import LoginPage from "./pages/Login";
 import ProfilePage from "./pages/Profile";
 import NotificationsPage from "./pages/Notifications";
 import { PushBridge } from "./components/notifications/PushBridge";
+import { TimerAlarmDialog } from "./components/notifications/TimerAlarmDialog";
 
 function HomeRoute() {
   const { user } = useAuth();
@@ -32,6 +33,7 @@ export default function App() {
       <HashRouter>
         <AuthProvider>
           <PushBridge />
+          <TimerAlarmDialog />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/" element={<HomeRoute />} />

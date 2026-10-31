@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/ToastProvider";
 import { claimOnce, playAlarm, unlockAudio } from "../../lib/alarmSound";
+import { acknowledgeTimerAlerts, raiseTimerAlert } from "../../lib/timerAlerts";
 import { syncPush } from "../../lib/webPush";
 import { notificationsService } from "../../services/notificationsService";
 
@@ -35,7 +36,7 @@ export function PushBridge() {
   useEffect(() => {
     const events = ["pointerdown", "keydown", "touchend"] as const;
     const unlock = () => {
-      unlockAudio();
+      void unlockAudio();
       events.forEach((name) => window.removeEventListener(name, unlock));
     };
     events.forEach((name) => window.addEventListener(name, unlock, { passive: true }));
@@ -52,10 +53,8 @@ export function PushBridge() {
         const p = message.payload;
         const key = p.tag ?? p.type ?? "push";
         if (p.type === "TIMER_EXPIRED") {
-          if (claimOnce(`expired:${key}`)) {
-            playAlarm("expired");
-            show(`${p.title ?? "انتهى الوقت"}: ${p.body ?? ""}`, "warning");
-          }
+          // نافذة «انتهى الوقت» + صوت متكرر حتى الموافقة (التكرار بين المصدرين يمنعه raiseTimerAlert)
+          raiseTimerAlert({ id: key, title: p.title ?? "انتهى الوقت", body: p.body ?? "انتهى الوقت المحدد" });
         } else if (p.timer) {
           if (claimOnce(`${p.type}:${key}`)) {
             playAlarm("warning");
@@ -95,6 +94,8 @@ export function PushBridge() {
 
   useEffect(() => {
     if (userId) void syncPush(userId);
+    // خروج المستخدم (أو تبديله) لا يترك إنذاراً يرنّ لحساب آخر
+    else acknowledgeTimerAlerts();
   }, [userId]);
 
   return null;
