@@ -332,3 +332,208 @@ body {
   direction: ltr;
   unicode-bidi: isolate;
 }
+
+
+/* ===== بطاقة المهمة المضغوطة (tc-*) =====
+   تصميم أفقي مضغوط بتأثير زجاجي؛ كل الألوان من متغيرات الموقع فتعمل في الوضعين.
+   الحالة تأتي من data-status / tc-card--{status} المشتقة من task.status فقط. */
+.tc-card {
+  --tc-accent: var(--primary-deep);
+  position: relative;
+  padding: 0.8rem 1rem 0.85rem;
+  border-radius: 22px;
+  border: 1px solid color-mix(in srgb, var(--tc-accent) 24%, var(--border));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--primary) 6%, color-mix(in srgb, var(--surface) 88%, transparent)),
+    color-mix(in srgb, var(--surface) 72%, transparent)
+  );
+  -webkit-backdrop-filter: blur(12px) saturate(1.15);
+  backdrop-filter: blur(12px) saturate(1.15);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--primary) 14%, transparent), 0 1px 2px rgba(0, 0, 0, 0.08);
+  transition: border-color 250ms ease, box-shadow 250ms ease, opacity 250ms ease;
+}
+.tc-card:hover { border-color: color-mix(in srgb, var(--tc-accent) 42%, var(--border)); }
+
+/* هالة الحالة: طبقة منفصلة حتى لا نحرّك box-shadow نفسه */
+.tc-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 250ms ease;
+}
+.tc-card--running {
+  --tc-accent: var(--primary-dark);
+  border-color: color-mix(in srgb, var(--primary-dark) 75%, transparent);
+}
+.tc-card--running::after {
+  opacity: 1;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--primary-dark) 35%, transparent),
+    0 0 20px -2px color-mix(in srgb, var(--primary-dark) 55%, transparent),
+    0 0 52px -18px color-mix(in srgb, var(--primary-dark) 60%, transparent);
+  animation: tc-breathe 3.4s ease-in-out infinite;
+}
+.tc-card--paused {
+  --tc-accent: var(--operational);
+  border-color: color-mix(in srgb, var(--operational) 55%, transparent);
+}
+.tc-card--paused::after {
+  opacity: 1;
+  box-shadow: 0 0 18px -6px color-mix(in srgb, var(--operational) 45%, transparent);
+}
+.tc-card--completed { opacity: 0.78; }
+
+@keyframes tc-breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+@keyframes tc-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.45); opacity: 0.55; }
+}
+
+/* الرأس: جوال = رقم + عنوان ثم الحالة والأيقونات؛ شاشة أعرض = رقم، أيقونات، عنوان، حالة */
+.tc-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem 0.6rem; }
+.tc-expander {
+  order: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 2rem; width: 2rem; border-radius: 10px;
+  color: var(--primary-deep);
+}
+.tc-expander:hover { background: color-mix(in srgb, var(--primary) 14%, transparent); }
+.tc-order-num { order: 1; display: inline-flex; }
+.tc-order-num .task-number { height: 2.35rem; min-width: 2.35rem; font-size: 1.05rem; border-radius: 12px; }
+.tc-titlebox { order: 2; flex: 1 1 9rem; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.6rem; }
+.tc-title { margin: 0; min-width: 0; font-size: 1.1rem; font-weight: 700; line-height: 1.4; color: var(--text); overflow-wrap: anywhere; }
+.tc-title--done { text-decoration: line-through; color: var(--muted); }
+.tc-status { order: 3; display: inline-flex; align-items: center; gap: 0.4rem; }
+.tc-icons { order: 4; display: inline-flex; align-items: center; gap: 0.4rem; margin-inline-start: auto; }
+.tc-grip { order: 5; flex-shrink: 0; color: color-mix(in srgb, var(--muted) 70%, transparent); }
+@media (min-width: 720px) {
+  .tc-icons { order: 2; margin-inline-start: 0; }
+  .tc-titlebox { order: 3; }
+  .tc-status { order: 4; }
+}
+
+.tc-ico {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 2.2rem; width: 2.2rem; border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--primary-deep) 22%, var(--border));
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+  color: var(--text);
+  transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease;
+}
+.tc-ico:hover { border-color: var(--primary-deep); background: color-mix(in srgb, var(--primary) 15%, transparent); }
+.tc-ico--danger:hover {
+  color: var(--problem);
+  border-color: color-mix(in srgb, var(--problem) 55%, var(--border));
+  background: color-mix(in srgb, var(--problem) 10%, transparent);
+}
+
+/* مؤشر الحالة */
+.tc-pill {
+  --tc-pill: var(--muted);
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  height: 2rem; padding: 0 0.85rem; border-radius: 999px;
+  font-size: 0.85rem; font-weight: 600; white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--tc-pill) 50%, transparent);
+  background: color-mix(in srgb, var(--tc-pill) 13%, transparent);
+  color: color-mix(in srgb, var(--tc-pill) 70%, var(--text));
+}
+.tc-pill--running { --tc-pill: var(--primary-dark); }
+.tc-pill--paused { --tc-pill: var(--operational); }
+.tc-pill--completed { --tc-pill: var(--primary-deep); }
+.tc-dot { height: 0.55rem; width: 0.55rem; border-radius: 999px; background: var(--tc-pill); box-shadow: 0 0 8px var(--tc-pill); }
+.tc-pill--running .tc-dot { animation: tc-pulse 1.8s ease-in-out infinite; }
+.tc-ecg { display: none; width: 3.6rem; height: 1.4rem; color: var(--primary-dark); filter: drop-shadow(0 0 4px color-mix(in srgb, var(--primary-dark) 70%, transparent)); }
+@media (min-width: 720px) { .tc-ecg { display: block; } }
+
+/* الوقت ونسبة الإنجاز في صف واحد */
+.tc-metrics {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem 0;
+  margin-top: 0.7rem; padding: 0.6rem 0.4rem;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--background) 38%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  font-size: 0.82rem; color: var(--muted);
+}
+.tc-m { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0 0.9rem; white-space: nowrap; }
+.tc-m svg { color: var(--primary-deep); }
+.tc-val { font-weight: 600; color: var(--text); }
+.tc-val--mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.95rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tc-progress { display: flex; align-items: center; gap: 0.7rem; flex: 1 1 12rem; min-width: 10rem; padding: 0 0.9rem; }
+.tc-pct { width: 3rem; flex-shrink: 0; text-align: left; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.95rem; font-weight: 700; color: var(--text); }
+/* مسار شريط التقدم: فئة bg-border/70 في ProgressBar لا تُولَّد مع متغيرات var(--x)، فنعرّف المسار هنا دون تعديل المكوّن المشترك */
+.tc-progress > div:first-child { background: color-mix(in srgb, var(--muted) 24%, transparent); }
+@media (max-width: 719px) {
+  .tc-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem 0.25rem; }
+  .tc-m { padding: 0 0.5rem; }
+  .tc-progress { order: -1; grid-column: 1 / -1; padding-bottom: 0.2rem; }
+}
+@media (min-width: 720px) {
+  .tc-m + .tc-m, .tc-m + .tc-progress { border-inline-start: 1px solid var(--border); }
+}
+
+/* أزرار التحكم */
+.tc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.65rem; }
+.tc-actions .task-stepper { height: 2.4rem; border-radius: 999px; margin-inline-start: auto; }
+.tc-btn {
+  --b: var(--primary-deep);
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem;
+  height: 2.4rem; padding: 0 1rem; border-radius: 999px;
+  font-size: 0.9rem; font-weight: 600; white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--b) 50%, transparent);
+  background: color-mix(in srgb, var(--b) 12%, transparent);
+  color: color-mix(in srgb, var(--b) 70%, var(--text));
+  transition: transform 150ms ease, background-color 150ms ease, border-color 150ms ease, filter 150ms ease;
+}
+.tc-btn:hover { background: color-mix(in srgb, var(--b) 22%, transparent); border-color: var(--b); }
+.tc-btn:active { transform: scale(0.98); }
+.tc-btn--start { --b: var(--primary-dark); }
+.tc-btn--stop { --b: var(--problem); }
+.tc-btn--neutral { --b: var(--primary-deep); color: var(--text); }
+.tc-btn--ghost { --b: var(--muted); background: transparent; border-color: transparent; color: var(--primary-deep); }
+.tc-btn--ghost:hover { background: color-mix(in srgb, var(--primary) 12%, transparent); border-color: transparent; }
+.tc-btn--solid { border-color: transparent; background: var(--primary-deep); color: var(--background); }
+.tc-btn--solid:hover { background: var(--primary-deep); filter: brightness(1.07); }
+
+/* قسم التفاصيل القابل للطي */
+.tc-toggle {
+  display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0.5rem;
+  width: 100%; min-height: 2.1rem; margin-top: 0.65rem; padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  background: color-mix(in srgb, var(--background) 32%, transparent);
+  color: var(--muted); font-size: 0.85rem;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+.tc-toggle:hover { color: var(--text); background: color-mix(in srgb, var(--primary) 8%, transparent); }
+.tc-chev { transition: transform 200ms ease; }
+.tc-toggle[aria-expanded="true"] .tc-chev { transform: rotate(180deg); }
+.tc-chip {
+  padding: 0.05rem 0.55rem; border-radius: 999px; font-size: 0.72rem; font-weight: 600;
+  border: 1px solid color-mix(in srgb, var(--primary-deep) 28%, transparent);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary-deep);
+}
+.tc-details { margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px solid var(--border); display: grid; gap: 0.7rem; }
+.tc-meta { font-size: 0.85rem; color: var(--muted); display: grid; gap: 0.15rem; }
+.tc-desc { margin: 0; font-size: 0.9rem; line-height: 1.7; color: var(--muted); }
+.tc-panel {
+  border-radius: 16px; padding: 0.7rem 0.9rem; font-size: 0.85rem; color: var(--text);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary-deep) 16%, var(--border));
+}
+.tc-panel-title { margin: 0 0 0.3rem; font-weight: 600; color: var(--primary-deep); }
+.tc-comment { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; padding: 0.4rem 0; border-top: 1px solid color-mix(in srgb, var(--primary-deep) 14%, transparent); }
+.tc-panel-title + .tc-comment { border-top: 0; padding-top: 0; }
+.tc-comment-user { margin-inline-end: 0.4rem; font-weight: 600; color: var(--primary-deep); }
+.tc-details .task-stop-card { margin-top: 0; }
+
+.tc-card button:focus-visible { outline: 2px solid var(--primary-dark); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tc-card--running::after, .tc-pill--running .tc-dot { animation: none; }
+  .tc-chev, .tc-card, .tc-card::after { transition: none; }
+}

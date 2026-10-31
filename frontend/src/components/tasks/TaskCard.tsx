@@ -1,4 +1,4 @@
-import { CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, GripVertical, MessageSquarePlus, Minus, Pause, Pencil, Play, Plus, RotateCcw, Timer, Trash2 } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, GripVertical, MessageSquarePlus, Minus, Pause, Pencil, Play, Plus, RotateCcw, Square, Timer, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import type { Task } from "../../types";
 import { calculateParentProgress, calculateTaskProgress } from "../../lib/taskProgress";
@@ -281,8 +281,19 @@ function SubtaskRow({ task, getSubtasks, taskNumbers, onStart, onRequestStop, on
   );
 }
 
+type CardState = "not_started" | "running" | "paused" | "completed" | "idle";
+
+/** حالة البطاقة تُشتق دائمًا من task.status الحقيقية (لا حالة بصرية مستقلة) */
+const pillLabels: Record<Exclude<CardState, "idle">, string> = {
+  not_started: "لم تبدأ",
+  running: "جارية الآن",
+  paused: "متوقفة",
+  completed: "مكتملة",
+};
+
 export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, onRequestStop, onFinish, onReopen, onMoveToDate, onCopy, onDelete, onEdit, onSetCurrent, onAddSubtask, onAddComment, onDeleteComment }: TaskCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const { canManageTasks, canDeleteComment } = usePermissions();
   const elapsed = useElapsed(task);
   const isCompleted = task.status === "completed";
@@ -294,109 +305,150 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
   const subtasksDuration = allSubtasks.reduce((sum, subtask) => sum + getTaskElapsed(subtask), 0);
   const percentage = hasSubtasks ? calculateParentProgress(subtasks) : calculateTaskProgress(task);
   const displayCompleted = hasSubtasks ? percentage >= 100 : isCompleted;
-  const grip = <GripVertical size={22} aria-hidden className="shrink-0 text-muted/70" />;
+  const grip = <GripVertical size={20} aria-hidden className="tc-grip" />;
+
+  // المهمة الأم لا تعرض حالة تشغيل (كما كان سابقًا)؛ تظهر فقط "مكتملة" عند 100%
+  const cardState: CardState = hasSubtasks ? (displayCompleted ? "completed" : "idle") : task.status;
+  const progressColor = cardState === "running" ? "var(--primary-dark)" : cardState === "paused" ? "var(--operational)" : undefined;
+
+  const hasStopNotes = !hasSubtasks && task.stopNotes.length > 0;
+  const hasComments = !hasSubtasks && task.comments.length > 0;
+  const hasAttachments = Boolean(task.attachments && task.attachments.length > 0);
+  const hasDetails = Boolean(task.createdByName || task.description || hasAttachments || hasStopNotes || hasComments);
 
   return (
-    <article className={"task-card p-4 sm:p-5 " + (displayCompleted ? "opacity-70" : "")}>
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-[12rem] flex-1 items-center gap-3">
-          {hasSubtasks && (
-            <button
-              type="button"
-              onClick={() => setExpanded((value) => !value)}
-              aria-label={expanded ? "إخفاء المهام الفرعية" : "إظهار المهام الفرعية"}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control text-primary-deep hover:bg-primary/10"
-            >
-              {expanded ? <ChevronDown size={20} /> : <ChevronLeft size={20} />}
-            </button>
-          )}
-          <NumberBadge value={taskNumbers.get(task.id)} done={displayCompleted} />
-          <h3 className={"min-w-0 text-xl font-bold leading-snug " + (displayCompleted ? "line-through text-muted" : "text-text")}>{task.title}</h3>
-        </div>
+    <article className={"tc-card tc-card--" + cardState} data-status={cardState}>
+      <header className="tc-head">
+        {hasSubtasks && (
+          <button
+            type="button"
+            onClick={() => setExpanded((value) => !value)}
+            aria-label={expanded ? "إخفاء المهام الفرعية" : "إظهار المهام الفرعية"}
+            aria-expanded={expanded}
+            className="tc-expander"
+          >
+            {expanded ? <ChevronDown size={20} /> : <ChevronLeft size={20} />}
+          </button>
+        )}
+
+        <span className="tc-order-num"><NumberBadge value={taskNumbers.get(task.id)} done={displayCompleted} /></span>
+
         {canManageTasks && (
-          <div className="flex shrink-0 items-center gap-2">
-            <button type="button" onClick={() => onCopy(task)} aria-label="نسخ إلى شخص آخر" title="نسخ إلى شخص آخر" className="task-icon-btn"><Copy size={18} /></button>
-            <button type="button" onClick={() => onMoveToDate(task)} aria-label="نقل إلى يوم" title="نقل إلى يوم" className="task-icon-btn"><CalendarDays size={18} /></button>
-            <button type="button" onClick={() => onEdit(task)} aria-label="تعديل المهمة" title="تعديل" className="task-icon-btn"><Pencil size={18} /></button>
-            <button type="button" onClick={() => onDelete(task)} aria-label="حذف المهمة" title="حذف" className="task-icon-btn task-icon-btn--danger"><Trash2 size={18} /></button>
+          <div className="tc-icons">
+            <button type="button" onClick={() => onCopy(task)} aria-label="نسخ إلى شخص آخر" title="نسخ إلى شخص آخر" className="tc-ico"><Copy size={17} /></button>
+            <button type="button" onClick={() => onMoveToDate(task)} aria-label="نقل إلى يوم" title="نقل إلى يوم" className="tc-ico"><CalendarDays size={17} /></button>
+            <button type="button" onClick={() => onEdit(task)} aria-label="تعديل المهمة" title="تعديل" className="tc-ico"><Pencil size={17} /></button>
+            <button type="button" onClick={() => onDelete(task)} aria-label="حذف المهمة" title="حذف" className="tc-ico tc-ico--danger"><Trash2 size={17} /></button>
           </div>
         )}
+
+        <div className="tc-titlebox">
+          <h3 className={"tc-title " + (displayCompleted ? "tc-title--done" : "")}>{task.title}</h3>
+          <PriorityTag priority={task.priority} outlined className="px-2.5 py-0.5 text-xs font-semibold" />
+        </div>
+
+        <div className="tc-status">
+          {cardState === "running" && (
+            <svg className="tc-ecg" viewBox="0 0 64 24" fill="none" aria-hidden>
+              <path d="M0 12h18l4-8 6 17 5-14 4 5h27" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+          <span className={"tc-pill tc-pill--" + cardState} role="status">
+            {cardState === "completed" ? <CheckCircle2 size={15} aria-hidden /> : <span className="tc-dot" aria-hidden />}
+            {cardState === "idle" ? subtasksLabel(allSubtasks.length) : pillLabels[cardState]}
+          </span>
+        </div>
+
+        {grip}
       </header>
 
-      {task.createdByName && (
-        <div className="mt-3 space-y-0.5 text-sm text-muted">
-          <p>أضيفت بواسطة: {task.createdByName}</p>
-          <p>المسؤول: {task.assigneeName ?? "—"}</p>
+      <div className="tc-metrics">
+        {hasSubtasks ? (
+          <>
+            <span className="tc-m">المهام: <span className="tc-val">{allSubtasks.length}</span></span>
+            <span className="tc-m">المكتملة: <span className="tc-val">{completedSubtasks}</span></span>
+            <span className="tc-m"><Clock size={16} aria-hidden />إجمالي الوقت: <span className="tc-val tc-val--mono" dir="ltr">{formatDuration(subtasksDuration)}</span></span>
+          </>
+        ) : (
+          <>
+            <span className="tc-m"><CalendarDays size={16} aria-hidden />بدأت: <span className="tc-val">{formatArabicTime(task.startedAt ?? task.startTime)}</span></span>
+            <span className="tc-m"><CalendarDays size={16} aria-hidden />انتهت: <span className="tc-val">{formatArabicTime(task.endTime)}</span></span>
+            <span className="tc-m"><Clock size={16} aria-hidden />الوقت: <span className="tc-val tc-val--mono" dir="ltr">{formatDuration(elapsed)}</span></span>
+          </>
+        )}
+        <div className="tc-progress">
+          <ProgressBar percentage={percentage} color={progressColor} className="h-2" />
+          <span className="tc-pct" dir="ltr">{percentage}%</span>
         </div>
-      )}
-      {task.description && <p className="mt-3 text-sm leading-6 text-muted">{task.description}</p>}
-      <ImageAttachmentGallery attachments={task.attachments} />
+      </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <PriorityTag priority={task.priority} outlined className="px-3.5 py-1.5 text-sm font-semibold" />
-          <span className="text-base text-text/80">{hasSubtasks ? subtasksLabel(allSubtasks.length) : statusLabels[task.status]}</span>
-        </div>
+      <div className="tc-actions">
+        {!hasSubtasks && !isCompleted && (
+          isRunning ? (
+            <button type="button" className="tc-btn tc-btn--stop" onClick={() => onRequestStop(task.id)}><Square size={14} fill="currentColor" />إيقاف</button>
+          ) : (
+            <button type="button" className="tc-btn tc-btn--start" onClick={() => onStart(task.id)}><Play size={16} />{isPaused ? "استكمال" : "بدء"}</button>
+          )
+        )}
+        {!hasSubtasks && !isCompleted && (
+          <button type="button" className="tc-btn tc-btn--solid" onClick={() => onFinish(task.id)}><CheckCircle2 size={17} />إنهاء المهمة</button>
+        )}
+        {!hasSubtasks && isCompleted && (
+          <button type="button" className="tc-btn tc-btn--neutral" onClick={() => onReopen(task.id)}><RotateCcw size={16} />إعادة فتح</button>
+        )}
+        <button type="button" className="tc-btn tc-btn--ghost" onClick={() => onAddSubtask(task)}><Plus size={16} />{hasSubtasks ? "إضافة مهمة فرعية" : "مهمة فرعية"}</button>
+        {!hasSubtasks && (
+          <button type="button" className="tc-btn tc-btn--neutral" onClick={() => onAddComment(task.id)}><MessageSquarePlus size={16} />تعليق</button>
+        )}
         {!hasSubtasks && <ProgressControls task={task} onSetCurrent={onSetCurrent} />}
       </div>
 
-      <div className="mt-4 flex items-center gap-3">
-        <ProgressBar percentage={percentage} className="h-3.5" />
-        <span className="w-12 shrink-0 text-left font-mono text-base font-bold text-text">{percentage}%</span>
-      </div>
-
-      {hasSubtasks ? (
-        <div className="mt-4 border-t border-border pt-4">
-          <div className="grid grid-cols-3 divide-x divide-x-reverse divide-border rounded-2xl border border-border bg-background/40">
-            <div className="p-2.5 text-center">
-              <p className="text-xs text-muted">المهام</p>
-              <p className="font-mono font-bold text-text">{allSubtasks.length}</p>
-            </div>
-            <div className="p-2.5 text-center">
-              <p className="text-xs text-muted">المكتملة</p>
-              <p className="font-mono font-bold text-text">{completedSubtasks}</p>
-            </div>
-            <div className="p-2.5 text-center">
-              <p className="text-xs text-muted">إجمالي الوقت</p>
-              <p className="font-mono text-xs font-bold text-text">{formatDuration(subtasksDuration)}</p>
-            </div>
-          </div>
-          <button type="button" className="task-btn task-btn--secondary mt-4" onClick={() => onAddSubtask(task)}>
-            <Plus size={18} />إضافة مهمة فرعية
+      {hasDetails && (
+        <>
+          <button
+            type="button"
+            className="tc-toggle"
+            onClick={() => setDetailsOpen((value) => !value)}
+            aria-expanded={detailsOpen}
+          >
+            <ChevronDown size={18} className="tc-chev" aria-hidden />
+            <span>{detailsOpen ? "إخفاء التفاصيل" : "عرض التفاصيل"}</span>
+            {hasComments && <span className="tc-chip">تعليقات {task.comments.length}</span>}
+            {hasStopNotes && <span className="tc-chip">توقفات {task.stopNotes.length}</span>}
           </button>
-        </div>
-      ) : (
-      <div className="mt-4 border-t border-border pt-4">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted">
-          <span className="flex items-center gap-1.5"><Clock size={18} className="text-primary-deep" />الوقت: <span className="font-mono text-base font-bold text-text">{formatDuration(elapsed)}</span></span>
-          <span>بدأت: <span className="font-semibold text-text">{formatArabicTime(task.startedAt ?? task.startTime)}</span></span>
-          <span className="h-5 w-px bg-border" aria-hidden />
-          <span>انتهت: <span className="font-semibold text-text">{formatArabicTime(task.endTime)}</span></span>
-        </div>
 
-        {!isCompleted && (
-          <div className="mt-4">
-            {isRunning ? (
-              <button type="button" className="task-btn task-btn--secondary" onClick={() => onRequestStop(task.id)}><Pause size={18} />إيقاف</button>
-            ) : (
-              <button type="button" className="task-btn task-btn--secondary" onClick={() => onStart(task.id)}><Play size={18} />{isPaused ? "استكمال" : "بدء"}</button>
-            )}
-          </div>
-        )}
+          {detailsOpen && (
+            <section className="tc-details task-subtasks-enter">
+              {task.createdByName && (
+                <div className="tc-meta">
+                  <p>أضيفت بواسطة: {task.createdByName}</p>
+                  <p>المسؤول: {task.assigneeName ?? "—"}</p>
+                </div>
+              )}
+              {task.description && <p className="tc-desc">{task.description}</p>}
+              <ImageAttachmentGallery attachments={task.attachments} />
 
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <button type="button" className="task-btn task-btn--ghost" onClick={() => onAddSubtask(task)}><Plus size={18} />مهمة فرعية</button>
-          <button type="button" className="task-btn task-btn--secondary" onClick={() => onAddComment(task.id)}><MessageSquarePlus size={18} />تعليق</button>
-          {!isCompleted && (
-            <button type="button" className="task-btn task-btn--primary min-w-[9rem] flex-1" onClick={() => onFinish(task.id)}>
-              <ChevronRight size={16} />إنهاء المهمة<CheckCircle2 size={20} />
-            </button>
+              {hasComments && (
+                <div className="tc-panel">
+                  <p className="tc-panel-title">تعليقات ({task.comments.length})</p>
+                  {task.comments.map((comment) => (
+                    <div key={String(comment.time) + comment.text} className="tc-comment">
+                      <p className="min-w-0 break-words">
+                        {comment.userName && <span className="tc-comment-user">{comment.userName}:</span>}
+                        {comment.text}
+                      </p>
+                      {canDeleteComment(comment.userId) && (
+                        <button type="button" onClick={() => onDeleteComment(task.id, comment.time)} className="text-muted hover:text-problem" aria-label="حذف التعليق"><Trash2 size={13} /></button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {hasStopNotes && <StopNotesHistory task={task} />}
+            </section>
           )}
-          {isCompleted && (
-            <button type="button" className="task-btn task-btn--secondary" onClick={() => onReopen(task.id)}><RotateCcw size={18} />إعادة فتح</button>
-          )}
-        </div>
-      </div>
+        </>
       )}
 
       {hasSubtasks && expanded && (
@@ -420,29 +472,6 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
             />
           ))}
         </section>
-      )}
-
-      {!hasSubtasks && task.comments.length > 0 && (
-        <div className="mt-4 rounded-2xl bg-primary/10 px-4 py-3 text-sm text-text/85">
-          <p className="mb-2 font-semibold text-primary-deep">تعليقات ({task.comments.length})</p>
-          {task.comments.map((comment) => (
-            <div key={String(comment.time) + comment.text} className="flex items-start justify-between gap-2 border-t border-primary/15 py-2 first:border-t-0 first:pt-0">
-              <p className="min-w-0 break-words">
-{comment.userName && <span className="ml-1.5 font-semibold text-primary-deep">{comment.userName}:</span>}
-{comment.text}
-</p>
-              {canDeleteComment(comment.userId) && (
-                <button type="button" onClick={() => onDeleteComment(task.id, comment.time)} className="text-muted hover:text-problem" aria-label="حذف التعليق"><Trash2 size={13} /></button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!hasSubtasks && task.stopNotes.length > 0 ? (
-        <StopNotesHistory task={task} trailing={grip} />
-      ) : (
-        <div className="mt-3 flex justify-end">{grip}</div>
       )}
     </article>
   );
