@@ -84,6 +84,7 @@ model User {
   notificationsReceived Notification[] @relation("NotificationRecipient")
   notificationsCaused   Notification[] @relation("NotificationActor")
   pushSubscriptions     PushSubscription[]
+  inventoryMovements    InventoryMovement[]
 }
 
 // المهام الفرعية = Task بـ parentId (قرار موثّق في HANDOFF: الفرعية لها تايمر وتعليقات ومسؤول).
@@ -317,4 +318,50 @@ model PushSubscription {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// ===== المخزون (مبدئي — يُطابَق مع untitled.txt) =====
+// IN = إدخال، OUT = إخراج، ADJUST = جرد (تعيين الرصيد إلى قيمة محددة)
+enum InventoryMovementType {
+  IN
+  OUT
+  ADJUST
+}
+
+// عنصر مخزون (خامة أو منتج جاهز). الرصيد quantity لا يهبط تحت الصفر (قيد CHECK في الـ migration + فحص داخل معاملة).
+model InventoryItem {
+  id          String   @id @default(cuid())
+  name        String
+  sku         String?  @unique
+  unit        String   @default("قطعة")
+  quantity    Decimal  @default(0) @db.Decimal(14, 3)
+  minQuantity Decimal  @default(0) @db.Decimal(14, 3)
+  notes       String   @default("")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  movements InventoryMovement[]
+
+  @@index([isActive])
+}
+
+// حركة مخزون غير قابلة للتعديل (سجل تدقيق). delta موقّعة (+ إدخال / - إخراج)، balanceAfter الرصيد بعد الحركة.
+model InventoryMovement {
+  id           String                @id @default(cuid())
+  itemId       String
+  type         InventoryMovementType
+  delta        Decimal               @db.Decimal(14, 3)
+  balanceAfter Decimal               @db.Decimal(14, 3)
+  note         String                @default("")
+  // معرّف عملية السحب (عدة أصناف في طلب واحد). null لحركات الإدخال/الجرد/الإخراج اليدوي.
+  batchId      String?
+  createdById  String
+  createdAt    DateTime              @default(now())
+
+  item      InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  createdBy User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([itemId, createdAt])
+  @@index([batchId])
 }
