@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { Bell, CalendarRange, Home, LogOut, MessageSquare, PanelRightClose, PanelRightOpen, Tag, Warehouse, PackageMinus, Target, UserCog, UserRound, Users } from "lucide-react";
+import { AlertTriangle, Bell, CalendarRange, Home, LogOut, MessageSquare, PanelRightClose, PanelRightOpen, Tag, Warehouse, PackageMinus, Target, UserCog, UserRound, Users } from "lucide-react";
 import { useAuth } from "../auth/AuthProvider";
 import type { AppPage } from "../../lib/permissions";
 import { useResource } from "../../hooks/useResource";
@@ -13,7 +13,8 @@ const navItems = [
   { to: "/schedule", label: "الجدولة", icon: CalendarRange, page: "schedule" as AppPage },
   { to: "/users", label: "Dashboard", icon: Users, page: "users" as AppPage },
   { to: "/products", label: "أسعار منتجات", icon: Tag, page: "products" as AppPage },
-  { to: "/inventory", label: "المخزون", icon: Warehouse, page: "inventory" as AppPage },
+  { to: "/inventory", label: "المخزون", icon: Warehouse, end: true, page: "inventory" as AppPage },
+  { to: "/inventory/shortages", label: "نواقص المخزون", icon: AlertTriangle, page: "inventory" as AppPage },
   { to: "/withdrawals", label: "السحب", icon: PackageMinus, page: "withdrawals" as AppPage },
   { to: "/manage-users", label: "إدارة المستخدمين", icon: UserCog, page: "manageUsers" as AppPage },
 ];
@@ -35,7 +36,8 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
         { to: "/daily-tasks", label: "المهام اليومية", icon: Home, page: "dailyTasks" as AppPage },
         { to: "/notifications", label: "الإشعارات", icon: Bell, page: "notifications" as AppPage },
         { to: "/feedback", label: "Feedback", icon: MessageSquare, page: "feedback" as AppPage },
-        { to: "/inventory", label: "المخزون", icon: Warehouse, page: "inventory" as AppPage },
+        { to: "/inventory", label: "المخزون", icon: Warehouse, end: true, page: "inventory" as AppPage },
+        { to: "/inventory/shortages", label: "نواقص المخزون", icon: AlertTriangle, page: "inventory" as AppPage },
         { to: "/withdrawals", label: "السحب", icon: PackageMinus, page: "withdrawals" as AppPage },
         { to: "/profile", label: "صفحتي", icon: UserRound, page: "profile" as AppPage },
       ]

@@ -1,5 +1,30 @@
 # CHANGES.md
 
+## استكمال نظام إدارة المخزون المتكامل (المراحل 1 → 10) — 2026-10-31
+
+### Backend
+- `prisma/schema.prisma` + `prisma/migrations/0010_inventory_complete/migration.sql` — استكمال نماذج المخزون المستقلة تماماً عن صفحة أسعار المنتجات:
+  - `InventoryCategory`: إضافة `description` و`updatedAt` وحساب عدد المنتجات المرتبطة (`itemsCount`).
+  - `InventoryItem`: إضافة `unitPrice Decimal(14,2)` (سعر الوحدة بالجنيه المصري مع قيد `CHECK >= 0`) و`lowAlertSent` لمنع تكرار إشعارات نقص المخزون.
+  - `InventoryMovementType`: إضافة نوع الحركة `RETURN` (مرتجع) إلى جانب `IN`, `OUT`, `ADJUST`.
+  - `InventoryMovement`: إضافة `previousBalance Decimal(14,3)`، `unitPriceSnapshot Decimal(14,2)` (يحفظ السعر وقت الحركة فلا تتغير أسعار الحركات القديمة عند تعديل سعر المنتج)، `reason`، و`referenceId`.
+- `src/routes/inventory.ts` + `src/validators/inventory.ts` + `src/utils/inventorySerialize.ts`:
+  - حسابات مالية عشرية دقيقة (`calcTotalValue`) وإحصائيات شاملة (`stats`: إجمالي المنتجات، الكميات، القيمة بالجنيه، المتوفر، المنخفض، النافد، وحركات اليوم).
+  - مسارات إدارة التصنيفات الكاملة (`GET/POST/PATCH/DELETE /api/inventory/categories`) مع منع التكرار ومنع حذف تصنيف به منتجات إلا مع نقلها الآمن لتصنيف بديل (`reassignToCategoryId`).
+  - توليد كود منتج تلقائي فريد (`GET /api/inventory/next-sku`) وقائمة الوحدات العشر الافتراضية والمخصصة (`GET /api/inventory/units`).
+  - استعلام الحركات المفلترة للتقارير (`GET /api/inventory/movements` بالتاريخ والتصنيف والمنتج ونوع الحركة).
+  - منع تكرار تنفيذ نفس عملية السحب عبر `requestId` وإشعارات `INVENTORY_LOW` داخل الموقع عند الوصول للحد الأدنى أو النفاد.
+- `tests/inventory.test.ts` + `tests/globalSetup.ts` + `tests/timerWatcher.test.ts` + `vitest.config.ts`:
+  - إصلاح إعدادات `PGLiteSocketServer` (`maxConnections: 8`) و`isolate: false` و`package-lock.json`، وتوسيع اختبارات المخزون إلى 32 اختباراً شاملاً (إجمالي 281 اختباراً ناجحاً في 20 ملف اختبار).
+
+### Frontend
+- `pages/Inventory.tsx`: لوحة المخزون الرئيسية بـ 7 بطاقات إحصائيات، بحث بالاسم والكود، تصفية بالتصنيف وحالة المخزون، ترتيب بالاسم والكمية والقيمة، وجدول شامل مع إجراءات سريعة لكل منتج.
+- `pages/LowStock.tsx` (`/inventory/shortages`): صفحة مستقلة لنواقص المخزون تعرض المنتجات المنخفضة والنافدة والكمية المقترحة لإعادة الطلب والتكلفة التقديرية وزر إضافة وارد سريع.
+- `pages/Withdrawals.tsx`: تطوير صفحة السحب لعرض الصور والكود والتصنيف والكمية المتاحة وحقل الكمية وسلة السحب وإجمالي الأصناف وإلغاء العملية وسجل السحوبات المجمع برقم العملية.
+- مكونات المخزون في `components/inventory/`: `CategoriesModal.tsx`، `ItemModal.tsx`، `ItemDetailsModal.tsx`، `StocktakeModal.tsx`، `ReturnModal.tsx`، `ReportsModal.tsx`، `MovementModal.tsx`، `MovementsModal.tsx`، `format.ts`، ومكتبة تصدير التقارير السبعة إلى Excel `lib/exportInventory.ts`.
+
+---
+
 ## واجهة — تصغير كرت المهمة (للتعامل مع الطلبات الكثيرة)
 
 - `TaskTimerPanel.tsx` أُعيدت كتابته بأنماط `tm-*` (في `index.css`): المؤقت صار صفاً واحداً (الحالة + الوقت + الإجمالي + أزرار صغيرة: إيقاف/استكمال، تمديد +5/+10/+15، إلغاء كأيقونة) بدل بلوك من 3 صفوف وأزرار Tailwind كبيرة. اختيار المدة أيضاً صف واحد.

@@ -8,6 +8,7 @@ import FeedbackPage from "./pages/Feedback";
 import GoalsPage from "./pages/Goals";
 import ProductsPage from "./pages/Products";
 import InventoryPage from "./pages/Inventory";
+import LowStockPage from "./pages/LowStock";
 import WithdrawalsPage from "./pages/Withdrawals";
 import SchedulePage from "./pages/Schedule";
 import TeamDashboardPage from "./pages/TeamDashboard";
@@ -48,6 +49,7 @@ export default function App() {
             <Route path="/users" element={<ProtectedRoute page="users"><TeamDashboardPage /></ProtectedRoute>} />
             <Route path="/products" element={<ProtectedRoute page="products"><ProductsPage /></ProtectedRoute>} />
             <Route path="/inventory" element={<ProtectedRoute page="inventory"><InventoryPage /></ProtectedRoute>} />
+            <Route path="/inventory/shortages" element={<ProtectedRoute page="inventory"><LowStockPage /></ProtectedRoute>} />
             <Route path="/withdrawals" element={<ProtectedRoute page="withdrawals"><WithdrawalsPage /></ProtectedRoute>} />
             <Route path="/manage-users" element={<ProtectedRoute page="manageUsers"><ManageUsersPage /></ProtectedRoute>} />
             <Route path="/dashboard" element={<Navigate to="/users" replace />} />

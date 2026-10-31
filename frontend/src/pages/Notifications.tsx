@@ -59,6 +59,8 @@ export default function NotificationsPage() {
     if (!item.isRead) await safe(() => notificationsService.setRead(item.id, true));
     if (item.taskId) {
       navigate(item.taskDate ? `/daily-tasks?date=${item.taskDate}` : "/daily-tasks");
+    } else if (item.type === "INVENTORY_LOW") {
+      navigate("/inventory/shortages");
     } else {
       await reload();
     }

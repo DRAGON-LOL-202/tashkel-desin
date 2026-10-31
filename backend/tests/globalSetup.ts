@@ -17,7 +17,10 @@ export async function setup() {
   for (const m of migrations) {
     await db.exec(readFileSync(new URL(`${m}/migration.sql`, migrationsDir), "utf8"));
   }
-  server = new PGLiteSocketServer({ db, port: 54329, host: "127.0.0.1" });
+  // maxConnections الافتراضي 1: اتصال العامل السابق (ملف اختبار انتهى) قد يبقى مفتوحاً لحظات بعد انتهائه
+  // فيُرفض اتصال الملف التالي بـ "Too many connections". الملفات تعمل بالتتابع (fileParallelism: false)
+  // وكل عامل يستخدم اتصالاً واحداً (DB_POOL_MAX=1)، فلا تداخل فعلي بين الاستعلامات.
+  server = new PGLiteSocketServer({ db, port: 54329, host: "127.0.0.1", maxConnections: 8 });
   await server.start();
   process.env.DATABASE_URL = "postgresql://postgres@127.0.0.1:54329/postgres";
   process.env.JWT_SECRET = "test-only-jwt-secret-not-real-0123456789";

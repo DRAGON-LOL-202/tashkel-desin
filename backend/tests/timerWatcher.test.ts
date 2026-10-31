@@ -16,6 +16,7 @@ beforeAll(async () => {
   mgrId = (await prisma().user.findUnique({ where: { username: "amr" } }))!.id;
 });
 beforeEach(async () => {
+  await prisma().taskTimer.deleteMany({});
   await prisma().notification.deleteMany({});
 });
 
@@ -87,7 +88,7 @@ describe("timerWatcher", () => {
     const { id, now } = await mkRunning(60, 10_000);
     await processTimers(now + 20_000);
     await prisma().notification.deleteMany({});
-    await api(des).post(`/api/tasks/${id}/timer/extend`).send({ minutes: 1 });
+    await api(des).post(`/api/tasks/${id}/timer/extend`).send({ minutes: 2 });
     const row = await prisma().taskTimer.findUnique({ where: { taskId: id } });
     expect(row).toMatchObject({ status: "RUNNING", expiredNotified: false, warned1: false });
   });

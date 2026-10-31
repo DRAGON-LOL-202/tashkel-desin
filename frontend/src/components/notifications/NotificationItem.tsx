@@ -25,6 +25,7 @@ const iconByType: Record<string, LucideIcon> = {
   ROLE_CHANGED: UserCog,
   ANNOUNCEMENT: Bell,
   ADMIN_TASK_ASSIGNED: ListChecks,
+  INVENTORY_LOW: AlarmClock,
 };
 
 const colorByCategory: Record<string, string> = {

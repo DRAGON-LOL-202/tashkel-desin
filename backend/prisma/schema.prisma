@@ -320,62 +320,72 @@ model PushSubscription {
   @@index([userId])
 }
 
-// ===== المخزون (مبدئي — يُطابَق مع untitled.txt) =====
-// IN = إدخال، OUT = إخراج، ADJUST = جرد (تعيين الرصيد إلى قيمة محددة)
+// ===== المخزون =====
+// IN = إدخال (وارد / رصيد افتتاحي)، OUT = إخراج (سحب)، ADJUST = جرد (تسوية الرصيد)، RETURN = مرتجع إلى المخزون
 enum InventoryMovementType {
   IN
   OUT
   ADJUST
+  RETURN
 }
 
-// تصنيف عناصر المخزون (يُضاف من نموذج العنصر مباشرة). لا يُحذف تصنيف عليه عناصر.
+// تصنيف عناصر المخزون المستقل. لا يُحذف تصنيف عليه عناصر إلا بعد نقلها لتصنيف آخر.
 model InventoryCategory {
-  id        String   @id @default(cuid())
-  name      String
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  name        String
+  description String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   items InventoryItem[]
 }
 
-// عنصر مخزون (خامة أو منتج جاهز). الرصيد quantity لا يهبط تحت الصفر (قيد CHECK في الـ migration + فحص داخل معاملة).
+// عنصر مخزون مستقل تماماً عن صفحة أسعار المنتجات. الرصيد quantity والسعر unitPrice لا يهبطان تحت الصفر.
 model InventoryItem {
-  id          String   @id @default(cuid())
-  name        String
-  categoryId  String
+  id           String   @id @default(cuid())
+  name         String
+  categoryId   String
   // صور العنصر (حتى 10) بنفس شكل مرفقات المهام والمنتجات
-  attachments Json     @default("[]")
-  sku         String?  @unique
-  unit        String   @default("قطعة")
-  quantity    Decimal  @default(0) @db.Decimal(14, 3)
-  minQuantity Decimal  @default(0) @db.Decimal(14, 3)
-  notes       String   @default("")
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  attachments  Json     @default("[]")
+  sku          String?  @unique
+  unit         String   @default("قطعة")
+  quantity     Decimal  @default(0) @db.Decimal(14, 3)
+  minQuantity  Decimal  @default(0) @db.Decimal(14, 3)
+  unitPrice    Decimal  @default(0) @db.Decimal(14, 2)
+  lowAlertSent Boolean  @default(false)
+  notes        String   @default("")
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  category  InventoryCategory  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  category  InventoryCategory   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   movements InventoryMovement[]
 
   @@index([categoryId])
   @@index([isActive])
 }
 
-// حركة مخزون غير قابلة للتعديل (سجل تدقيق). delta موقّعة (+ إدخال / - إخراج)، balanceAfter الرصيد بعد الحركة.
+// حركة مخزون غير قابلة للتعديل (سجل تدقيق). delta موقّعة (+ إدخال/مرتجع / - إخراج / ± فرق جرد).
 model InventoryMovement {
-  id           String                @id @default(cuid())
-  itemId       String
-  type         InventoryMovementType
-  delta        Decimal               @db.Decimal(14, 3)
-  balanceAfter Decimal               @db.Decimal(14, 3)
-  note         String                @default("")
-  // معرّف عملية السحب (عدة أصناف في طلب واحد). null لحركات الإدخال/الجرد/الإخراج اليدوي.
-  batchId      String?
-  createdById  String
-  createdAt    DateTime              @default(now())
+  id                String                @id @default(cuid())
+  itemId            String
+  type              InventoryMovementType
+  previousBalance   Decimal               @default(0) @db.Decimal(14, 3)
+  delta             Decimal               @db.Decimal(14, 3)
+  balanceAfter      Decimal               @db.Decimal(14, 3)
+  unitPriceSnapshot Decimal               @default(0) @db.Decimal(14, 2)
+  reason            String                @default("")
+  referenceId       String?
+  note              String                @default("")
+  // معرّف عملية السحب (عدة أصناف في طلب واحد). null لحركات الإدخال/الجرد/المرتجع/الإخراج الفردي.
+  batchId           String?
+  createdById       String
+  createdAt         DateTime              @default(now())
 
   item      InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
   createdBy User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
 
   @@index([itemId, createdAt])
   @@index([batchId])
+  @@index([type, createdAt])
 }

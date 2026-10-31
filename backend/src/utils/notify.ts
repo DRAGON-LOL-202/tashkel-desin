@@ -31,6 +31,7 @@ export const NOTIFICATION_TYPES = {
   ROLE_CHANGED: "admin",
   ANNOUNCEMENT: "admin",
   ADMIN_TASK_ASSIGNED: "admin",
+  INVENTORY_LOW: "reminders",
 } as const satisfies Record<string, NotificationCategory>;
 export type NotificationType = keyof typeof NOTIFICATION_TYPES;
 
