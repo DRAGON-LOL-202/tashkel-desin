@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlarmClock, Pause, Play, Plus, X } from "lucide-react";
 import type { Task, TimerAction } from "../../types";
 import { useCountdown } from "../../hooks/useTaskTimer";
 import { formatDuration, formatDurationShort } from "../../lib/date";
 import { Button } from "../ui/Button";
+import { useToast } from "../ui/ToastProvider";
+import { claimOnce, playAlarm } from "../../lib/alarmSound";
 
 interface TaskTimerPanelProps {
   task: Task;
@@ -18,6 +20,20 @@ export function TaskTimerPanel({ task, onAction }: TaskTimerPanelProps) {
   const countdown = useCountdown(task.timer);
   const [picking, setPicking] = useState(false);
   const [custom, setCustom] = useState("");
+  const { show } = useToast();
+
+  // انتهاء الوقت والصفحة مفتوحة: إنذار صوتي + تنبيه فوري من الموقع نفسه (دون انتظار Push).
+  // نكتفي بالانتقال running ← expired أمام المستخدم؛ مؤقت منتهٍ أصلاً عند فتح الصفحة لا يُصدر صوتاً.
+  // المفتاح نفسه تستخدمه PushBridge فلا يتكرر الإنذار حين تصل رسالة Push لنفس المهمة.
+  const liveStatus = countdown?.status;
+  const previousStatus = useRef(liveStatus);
+  useEffect(() => {
+    if (previousStatus.current === "running" && liveStatus === "expired" && claimOnce(`expired:timer-${task.id}`)) {
+      playAlarm("expired");
+      show(`انتهى وقت المهمة «${task.title}»`, "warning");
+    }
+    previousStatus.current = liveStatus;
+  }, [liveStatus, task.id, task.title, show]);
 
   if (task.status === "completed") return null;
 

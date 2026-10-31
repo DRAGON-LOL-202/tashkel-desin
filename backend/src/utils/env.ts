@@ -28,6 +28,11 @@ const schema = z
     R2_ENDPOINT: optionalText, // بديل للعنوان الافتراضي (اختباري/محلي فقط)
     // سر endpoint المراقبة الخارجي (/api/internal/tick). غير مضبوط = الـ endpoint معطّل (404).
     CRON_SECRET: z.string().trim().min(16, "CRON_SECRET يجب ألا يقل عن 16 حرفاً").optional().or(z.literal("").transform(() => undefined)),
+    // Web Push (VAPID): اضبط الثلاثة معاً أو لا شيء. بدونها يعمل التطبيق كما كان (إشعارات داخل الموقع فقط).
+    // توليد المفاتيح: npx web-push generate-vapid-keys
+    VAPID_PUBLIC_KEY: optionalText,
+    VAPID_PRIVATE_KEY: optionalText,
+    VAPID_SUBJECT: optionalText, // mailto:you@example.com أو https://موقعك
     R2_MAX_FILE_MB: z.coerce.number().positive().max(50).default(10),
   })
   .superRefine((v, ctx) => {
@@ -37,6 +42,16 @@ const schema = z
       for (const k of required.filter((k) => !v[k])) {
         ctx.addIssue({ code: "custom", path: [k], message: "مطلوب عند ضبط أي متغير R2 (اضبط الأربعة معاً أو لا شيء)" });
       }
+    }
+    const vapid = ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"] as const;
+    const vapidSet = vapid.filter((k) => v[k]);
+    if (vapidSet.length > 0 && vapidSet.length < vapid.length) {
+      for (const k of vapid.filter((k) => !v[k])) {
+        ctx.addIssue({ code: "custom", path: [k], message: "مطلوب عند ضبط أي متغير VAPID (اضبط الثلاثة معاً أو لا شيء)" });
+      }
+    }
+    if (v.VAPID_SUBJECT && !/^(mailto:|https:\/\/)/.test(v.VAPID_SUBJECT)) {
+      ctx.addIssue({ code: "custom", path: ["VAPID_SUBJECT"], message: "يجب أن يبدأ بـ mailto: أو https://" });
     }
   });
 

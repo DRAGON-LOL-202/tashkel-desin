@@ -1,5 +1,48 @@
 # CHANGES.md
 
+## الإشعارات — الدفعة 5: Web Push (تنبيهات تصل والموقع مغلق) + صوت الإنذار داخل الموقع
+
+الهدف: عند انتهاء وقت المؤقت (أو أي إشعار) يصل تنبيه لهاتفك حتى لو كان الموقع مغلقاً، وإن كان الموقع مفتوحاً يُسمع إنذار منه مباشرة.
+
+### Backend
+- `prisma/schema.prisma` + `migrations/0007_push_subscriptions` — جدول `PushSubscription` (userId، endpoint فريد، p256dh، auth). حذف المستخدم يحذف أجهزته. **يلزم `prisma migrate deploy`.**
+- `src/utils/push.ts` (جديد) — الإرسال عبر `web-push`: TTL حسب النوع (دقيقة=120ث، 10 دقائق=600ث، الانتهاء=ساعة، غيرها يوم)، `urgency: high` للمؤقت، اشتراك 404/410 يُحذف تلقائياً، أي فشل يُسجَّل ولا يكسر العملية الأصلية. `dispatchPush` لا ينتظره الطلب، و`flushPushes` ينتظره المراقب.
+- `src/routes/push.ts` (جديد، `/api/push`): `GET /config` (التفعيل + المفتاح العام + عدد أجهزتي)، `POST /subscribe` (upsert؛ جهاز مشترك ينتقل للمستخدم الجديد)، `POST /unsubscribe` (لصاحب الجهاز فقط)، `POST /test` (لأجهزتي فقط، 6 طلبات/دقيقة، لا يُنشئ سجلاً في الإشعارات).
+- `src/utils/notify.ts` — يستخدم `createManyAndReturn` ويرسل Push لكل مستلم بعد حفظ الإشعار (رابط `/#/daily-tasks?date=…&nid=…` لأن الموقع HashRouter).
+- `src/utils/timerWatcher.ts` — ينتظر خروج رسائل الدفع قبل إنهاء الدورة (مهم للخطة المجانية).
+- `src/utils/env.ts` — `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (الثلاثة معاً أو لا شيء؛ SUBJECT يبدأ بـ mailto: أو https://). بدونها يعمل كل شيء كما كان.
+- `src/app.ts` — تسجيل المسار، و**إصلاح جانبي**: مسارات `/api/push` و`/api/internal` لم تعد ترفع رقم نسخة المزامنة (كانت كل POST من cron أو تسجيل جهاز توقظ كل الواجهات لإعادة التحميل).
+- `package.json`: `web-push`, `@types/web-push`.
+- `tests/push.test.ts` (جديد، 18 اختباراً) + مفاتيح VAPID وهمية في `tests/globalSetup.ts`.
+
+### Frontend
+- `public/sw.js` — معالجات `push` و`notificationclick` و`pushsubscriptionchange` فقط؛ منطق الكاش لم يُمس. الإشعار يُعرض دائماً (شرط iOS/Chrome)، انتهاء الوقت `requireInteraction`، الروابط من نطاق آخر مرفوضة.
+- `lib/webPush.ts`، `services/pushService.ts` — طلب الإذن (من نقرة المستخدم)، الاشتراك، المزامنة الصامتة بعد الدخول، وفصل الجهاز عند الخروج (`authService.logout` قبل إتلاف التوكن).
+- `lib/alarmSound.ts` — إنذار WebAudio بلا ملفات (يُفتح بأول لمسة)، `claimOnce` يمنع تكرار الإنذار بين العدّاد المحلي ورسالة Push.
+- `components/notifications/PushSettingsCard.tsx` — أعلى صفحة الإشعارات: تفعيل/إيقاف/تجربة، كتم الصوت، إرشاد iPhone، حالات الرفض وعدم الدعم.
+- `components/notifications/PushBridge.tsx` — صوت+تنبيه داخل الصفحة عند وصول Push، التنقل عند النقر دون إعادة تحميل، تحديد الإشعار مقروءاً من `nid`، مزامنة الاشتراك.
+- `TaskTimerPanel.tsx` — إنذار + تنبيه فوري من الموقع عند انتقال المؤقت running ← expired أمام المستخدم.
+- `Dashboard.tsx` — ينتقل لليوم المطلوب حتى لو كان مفتوحاً أصلاً (كان يقرأ `?date` عند الفتح فقط).
+
+### حالة التحقق
+- ✅ فحص صياغة كل الملفات (TypeScript transpile + `node --check`).
+- ✅ محاكاة `sw.js` في بيئة معزولة (push بأنواعه، النقر مع نافذة مفتوحة/مغلقة، رابط خبيث، حمولة تالفة) ومحاكاة `push.ts` (TTL، الحمولة، 410 يُحذف و500 يبقى، انتظار الإرسال).
+- ❌ **لم يُشغَّل:** `npm test` (ومنه `push.test.ts`)، `npm run typecheck`، `npm run build`، ولم يُجرَّب إشعار حقيقي على هاتف. السبب: لا شبكة لتثبيت الاعتماديات وتوليد Prisma client.
+
+### النشر
+1. `cd backend && npm install` (يضيف web-push) ثم `npm run typecheck && npm test`.
+2. `npx web-push generate-vapid-keys` ← على Render أضف: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT=mailto:بريدك`. **المفتاح الخاص سر؛ لا يوضع في الواجهة ولا في GitHub.**
+3. `prisma migrate deploy` (0005 ثم 0006 ثم 0007).
+4. انشر الباكند أولاً ثم الواجهة. من الهاتف: افتح الموقع ← الإشعارات ← «تفعيل تنبيهات الهاتف» ← «إرسال تنبيه تجريبي».
+5. iPhone: لا يعمل إلا بعد «إضافة إلى الشاشة الرئيسية» وiOS 16.4+.
+
+### حدود معروفة
+- الـ Service Worker لا يملك توكن الدخول: إن انتهت جلسة المستخدم (12 ساعة) دون تسجيل خروج يبقى جهازه مسجّلاً حتى يدخل أحد على نفس الهاتف (ينتقل إليه) أو يفشل الإرسال 404/410.
+- التأخير الأقصى للتنبيه على الخطة المجانية ≈ دقيقة (دورة cron-job.org). وإن كان الموقع مفتوحاً يُسمع الإنذار لحظة انتهاء العدّاد دون انتظار الخادم.
+- أيقونة `badge` على أندرويد تستخدم icon-192 (تظهر مربعاً أبيض؛ الأفضل لاحقاً أيقونة أحادية اللون).
+
+---
+
 ## Checkpoint 22 — الحضور والانصراف (جلسات) + جدول الحضور الشهري في لوحة الفريق
 
 ### Backend

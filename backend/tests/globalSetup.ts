@@ -30,6 +30,10 @@ export async function setup() {
   process.env.R2_BUCKET_NAME = "test-bucket";
   process.env.R2_ENDPOINT = "http://r2.test.invalid";
   process.env.R2_MAX_FILE_MB = "1";
+  // Web Push: مفاتيح وهمية (الإرسال الفعلي يُستبدل بدالة وهمية في الاختبارات، فلا يخرج أي طلب شبكة)
+  process.env.VAPID_PUBLIC_KEY = "BTestPublicKeyNotRealBTestPublicKeyNotRealBTestPublicKeyNotRealBTestPublicKeyNotRea";
+  process.env.VAPID_PRIVATE_KEY = "test-private-key-not-real";
+  process.env.VAPID_SUBJECT = "mailto:test@example.test";
 }
 
 export async function teardown() {

@@ -4,6 +4,7 @@
 //  - أي فشل هنا لا يُفشل العملية الأصلية (أفضل جهد).
 import { prisma } from "../db.js";
 import { bumpDataVersion } from "./syncVersion.js";
+import { buildPayload, dispatchPush } from "./push.js";
 
 export const NOTIFICATION_CATEGORIES = ["tasks", "reminders", "comments", "admin"] as const;
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
@@ -43,7 +44,7 @@ export interface NotifyInput {
   subtaskId?: string | null;
 }
 
-/** يعيد معرّفات المستلمين الذين أُنشئ لهم إشعار فعلاً (للاستخدام لاحقاً في Web Push). */
+/** يعيد معرّفات المستلمين الذين أُنشئ لهم إشعار فعلاً. بعد الحفظ يُرسَل Web Push لأجهزتهم (إن كان مفعّلاً). */
 export async function notify(input: NotifyInput): Promise<string[]> {
   try {
     const actorId = input.actor?.id ?? null;
@@ -53,7 +54,7 @@ export async function notify(input: NotifyInput): Promise<string[]> {
     const users = await db.user.findMany({ where: { id: { in: wanted }, isActive: true }, select: { id: true } });
     const ids = users.map((u) => u.id);
     if (ids.length === 0) return [];
-    await db.notification.createMany({
+    const created = await db.notification.createManyAndReturn({
       data: ids.map((recipientId) => ({
         recipientId,
         actorId,
@@ -64,7 +65,18 @@ export async function notify(input: NotifyInput): Promise<string[]> {
         relatedTaskId: input.taskId ?? null,
         relatedSubtaskId: input.subtaskId ?? null,
       })),
+      select: { id: true, recipientId: true },
     });
+
+    // Web Push للأجهزة المشترَكة (الموقع مغلق). فشله لا يؤثر على الإشعار المحفوظ ولا على العملية الأصلية.
+    try {
+      const taskDate = input.taskId ? ((await db.task.findUnique({ where: { id: input.taskId }, select: { date: true } }))?.date ?? null) : null;
+      for (const row of created) {
+        dispatchPush([row.recipientId], buildPayload({ type: input.type, title: input.title, message: input.message, taskId: input.taskId, taskDate, notificationId: row.id }));
+      }
+    } catch (e) {
+      console.error("push prepare failed", e instanceof Error ? e.message : e);
+    }
     return ids;
   } catch (e) {
     console.error("notify failed", e instanceof Error ? e.message : e);

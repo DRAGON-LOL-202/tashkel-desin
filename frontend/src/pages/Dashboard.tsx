@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { UserCheck } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { AppLayout } from "../components/layout/AppLayout";
 import { Header } from "../components/header/Header";
 import { TaskStats } from "../components/tasks/TaskStats";
@@ -53,6 +53,13 @@ export default function Dashboard() {
     const d = searchParams.get("date");
     return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : todayISO();
   });
+  // فتح إشعار والصفحة مفتوحة أصلاً (تغيّر ?date فقط): ننتقل لليوم المطلوب. نعتمد location.key ليعمل
+  // حتى لو كان ?date نفسه في الرابط بعد أن غيّر المستخدم اليوم يدوياً.
+  const locationKey = useLocation().key;
+  const dateParam = searchParams.get("date");
+  useEffect(() => {
+    if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) setSelectedDate(dateParam);
+  }, [locationKey, dateParam]);
   const [newTaskAssignee, setNewTaskAssignee] = useState<TeamMember | undefined>();
   const [newTaskParent, setNewTaskParent] = useState<Task | undefined>();
   const [newTaskMode, setNewTaskMode] = useState<"normal" | "main" | "subtask">("normal");

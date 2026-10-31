@@ -14,6 +14,7 @@ import { attendanceRouter } from "./routes/attendance.js";
 import { syncRouter } from "./routes/sync.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { internalRouter } from "./routes/internal.js";
+import { pushRouter } from "./routes/push.js";
 import { bumpDataVersion } from "./utils/syncVersion.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
 
@@ -29,7 +30,9 @@ export function createApp() {
   // أي عملية كتابة ناجحة (غير تسجيل الدخول) ترفع رقم نسخة البيانات ليعرف الجميع أن هناك تغييراً
   const WRITE_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
   app.use((req, res, next) => {
-    if (WRITE_METHODS.has(req.method) && !req.path.startsWith("/api/auth")) {
+    // اشتراكات الأجهزة وping المراقب لا تغيّر بيانات يراها الآخرون، فلا نوقظ كل الواجهات لإعادة التحميل بسببها
+    const silent = req.path.startsWith("/api/auth") || req.path.startsWith("/api/push") || req.path.startsWith("/api/internal");
+    if (WRITE_METHODS.has(req.method) && !silent) {
       res.on("finish", () => {
         if (res.statusCode < 400) bumpDataVersion();
       });
@@ -49,6 +52,7 @@ export function createApp() {
   app.use("/api/attendance", attendanceRouter);
   app.use("/api/sync", syncRouter);
   app.use("/api/notifications", notificationsRouter);
+  app.use("/api/push", pushRouter);
   app.use("/api/internal", internalRouter);
 
   app.use(notFoundHandler);

@@ -83,6 +83,7 @@ model User {
 
   notificationsReceived Notification[] @relation("NotificationRecipient")
   notificationsCaused   Notification[] @relation("NotificationActor")
+  pushSubscriptions     PushSubscription[]
 }
 
 // المهام الفرعية = Task بـ parentId (قرار موثّق في HANDOFF: الفرعية لها تايمر وتعليقات ومسؤول).
@@ -299,4 +300,21 @@ model TaskTimer {
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([status])
+}
+
+// اشتراك جهاز/متصفح في Web Push. endpoint فريد عالمياً: إن سجّل مستخدم آخر الدخول على نفس الجهاز
+// يُنقل الاشتراك إليه (upsert) فلا يصل إشعار المستخدم السابق لهذا الجهاز.
+model PushSubscription {
+  id          String    @id @default(cuid())
+  userId      String
+  endpoint    String    @unique
+  p256dh      String
+  auth        String
+  userAgent   String?
+  createdAt   DateTime  @default(now())
+  lastPushAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

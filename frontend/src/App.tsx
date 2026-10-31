@@ -13,6 +13,7 @@ import ManageUsersPage from "./pages/ManageUsers";
 import LoginPage from "./pages/Login";
 import ProfilePage from "./pages/Profile";
 import NotificationsPage from "./pages/Notifications";
+import { PushBridge } from "./components/notifications/PushBridge";
 
 function HomeRoute() {
   const { user } = useAuth();
@@ -30,6 +31,7 @@ export default function App() {
     <ToastProvider>
       <HashRouter>
         <AuthProvider>
+          <PushBridge />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/" element={<HomeRoute />} />

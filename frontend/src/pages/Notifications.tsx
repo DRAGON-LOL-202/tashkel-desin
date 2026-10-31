@@ -11,6 +11,7 @@ import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { Tabs } from "../components/ui/Tabs";
 import { useToast } from "../components/ui/ToastProvider";
 import { NotificationItem } from "../components/notifications/NotificationItem";
+import { PushSettingsCard } from "../components/notifications/PushSettingsCard";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
 import { notificationsService } from "../services/notificationsService";
@@ -107,6 +108,7 @@ export default function NotificationsPage() {
       )}
     >
       <div className="flex flex-col gap-4">
+        <PushSettingsCard />
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Card className="p-4">
             <p className="text-xs text-muted">إجمالي الإشعارات</p>

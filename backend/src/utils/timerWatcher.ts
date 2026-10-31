@@ -4,6 +4,7 @@
 import { prisma } from "../db.js";
 import { MS_PER_MINUTE, remainingAt } from "./timerMath.js";
 import { announceNotificationsChanged, notify } from "./notify.js";
+import { flushPushes } from "./push.js";
 
 export interface TickResult {
   checked: number;
@@ -63,7 +64,10 @@ export async function processTimers(now = Date.now()): Promise<TickResult> {
     }
   }
 
-  if (result.warned10 + result.warned1 + result.expired > 0) announceNotificationsChanged();
+  if (result.warned10 + result.warned1 + result.expired > 0) {
+    announceNotificationsChanged();
+    await flushPushes(); // الدفع يُرسَل قبل أن ننهي الدورة (مهم للخطة المجانية التي قد تنام بعد الرد)
+  }
   return result;
 }
 
