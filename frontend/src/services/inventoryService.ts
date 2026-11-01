@@ -3,6 +3,8 @@ import { toAttachmentPayload } from "../lib/attachments";
 import { DEFAULT_INVENTORY_UNITS, calcTotalValue } from "../components/inventory/format";
 import type {
   InventoryCategory,
+  InventoryGroup,
+  InventoryGroupsData,
   InventoryCategoryInput,
   InventoryData,
   InventoryItem,
@@ -33,6 +35,7 @@ export const EMPTY_INVENTORY_STATS: InventoryStats = {
 export const EMPTY_INVENTORY_DATA: InventoryData = {
   items: [],
   categories: [],
+  groups: [],
   stats: EMPTY_INVENTORY_STATS,
   units: [...DEFAULT_INVENTORY_UNITS],
 };
@@ -66,15 +69,16 @@ function computeFallbackStats(items: InventoryItem[]): InventoryStats {
 export const inventoryService = {
   /** كل العناصر (بما فيها المؤرشفة) والتصنيفات والإحصائيات والوحدات معاً ليعمل مع useResource والمزامنة الحية */
   async list(): Promise<InventoryData> {
-    const [invRes, catRes, unitsRes] = await Promise.all([
+    const [invRes, catRes, unitsRes, groupsRes] = await Promise.all([
       api<{ items: InventoryItem[]; stats?: InventoryStats }>("/inventory?includeInactive=true"),
       api<{ categories: InventoryCategory[] }>("/inventory/categories"),
       api<{ units: string[] }>("/inventory/units").catch(() => ({ units: [...DEFAULT_INVENTORY_UNITS] })),
+      api<InventoryGroupsData>("/inventory/groups").catch(() => ({ groups: [] as InventoryGroup[] })),
     ]);
     const items = invRes.items;
     const stats = invRes.stats ?? computeFallbackStats(items);
     const units = unitsRes.units?.length ? unitsRes.units : [...DEFAULT_INVENTORY_UNITS];
-    return { items, categories: catRes.categories, stats, units };
+    return { items, categories: catRes.categories, groups: groupsRes.groups, stats, units };
   },
 
   /**
@@ -88,7 +92,7 @@ export const inventoryService = {
     ]);
     // الحقول المالية غائبة من رد «السحب فقط»؛ تُملأ بأصفار لإرضاء النوع ولا تُعرض في هذه الصفحة
     const items = invRes.items.map((i) => ({ ...i, unitPrice: i.unitPrice ?? 0, totalValue: i.totalValue ?? 0, suggestedReorderQty: i.suggestedReorderQty ?? 0 }));
-    return { items, categories: catRes.categories, stats: EMPTY_INVENTORY_STATS, units: [...DEFAULT_INVENTORY_UNITS] };
+    return { items, categories: catRes.categories, groups: [], stats: EMPTY_INVENTORY_STATS, units: [...DEFAULT_INVENTORY_UNITS] };
   },
 
   async listCategories(q?: string): Promise<InventoryCategory[]> {
@@ -97,10 +101,15 @@ export const inventoryService = {
     return categories;
   },
 
-  async createCategory(name: string, description = ""): Promise<InventoryCategory> {
+  /** المجموعتان الرئيسيتان مع العدّادات (للإدارة فقط) */
+  async listGroups(): Promise<InventoryGroupsData> {
+    return api<InventoryGroupsData>("/inventory/groups");
+  },
+
+  async createCategory(name: string, groupId: string, description = ""): Promise<InventoryCategory> {
     const { category } = await api<{ category: InventoryCategory }>("/inventory/categories", {
       method: "POST",
-      body: { name, description },
+      body: { name, description, groupId },
     });
     return category;
   },

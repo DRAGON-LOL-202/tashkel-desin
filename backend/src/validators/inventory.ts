@@ -40,16 +40,19 @@ const categoryId = z.string().min(1, "التصنيف مطلوب").max(64);
 const attachments = attachmentsSchema.max(10, "الحد الأقصى 10 صور للعنصر");
 const categoryName = z.string().trim().min(1, "اسم التصنيف مطلوب").max(60, "اسم التصنيف طويل جداً");
 const categoryDescription = z.string().trim().max(500, "وصف التصنيف طويل جداً");
+const groupId = z.string().trim().min(1, "المجموعة الرئيسية مطلوبة").max(64);
 
 export const createCategorySchema = z.object({
   name: categoryName,
   description: categoryDescription.default(""),
+  groupId,
 });
 
 export const updateCategorySchema = z
   .object({
     name: categoryName.optional(),
     description: categoryDescription.optional(),
+    groupId: groupId.optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: "لا توجد حقول للتعديل" });
 

@@ -28,25 +28,25 @@ function storedAccess(role: Role, requested: InventoryAccess | undefined, fallba
   return requested ?? fallback;
 }
 
-/** يتحقق أن كل التصنيفات موجودة ويزيل التكرار. */
-async function validCategoryIds(ids: string[]): Promise<string[]> {
+/** يتحقق أن كل المجموعات الرئيسية موجودة ويزيل التكرار. */
+async function validGroupIds(ids: string[]): Promise<string[]> {
   const unique = [...new Set(ids)];
   if (unique.length === 0) return [];
-  const found = await prisma().inventoryCategory.count({ where: { id: { in: unique } } });
-  if (found !== unique.length) throw badRequest("أحد تصنيفات المخزون غير موجود");
+  const found = await prisma().inventoryGroup.count({ where: { id: { in: unique } } });
+  if (found !== unique.length) throw badRequest("إحدى مجموعات المخزون غير موجودة");
   return unique;
 }
 
-/** يحمّل التصنيفات المسموحة لعدة مستخدمين دفعة واحدة. */
-async function categoriesByUser(userIds: string[]): Promise<Map<string, string[]>> {
-  const rows = await prisma().userInventoryCategory.findMany({ where: { userId: { in: userIds } }, select: { userId: true, categoryId: true } });
+/** يحمّل المجموعات المسموحة لعدة مستخدمين دفعة واحدة. */
+async function groupsByUser(userIds: string[]): Promise<Map<string, string[]>> {
+  const rows = await prisma().userInventoryGroup.findMany({ where: { userId: { in: userIds } }, select: { userId: true, groupId: true } });
   const map = new Map<string, string[]>();
-  for (const r of rows) map.set(r.userId, [...(map.get(r.userId) ?? []), r.categoryId]);
+  for (const r of rows) map.set(r.userId, [...(map.get(r.userId) ?? []), r.groupId]);
   return map;
 }
 
 async function presentUsers(users: User[]) {
-  const map = await categoriesByUser(users.filter(isRestrictedRole).map((u) => u.id));
+  const map = await groupsByUser(users.filter(isRestrictedRole).map((u) => u.id));
   return users.map((u) => publicUser(u, map.get(u.id) ?? []));
 }
 async function presentUser(u: User) {
@@ -103,7 +103,7 @@ usersRouter.post(
       select: { username: true },
     });
     if (dup) throw conflict("اسم المستخدم أو البريد الإلكتروني مستخدم بالفعل");
-    const categoryIds = isRestrictedRole(body) ? await validCategoryIds(body.allowedCategoryIds ?? []) : [];
+    const groupIds = isRestrictedRole(body) ? await validGroupIds(body.allowedGroupIds ?? []) : [];
     try {
       const jobTitle = body.jobTitle ?? DEFAULT_TITLE[body.role];
       const user = await db.user.create({
@@ -116,7 +116,7 @@ usersRouter.post(
           inventoryAccess: storedAccess(body.role, body.inventoryAccess, "NONE"),
           ...(jobTitle ? { jobTitle } : {}),
           isSystemUser: false,
-          ...(categoryIds.length > 0 ? { inventoryCategories: { create: categoryIds.map((categoryId) => ({ categoryId })) } } : {}),
+          ...(groupIds.length > 0 ? { inventoryGroups: { create: groupIds.map((groupId) => ({ groupId })) } } : {}),
         },
       });
       await notify({
@@ -194,7 +194,7 @@ usersRouter.patch(
     const newAccess = storedAccess(finalRole, body.inventoryAccess, designerFallback);
     if (newAccess !== target.inventoryAccess) data.inventoryAccess = newAccess;
     const restricted = isRestrictedRole({ role: finalRole });
-    const newCategoryIds = restricted && body.allowedCategoryIds !== undefined ? await validCategoryIds(body.allowedCategoryIds) : undefined;
+    const newGroupIds = restricted && body.allowedGroupIds !== undefined ? await validGroupIds(body.allowedGroupIds) : undefined;
     if (body.password !== undefined) data.passwordHash = await bcrypt.hash(body.password, 12);
 
     if (body.username !== undefined || body.email !== undefined) {
@@ -214,11 +214,11 @@ usersRouter.patch(
       const updated = await db.$transaction(async (tx) => {
         const u = await tx.user.update({ where: { id: target.id }, data });
         if (!restricted) {
-          // دور غير مقيَّد ← لا تصنيفات (تُمسح عند التحويل من تعبئة/مشغل)
-          await tx.userInventoryCategory.deleteMany({ where: { userId: target.id } });
-        } else if (newCategoryIds !== undefined) {
-          await tx.userInventoryCategory.deleteMany({ where: { userId: target.id } });
-          if (newCategoryIds.length > 0) await tx.userInventoryCategory.createMany({ data: newCategoryIds.map((categoryId) => ({ userId: target.id, categoryId })) });
+          // دور غير مقيَّد ← لا مجموعات (تُمسح عند التحويل من تعبئة/مشغل)
+          await tx.userInventoryGroup.deleteMany({ where: { userId: target.id } });
+        } else if (newGroupIds !== undefined) {
+          await tx.userInventoryGroup.deleteMany({ where: { userId: target.id } });
+          if (newGroupIds.length > 0) await tx.userInventoryGroup.createMany({ data: newGroupIds.map((groupId) => ({ userId: target.id, groupId })) });
         }
         return u;
       });

@@ -11,7 +11,7 @@ export interface ApiUser {
   isActive: boolean;
   isSystemUser: boolean;
   inventoryAccess: InventoryAccessLevel;
-  allowedCategoryIds?: string[];
+  allowedGroupIds?: string[];
   createdAt: string;
 }
 
@@ -24,8 +24,8 @@ export interface CreateUserInput {
   jobTitle?: string;
   /** للمصمم فقط (يُتجاهل لغيره) */
   inventoryAccess?: InventoryAccessLevel;
-  /** لتعبئة/مشغل فقط */
-  allowedCategoryIds?: string[];
+  /** المجموعات الرئيسية (خامات / اكسسوارات وهدايا) لتعبئة/مشغل فقط */
+  allowedGroupIds?: string[];
 }
 
 export type UpdateUserInput = Partial<Omit<CreateUserInput, "password">> & { password?: string };

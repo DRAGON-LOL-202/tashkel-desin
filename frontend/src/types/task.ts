@@ -73,8 +73,8 @@ export interface TeamMember {
   isActive: boolean;
   isSystemUser: boolean;
   inventoryAccess: InventoryAccessLevel;
-  /** التصنيفات المسموح السحب منها (تعبئة/مشغل فقط) */
-  allowedCategoryIds?: string[];
+  /** المجموعات الرئيسية المسموح السحب منها (تعبئة/مشغل فقط) */
+  allowedGroupIds?: string[];
 }
 
 export interface CreateTaskInput {

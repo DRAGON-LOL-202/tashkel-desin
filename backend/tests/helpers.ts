@@ -6,6 +6,9 @@ import { runSeed } from "../prisma/seed.ts";
 
 export const app = createApp();
 export const PASSWORD = process.env.ADMIN_PASSWORD!;
+// المجموعتان الرئيسيتان للمخزون (معرّفات ثابتة تُبذر في migration 0013)
+export const GROUP_MATERIALS = "invgrp_materials";
+export const GROUP_ACCESSORIES = "invgrp_accessories_gifts";
 
 export async function resetDb() {
   await prisma().$executeRawUnsafe(

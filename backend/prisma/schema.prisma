@@ -95,7 +95,7 @@ model User {
   notificationsCaused   Notification[] @relation("NotificationActor")
   pushSubscriptions     PushSubscription[]
   inventoryMovements    InventoryMovement[]
-  inventoryCategories   UserInventoryCategory[]
+  inventoryGroups       UserInventoryGroup[]
 }
 
 // المهام الفرعية = Task بـ parentId (قرار موثّق في HANDOFF: الفرعية لها تايمر وتعليقات ومسؤول).
@@ -340,29 +340,45 @@ enum InventoryMovementType {
   RETURN
 }
 
+// مجموعة رئيسية ثابتة للتصنيفات (خامات | اكسسوارات وهدايا). لا تُنشأ من الواجهة؛ تُبذر في migration 0013.
+model InventoryGroup {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  name      String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  categories   InventoryCategory[]
+  allowedUsers UserInventoryGroup[]
+}
+
 // تصنيف عناصر المخزون المستقل. لا يُحذف تصنيف عليه عناصر إلا بعد نقلها لتصنيف آخر.
+// groupId فارغ للتصنيفات القديمة فقط (لا يصل إليها تعبئة/مشغل حتى يوزّعها المدير).
 model InventoryCategory {
   id          String   @id @default(cuid())
   name        String
   description String   @default("")
+  groupId     String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  group InventoryGroup? @relation(fields: [groupId], references: [id], onDelete: Restrict)
   items InventoryItem[]
-  allowedUsers UserInventoryCategory[]
+
+  @@index([groupId])
 }
 
-// التصنيفات المسموح لمستخدم (تعبئة/مشغل) السحب منها. حذف المستخدم أو التصنيف ينظّف الصفوف تلقائياً.
-model UserInventoryCategory {
-  userId     String
-  categoryId String
-  createdAt  DateTime @default(now())
+// المجموعات الرئيسية المسموح لمستخدم (تعبئة/مشغل) السحب من كل تصنيفاتها. حذف المستخدم أو المجموعة ينظّف الصفوف تلقائياً.
+model UserInventoryGroup {
+  userId    String
+  groupId   String
+  createdAt DateTime @default(now())
 
-  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  category InventoryCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group InventoryGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
-  @@id([userId, categoryId])
-  @@index([categoryId])
+  @@id([userId, groupId])
+  @@index([groupId])
 }
 
 // عنصر مخزون مستقل تماماً عن صفحة أسعار المنتجات. الرصيد quantity والسعر unitPrice لا يهبطان تحت الصفر.

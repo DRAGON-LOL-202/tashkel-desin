@@ -8,6 +8,12 @@ const SYSTEM_USERS = [
   { key: "amr", name: "عمرو", role: "MANAGER" as const, jobTitle: "مدير", email: "amr@tashkeel.cnc" },
 ];
 
+// المجموعتان الرئيسيتان للمخزون (ثابتتان). تُبذران أيضاً في migration 0013؛ هنا للتأكد فقط (idempotent).
+export const INVENTORY_GROUPS = [
+  { id: "invgrp_materials", key: "MATERIALS", name: "خامات", sortOrder: 1 },
+  { id: "invgrp_accessories_gifts", key: "ACCESSORIES_GIFTS", name: "اكسسوارات وهدايا", sortOrder: 2 },
+] as const;
+
 export async function runSeed() {
   const e = env();
   const password = e.ADMIN_PASSWORD;
@@ -16,6 +22,10 @@ export async function runSeed() {
   }
   const hash = await bcrypt.hash(password, 12);
   const db = prisma();
+
+  for (const g of INVENTORY_GROUPS) {
+    await db.inventoryGroup.upsert({ where: { key: g.key }, update: {}, create: { ...g } });
+  }
 
   const adminUsername = (e.ADMIN_USERNAME || "lol").toLowerCase();
   await db.user.upsert({

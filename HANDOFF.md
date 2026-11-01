@@ -1,6 +1,7 @@
 ## ▶ RESUME POINT (2026-11-01) — دورا تعبئة/مشغل + صلاحية مخزون المصمم
 - ✅ مُنفَّذ ومُختبَر: دورا `PACKER`/`OPERATOR` (سحب فقط بتصنيفات لكل مستخدم) و`User.inventoryAccess` للمصمم (بلا وصول / السحب فقط / كامل). migrations جديدة: `0011_roles_packer_operator` و`0012_inventory_access` (تُطبَّق تلقائياً عند `migrate deploy`). التفاصيل في أول قسم من `CHANGES.md` وتصميمه في `HANDOFF_ROLES.md`.
-- ✅ التحقق: backend `typecheck` + `npx vitest run` (21 ملفاً / 307 اختباراً) + `build`، وfrontend `build` + `lint` (0 أخطاء، 15 تحذيراً قديماً).
+✅ مُنفَّذ ومُختبَر (2026-11-01): مجموعتان رئيسيتان للتصنيفات (خامات / اكسسوارات وهدايا) تحددان وصول تعبئة/مشغل بدل التصنيفات الفردية — migration `0013_inventory_groups`، `UserInventoryGroup`، `allowedGroupIds`، `GET /api/inventory/groups`. التفاصيل في `CHANGES.md` و`HANDOFF_CATEGORY_GROUPS.md`.
+- ✅ التحقق: backend `typecheck` + `npx vitest run` (22 ملفاً / 325 اختباراً) + `build`، وfrontend `build` + `lint` (0 أخطاء، 15 تحذيراً قديماً).
 - ⚠️ **لم يُتحقق منه:** `prisma migrate diff` على قاعدة حقيقية، وPostgreSQL الفعلي (الاختبارات على PGlite)، والتجربة اليدوية في المتصفح بحساب تعبئة/مشغل/مصمم مقيَّد. شغّلها قبل النشر.
 - ⚠️ **سلوك يجب أن تعرفه:** المصممون الجدد يُنشَؤون **بلا وصول للمخزون** افتراضياً. الموجودون يبقون `FULL`.
 

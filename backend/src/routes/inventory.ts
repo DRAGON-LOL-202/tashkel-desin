@@ -33,7 +33,7 @@ import {
 
 // الصلاحيات:
 // - مستوى الوصول (inventoryAccess): الإدارة كامل دائماً؛ المصمم حسب ما يحدده المدير (بلا وصول / السحب فقط / كامل)؛
-//   «تعبئة» و«مشغل» سحب فقط وبتصنيفات محددة لكل مستخدم.
+//   «تعبئة» و«مشغل» سحب فقط ومن كل تصنيفات المجموعات الرئيسية (خامات / اكسسوارات وهدايا) الممنوحة لكل مستخدم.
 // - «السحب فقط» لا يرى أسعاراً ولا إحصاءات قيمة، ولا يصل لغير مسارات السحب الأربعة.
 // - غير الإدارة يرى سحوباته فقط.
 // - الإدارة (ADMIN / MANAGER) تدير التصنيفات والعناصر والحركات والتقارير.
@@ -53,11 +53,16 @@ const isWithdrawOnly = (u: Parameters<typeof effectiveInventoryAccess>[0]) => ef
 /** التصنيفات المسموحة لتعبئة/مشغل؛ null = بلا قيد تصنيفات (إدارة أو مصمم) */
 const categoryScope = (u: Parameters<typeof isRestrictedRole>[0] & { id: string }) => (isRestrictedRole(u) ? allowedCategoryIds(u.id) : Promise.resolve(null));
 
-const CATEGORY_INCLUDE = { _count: { select: { items: true } } } as const;
+const CATEGORY_INCLUDE = { group: { select: { id: true, name: true } }, _count: { select: { items: true } } } as const;
 
 const idOf = (v: unknown) => (typeof v === "string" && v.length > 0 && v.length <= 64 ? v : "");
 
 const isUniqueViolation = (e: unknown) => (e as { code?: string })?.code === "P2002";
+
+async function assertGroupExists(groupId: string) {
+  const g = await prisma().inventoryGroup.findUnique({ where: { id: idOf(groupId) }, select: { id: true } });
+  if (!g) throw badRequest("المجموعة الرئيسية غير موجودة");
+}
 
 async function assertCategoryExists(categoryId: string) {
   const c = await prisma().inventoryCategory.findUnique({ where: { id: idOf(categoryId) }, select: { id: true } });
@@ -264,6 +269,24 @@ inventoryRouter.get(
   })
 );
 
+// ===== المجموعات الرئيسية (قراءة فقط: ثابتتان، لا إنشاء ولا تعديل ولا حذف) =====
+inventoryRouter.get(
+  "/groups",
+  requireStaff,
+  asyncHandler(async (_req, res) => {
+    const groups = await prisma().inventoryGroup.findMany({ orderBy: [{ sortOrder: "asc" }, { id: "asc" }], select: { id: true, key: true, name: true } });
+    const cats = await prisma().inventoryCategory.findMany({ where: { groupId: { not: null } }, select: { groupId: true, _count: { select: { items: true } } } });
+    const unassigned = await prisma().inventoryCategory.findMany({ where: { groupId: null }, select: { _count: { select: { items: true } } } });
+    res.json({
+      groups: groups.map((g) => {
+        const mine = cats.filter((c) => c.groupId === g.id);
+        return { ...g, categoriesCount: mine.length, itemsCount: mine.reduce((s, c) => s + c._count.items, 0) };
+      }),
+      unassigned: { categoriesCount: unassigned.length, itemsCount: unassigned.reduce((s, c) => s + c._count.items, 0) },
+    });
+  })
+);
+
 // ===== التصنيفات (المسارات الثابتة قبل /:id) =====
 inventoryRouter.get(
   "/categories",
@@ -293,11 +316,12 @@ inventoryRouter.post(
   "/categories",
   requireStaff,
   asyncHandler(async (req, res) => {
-    const { name, description } = createCategorySchema.parse(req.body);
+    const { name, description, groupId } = createCategorySchema.parse(req.body);
+    await assertGroupExists(groupId);
     const dup = await prisma().inventoryCategory.findFirst({ where: { name: { equals: name, mode: "insensitive" } } });
     if (dup) throw conflict("هذا التصنيف موجود مسبقاً");
     const created = await prisma().inventoryCategory.create({
-      data: { name, description },
+      data: { name, description, groupId },
       include: CATEGORY_INCLUDE,
     });
     res.status(201).json({ category: serializeInventoryCategory(created) });
@@ -312,6 +336,7 @@ inventoryRouter.patch(
     const existing = await prisma().inventoryCategory.findUnique({ where: { id: categoryId } });
     if (!existing) throw notFound("التصنيف غير موجود");
     const body = updateCategorySchema.parse(req.body);
+    if (body.groupId !== undefined) await assertGroupExists(body.groupId);
     if (body.name !== undefined) {
       const dup = await prisma().inventoryCategory.findFirst({
         where: { name: { equals: body.name, mode: "insensitive" }, id: { not: existing.id } },
@@ -323,6 +348,7 @@ inventoryRouter.patch(
       data: {
         ...(body.name !== undefined ? { name: body.name } : {}),
         ...(body.description !== undefined ? { description: body.description } : {}),
+        ...(body.groupId !== undefined ? { groupId: body.groupId } : {}),
       },
       include: CATEGORY_INCLUDE,
     });
@@ -442,7 +468,7 @@ inventoryRouter.post(
       }
       await tx.$queryRaw`SELECT "id" FROM "InventoryItem" WHERE "id" = ANY(${ids}::text[]) ORDER BY "id" FOR UPDATE`;
       const allowedScope = isRestrictedRole(req.user!)
-        ? new Set((await tx.userInventoryCategory.findMany({ where: { userId }, select: { categoryId: true } })).map((r) => r.categoryId))
+        ? new Set(await allowedCategoryIds(userId, tx))
         : null;
       const items = await tx.inventoryItem.findMany({ where: { id: { in: ids } } });
       const byId = new Map(items.map((i) => [i.id, i]));

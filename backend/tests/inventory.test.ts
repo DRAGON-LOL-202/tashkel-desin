@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "../src/db.ts";
-import { api, login, makeUser, resetDb } from "./helpers.ts";
+import { api, GROUP_ACCESSORIES, GROUP_MATERIALS, login, makeUser, resetDb } from "./helpers.ts";
 
 let admin: string, manager: string, designer: string;
 let catId: string;
@@ -12,7 +12,7 @@ beforeAll(async () => {
   admin = await login("lol");
   manager = await login("amr");
   designer = await login("invdes");
-  const cat = await api(manager).post("/api/inventory/categories").send({ name: "خشب", description: "ألواح وخامات خشبية" });
+  const cat = await api(manager).post("/api/inventory/categories").send({ name: "خشب", description: "ألواح وخامات خشبية", groupId: GROUP_MATERIALS });
   expect(cat.status).toBe(201);
   catId = cat.body.category.id;
 });
@@ -38,7 +38,7 @@ describe("inventory: الوصول", () => {
     expect((await move(designer, item.id, "ADJUST", 5)).status).toBe(403);
     expect((await move(designer, item.id, "RETURN", 2)).status).toBe(403);
     expect((await api(designer).delete(`/api/inventory/${item.id}`)).status).toBe(403);
-    expect((await api(designer).patch(`/api/inventory/categories/${catId}`).send({ name: "ممنوع" })).status).toBe(403);
+    expect((await api(designer).patch(`/api/inventory/categories/${catId}`).send({ name: "ممنوع", groupId: GROUP_MATERIALS })).status).toBe(403);
     expect((await api(designer).delete(`/api/inventory/categories/${catId}`)).status).toBe(403);
   });
   it("الحذف النهائي للمدير العام فقط", async () => {
@@ -285,11 +285,11 @@ const IMG = (n: number) => ({ id: `img-${n}`, name: `صورة${n}.png`, dataUrl:
 
 describe("inventory: التصنيفات والصور", () => {
   it("إنشاء وتعديل وبحث تصنيف؛ الاسم المكرر ← 409؛ وحذف آمن مع نقل المنتجات", async () => {
-    const a = await api(manager).post("/api/inventory/categories").send({ name: "  أكريليك  ", description: "ألواح أكريليك" });
+    const a = await api(manager).post("/api/inventory/categories").send({ name: "  أكريليك  ", description: "ألواح أكريليك", groupId: GROUP_MATERIALS });
     expect(a.status).toBe(201);
     expect(a.body.category).toMatchObject({ name: "أكريليك", description: "ألواح أكريليك", itemsCount: 0 });
-    expect((await api(manager).post("/api/inventory/categories").send({ name: "أكريليك" })).status).toBe(409);
-    expect((await api(designer).post("/api/inventory/categories").send({ name: "ممنوع" })).status).toBe(403);
+    expect((await api(manager).post("/api/inventory/categories").send({ name: "أكريليك", groupId: GROUP_MATERIALS })).status).toBe(409);
+    expect((await api(designer).post("/api/inventory/categories").send({ name: "ممنوع", groupId: GROUP_MATERIALS })).status).toBe(403);
 
     // تعديل الاسم والوصف
     const patched = await api(manager)
@@ -322,7 +322,7 @@ describe("inventory: التصنيفات والصور", () => {
     expect((await api(manager).post("/api/inventory").send({ name: "تصنيف وهمي", categoryId: "nope" })).status).toBe(400);
   });
   it("العنصر يحمل اسم تصنيفه ويمكن تغييره والفلترة به", async () => {
-    const other = (await api(manager).post("/api/inventory/categories").send({ name: "جلد" })).body.category;
+    const other = (await api(manager).post("/api/inventory/categories").send({ name: "جلد", groupId: GROUP_ACCESSORIES })).body.category;
     const item = await mkItem(manager, { name: "قطعة جلد" });
     expect(item.categoryName).toBe("خشب");
     const upd = await api(manager).patch(`/api/inventory/${item.id}`).send({ categoryId: other.id });

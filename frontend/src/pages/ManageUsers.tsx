@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pencil, Plus, Search, ShieldCheck, Trash2, UserCheck, UserRound, UserX, Users } from "lucide-react";
 import { AppLayout } from "../components/layout/AppLayout";
 import { Header } from "../components/header/Header";
@@ -16,6 +16,7 @@ import { DeleteUserDialog } from "../components/users/DeleteUserDialog";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
 import { inventoryAccessLabel, roleLabel, usersService } from "../services/usersService";
+import { inventoryService } from "../services/inventoryService";
 import type { CreateUserInput, TeamMember, UpdateUserInput, UserRole } from "../types";
 
 const roleColor: Record<UserRole, string> = {
@@ -26,11 +27,32 @@ const roleColor: Record<UserRole, string> = {
   operator: "#4F8FE0",
 };
 
+/** شارة مجموعات السحب: اسم المجموعة، أو «الاثنتان» عند منح كل المجموعات */
+function groupsLabel(ids: string[], names: Record<string, string>): string {
+  const known = ids.map((id) => names[id]).filter(Boolean);
+  const total = Object.keys(names).length;
+  if (total > 1 && known.length === total) return "الاثنتان";
+  return known.length > 0 ? known.join("، ") : `${ids.length} مجموعة`;
+}
+
 export default function ManageUsersPage() {
   const { user: actor } = useAuth();
   const { show } = useToast();
   const safe = useSafeAction();
   const { data: users, loading, error, reload, retry } = useResource<TeamMember[]>(usersService.list, []);
+  const [groupNames, setGroupNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    inventoryService
+      .listGroups()
+      .then((res) => {
+        if (!cancelled) setGroupNames(Object.fromEntries(res.groups.map((g) => [g.id, g.name])));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [query, setQuery] = useState("");
   // null = مغلق، "new" = إضافة، غير ذلك = المستخدم المُعدَّل
   const [modalTarget, setModalTarget] = useState<TeamMember | "new" | null>(null);
@@ -156,8 +178,8 @@ export default function ManageUsersPage() {
                         <Badge color={roleColor[target.accessRole]}>{roleLabel[target.accessRole]}</Badge>
                         {target.accessRole === "designer" && <Badge color="#78847F">{inventoryAccessLabel[target.inventoryAccess]}</Badge>}
                         {(target.accessRole === "packer" || target.accessRole === "operator") && (
-                          <Badge color={target.allowedCategoryIds?.length ? "#78847F" : "#E0A100"}>
-                            {target.allowedCategoryIds?.length ? `${target.allowedCategoryIds.length} تصنيف للسحب` : "بلا تصنيفات"}
+                          <Badge color={target.allowedGroupIds?.length ? "#78847F" : "#E0A100"}>
+                            {target.allowedGroupIds?.length ? groupsLabel(target.allowedGroupIds, groupNames) : "بلا مجموعات"}
                           </Badge>
                         )}
                         <Badge color={target.isActive ? "#55C98B" : "#78847F"}>{target.isActive ? "مفعّل" : "معطّل"}</Badge>

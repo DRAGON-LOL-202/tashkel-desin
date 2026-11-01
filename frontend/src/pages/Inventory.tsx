@@ -28,6 +28,7 @@ import {
 import { AppLayout } from "../components/layout/AppLayout";
 import { Header } from "../components/header/Header";
 import { CategoriesModal } from "../components/inventory/CategoriesModal";
+import { CategoryOptions } from "../components/inventory/CategoryOptions";
 import { ItemDetailsModal } from "../components/inventory/ItemDetailsModal";
 import { ItemModal } from "../components/inventory/ItemModal";
 import { MovementModal } from "../components/inventory/MovementModal";
@@ -85,7 +86,7 @@ export default function InventoryPage() {
   const { user } = useAuth();
   const { canManageInventory, canDeleteInventory } = usePermissions();
   const { data, loading, error, reload, retry } = useResource<InventoryData>(inventoryService.list, EMPTY_INVENTORY_DATA);
-  const { items, categories, stats, units } = data;
+  const { items, categories, groups, stats, units } = data;
 
   const activeCategory = categoryFilter === "all" || categories.some((c) => c.id === categoryFilter) ? categoryFilter : "all";
 
@@ -117,9 +118,9 @@ export default function InventoryPage() {
 
   const live = (i: InventoryItem | null) => (i ? (items.find((x) => x.id === i.id) ?? i) : null);
 
-  const handleCreateCategory = async (name: string, description = ""): Promise<InventoryCategory | null> => {
+  const handleCreateCategory = async (name: string, groupId: string, description = ""): Promise<InventoryCategory | null> => {
     try {
-      const created = await inventoryService.createCategory(name, description);
+      const created = await inventoryService.createCategory(name, groupId, description);
       await reload();
       show("تمت إضافة التصنيف");
       return created;
@@ -370,11 +371,7 @@ export default function InventoryPage() {
               className="pp-input pp-input--select cursor-pointer sm:w-44"
             >
               <option value="all">كل التصنيفات</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
+              <CategoryOptions categories={categories} />
             </select>
 
             <select
@@ -619,6 +616,7 @@ export default function InventoryPage() {
           onClose={() => setItemModal(null)}
           editing={live(itemModal.editing)}
           categories={categories}
+          groups={groups}
           units={units}
           onCreateCategory={handleCreateCategory}
           onSubmit={handleItemSubmit}
@@ -677,6 +675,7 @@ export default function InventoryPage() {
           open
           onClose={() => setCategoriesOpen(false)}
           categories={categories}
+          groups={groups}
           canManage={canManageInventory}
           onChanged={reload}
         />

@@ -1,8 +1,8 @@
 import type { User } from "../generated/prisma/client.ts";
 import { effectiveInventoryAccess, isRestrictedRole } from "./inventoryAccess.js";
 
-// allowedCategoryIds: تُمرَّر لقوائم الإدارة (وتظهر لدوري تعبئة/مشغل فقط)
-export function publicUser(u: User, allowedCategoryIds?: string[]) {
+// allowedGroupIds: تُمرَّر لقوائم الإدارة (وتظهر لدوري تعبئة/مشغل فقط)
+export function publicUser(u: User, allowedGroupIds?: string[]) {
   return {
     id: u.id,
     name: u.name,
@@ -14,7 +14,7 @@ export function publicUser(u: User, allowedCategoryIds?: string[]) {
     isActive: u.isActive,
     isSystemUser: u.isSystemUser,
     createdAt: u.createdAt.toISOString(),
-    ...(isRestrictedRole(u) && allowedCategoryIds ? { allowedCategoryIds } : {}),
+    ...(isRestrictedRole(u) && allowedGroupIds ? { allowedGroupIds } : {}),
   };
 }
 export type PublicUser = ReturnType<typeof publicUser>;

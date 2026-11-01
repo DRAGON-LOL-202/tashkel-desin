@@ -13,12 +13,16 @@ export function serializeInventoryCategory(c: {
   description?: string;
   createdAt?: Date;
   updatedAt?: Date;
+  groupId?: string | null;
+  group?: { id: string; name: string } | null;
   _count?: { items: number };
 }) {
   return {
     id: c.id,
     name: c.name,
     description: c.description ?? "",
+    groupId: c.groupId ?? null,
+    groupName: c.group?.name ?? null,
     itemsCount: c._count?.items ?? 0,
     createdAt: c.createdAt ? c.createdAt.toISOString() : new Date(0).toISOString(),
     updatedAt: c.updatedAt ? c.updatedAt.toISOString() : new Date(0).toISOString(),

@@ -16,6 +16,7 @@ import { Header } from "../components/header/Header";
 import { MovementModal } from "../components/inventory/MovementModal";
 import { MovementsModal } from "../components/inventory/MovementsModal";
 import { ItemDetailsModal } from "../components/inventory/ItemDetailsModal";
+import { CategoryOptions } from "../components/inventory/CategoryOptions";
 import { ItemModal } from "../components/inventory/ItemModal";
 import { StocktakeModal } from "../components/inventory/StocktakeModal";
 import { ReturnModal } from "../components/inventory/ReturnModal";
@@ -52,7 +53,7 @@ export default function LowStockPage() {
   const { user } = useAuth();
   const { canManageInventory } = usePermissions();
   const { data, loading, error, reload, retry } = useResource<InventoryData>(inventoryService.list, EMPTY_INVENTORY_DATA);
-  const { items, categories, units } = data;
+  const { items, categories, groups, units } = data;
 
   const shortages = useMemo(
     () => items.filter((i) => i.isActive && (i.isShortage || i.quantity <= i.minQuantity || i.quantity === 0)),
@@ -87,9 +88,9 @@ export default function LowStockPage() {
     return true;
   };
 
-  const handleCreateCategory = async (name: string, description = ""): Promise<InventoryCategory | null> => {
+  const handleCreateCategory = async (name: string, groupId: string, description = ""): Promise<InventoryCategory | null> => {
     try {
-      const created = await inventoryService.createCategory(name, description);
+      const created = await inventoryService.createCategory(name, groupId, description);
       await reload();
       show("تمت إضافة التصنيف");
       return created;
@@ -208,11 +209,7 @@ export default function LowStockPage() {
               className="pp-input pp-input--select cursor-pointer sm:w-48"
             >
               <option value="all">كل التصنيفات</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
+              <CategoryOptions categories={categories} />
             </select>
             <select
               value={statusFilter}
@@ -362,6 +359,7 @@ export default function LowStockPage() {
           onClose={() => setEditingItem(null)}
           editing={live(editingItem)}
           categories={categories}
+          groups={groups}
           units={units}
           onCreateCategory={handleCreateCategory}
           onSubmit={handleItemSubmit}

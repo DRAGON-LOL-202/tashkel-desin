@@ -8,9 +8,26 @@ export interface InventoryCategory {
   id: string;
   name: string;
   description: string;
+  /** المجموعة الرئيسية؛ null للتصنيفات القديمة التي لم يوزّعها المدير بعد */
+  groupId: string | null;
+  groupName: string | null;
   itemsCount: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** مجموعة رئيسية ثابتة (خامات / اكسسوارات وهدايا) */
+export interface InventoryGroup {
+  id: string;
+  key: string;
+  name: string;
+  categoriesCount: number;
+  itemsCount: number;
+}
+
+export interface InventoryGroupsData {
+  groups: InventoryGroup[];
+  unassigned: { categoriesCount: number; itemsCount: number };
 }
 
 export interface InventoryStats {
@@ -27,6 +44,8 @@ export interface InventoryStats {
 export interface InventoryData {
   items: InventoryItem[];
   categories: InventoryCategory[];
+  /** المجموعات الرئيسية (للإدارة فقط؛ فارغة لمن لا يملك صلاحية) */
+  groups: InventoryGroup[];
   stats: InventoryStats;
   units: string[];
 }
@@ -111,6 +130,7 @@ export interface InventoryItemInput {
 export interface InventoryCategoryInput {
   name: string;
   description?: string;
+  groupId?: string;
 }
 
 export interface WithdrawLine {

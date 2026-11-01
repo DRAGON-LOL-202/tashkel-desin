@@ -5,12 +5,12 @@ const roleInput = z
   .transform((s) => s.toUpperCase())
   .pipe(z.enum(["ADMIN", "MANAGER", "DESIGNER", "PACKER", "OPERATOR"]));
 
-// مستوى وصول المصمم للمخزون (يُتجاهل لغيره)، والتصنيفات لدوري «تعبئة» و«مشغل» فقط
+// مستوى وصول المصمم للمخزون (يُتجاهل لغيره)، والمجموعات الرئيسية لدوري «تعبئة» و«مشغل» فقط
 const inventoryAccessInput = z
   .string()
   .transform((s) => s.toUpperCase())
   .pipe(z.enum(["NONE", "WITHDRAW", "FULL"]));
-const allowedCategoryIds = z.array(z.string().trim().min(1).max(64)).max(200);
+const allowedGroupIds = z.array(z.string().trim().min(1).max(64)).max(10);
 
 const name = z.string().trim().min(1).max(100);
 const username = z
@@ -32,7 +32,7 @@ export const createUserSchema = z.object({
   role: roleInput.default("DESIGNER"),
   jobTitle: jobTitle.optional(),
   inventoryAccess: inventoryAccessInput.optional(),
-  allowedCategoryIds: allowedCategoryIds.optional(),
+  allowedGroupIds: allowedGroupIds.optional(),
 });
 
 export const updateUserSchema = z
@@ -44,7 +44,7 @@ export const updateUserSchema = z
     role: roleInput.optional(),
     jobTitle: jobTitle.optional(),
     inventoryAccess: inventoryAccessInput.optional(),
-    allowedCategoryIds: allowedCategoryIds.optional(),
+    allowedGroupIds: allowedGroupIds.optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: "لا توجد حقول للتعديل" });
 

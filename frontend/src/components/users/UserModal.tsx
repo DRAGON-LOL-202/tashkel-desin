@@ -5,7 +5,7 @@ import { Button } from "../ui/Button";
 import { inventoryAccessLabel, roleLabel } from "../../services/usersService";
 import { inventoryService } from "../../services/inventoryService";
 import { isRestrictedRole } from "../../lib/permissions";
-import type { CreateUserInput, InventoryAccessLevel, InventoryCategory, TeamMember, UpdateUserInput, UserRole } from "../../types";
+import type { CreateUserInput, InventoryAccessLevel, InventoryGroup, TeamMember, UpdateUserInput, UserRole } from "../../types";
 
 interface UserModalProps {
   open: boolean;
@@ -40,13 +40,15 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<UserRole>(editing?.accessRole ?? "designer");
   const [jobTitle, setJobTitle] = useState(initialJobTitle);
-  // المصمم: مستوى وصول المخزون. تعبئة/مشغل: التصنيفات المسموح السحب منها.
+  // المصمم: مستوى وصول المخزون. تعبئة/مشغل: المجموعات الرئيسية المسموح السحب من كل تصنيفاتها.
   const initialAccess: InventoryAccessLevel = editing?.accessRole === "designer" ? editing.inventoryAccess : "none";
-  const initialCategoryIds = editing?.allowedCategoryIds ?? [];
+  const initialGroupIds = editing?.allowedGroupIds ?? [];
   const [inventoryAccess, setInventoryAccess] = useState<InventoryAccessLevel>(initialAccess);
-  const [categoryIds, setCategoryIds] = useState<string[]>(initialCategoryIds);
-  const [categories, setCategories] = useState<InventoryCategory[]>([]);
-  const [categoriesError, setCategoriesError] = useState(false);
+  const [groupIds, setGroupIds] = useState<string[]>(initialGroupIds);
+  const [groups, setGroups] = useState<InventoryGroup[]>([]);
+  const [groupsError, setGroupsError] = useState(false);
+  // أسماء التصنيفات الفرعية تحت كل مجموعة (للعرض المختصر فقط)
+  const [categoryNames, setCategoryNames] = useState<Record<string, string[]>>({});
   const [errors, setErrors] = useState<Errors>({});
   const [submitting, setSubmitting] = useState(false);
 
@@ -56,27 +58,28 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
   const roleOptions: UserRole[] = isAdminActor ? ["designer", "packer", "operator", "manager", "admin"] : ["designer", "packer", "operator", "manager"];
   const restricted = isRestrictedRole(role);
 
-  // قائمة التصنيفات تُجلب عند الحاجة فقط (اختيار تعبئة/مشغل)
+  // المجموعتان وتصنيفاتهما تُجلبان عند الحاجة فقط (اختيار تعبئة/مشغل)
   useEffect(() => {
-    if (!open || !restricted || categories.length > 0) return;
+    if (!open || !restricted || groups.length > 0) return;
     let cancelled = false;
-    inventoryService
-      .listCategories()
-      .then((list) => {
-        if (!cancelled) {
-          setCategories(list);
-          setCategoriesError(false);
-        }
+    Promise.all([inventoryService.listGroups(), inventoryService.listCategories().catch(() => [])])
+      .then(([res, cats]) => {
+        if (cancelled) return;
+        setGroups(res.groups);
+        const names: Record<string, string[]> = {};
+        for (const c of cats) if (c.groupId) names[c.groupId] = [...(names[c.groupId] ?? []), c.name];
+        setCategoryNames(names);
+        setGroupsError(false);
       })
       .catch(() => {
-        if (!cancelled) setCategoriesError(true);
+        if (!cancelled) setGroupsError(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [open, restricted, categories.length]);
+  }, [open, restricted, groups.length]);
 
-  const toggleCategory = (id: string) => setCategoryIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  const toggleGroup = (id: string) => setGroupIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
 
   const validate = (): Errors => {
     const next: Errors = {};
@@ -106,7 +109,7 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
         role,
         ...(jobTitle.trim() ? { jobTitle: jobTitle.trim() } : {}),
         ...(role === "designer" ? { inventoryAccess } : {}),
-        ...(restricted ? { allowedCategoryIds: categoryIds } : {}),
+        ...(restricted ? { allowedGroupIds: groupIds } : {}),
       };
     } else {
       // إرسال الحقول التي تغيّرت فقط
@@ -118,8 +121,8 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
       if (jobTitle.trim() && jobTitle.trim() !== initialJobTitle) patch.jobTitle = jobTitle.trim();
       if (password) patch.password = password;
       if (role === "designer" && (inventoryAccess !== initialAccess || editing.accessRole !== "designer")) patch.inventoryAccess = inventoryAccess;
-      // عند التحويل إلى تعبئة/مشغل نرسل التصنيفات دائماً؛ وإلا عند تغيّرها فقط
-      if (restricted && (editing.accessRole !== role || !sameSet(categoryIds, initialCategoryIds))) patch.allowedCategoryIds = categoryIds;
+      // عند التحويل إلى تعبئة/مشغل نرسل المجموعات دائماً؛ وإلا عند تغيّرها فقط
+      if (restricted && (editing.accessRole !== role || !sameSet(groupIds, initialGroupIds))) patch.allowedGroupIds = groupIds;
       if (Object.keys(patch).length === 0) {
         onClose();
         return;
@@ -204,24 +207,38 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
       )}
 
       {restricted && (
-        <fieldset className="mb-4 rounded-control border border-border p-3" data-testid="allowed-categories-section">
-          <legend className="px-1 text-sm font-medium text-text">تصنيفات السحب المسموحة</legend>
-          <p className="mb-2 text-xs text-muted">يصل هذا المستخدم إلى صفحة السحب فقط، ولا يسحب إلا من التصنيفات المحددة هنا.</p>
-          {categoriesError ? (
-            <p className="text-xs text-problem">تعذّر تحميل التصنيفات، أغلق النافذة وأعد المحاولة.</p>
-          ) : categories.length === 0 ? (
-            <p className="text-xs text-muted">لا توجد تصنيفات مخزون بعد (أو جارٍ التحميل).</p>
+        <fieldset className="mb-4 rounded-control border border-border p-3" data-testid="allowed-groups-section">
+          <legend className="px-1 text-sm font-medium text-text">مجموعات السحب المسموحة</legend>
+          <p className="mb-2 text-xs text-muted">يصل هذا المستخدم إلى صفحة السحب فقط. يصل إلى كل التصنيفات الداخلة تحت المجموعة المختارة، ومنها ما يُضاف لاحقاً.</p>
+          {groupsError ? (
+            <p className="text-xs text-problem">تعذّر تحميل المجموعات، أغلق النافذة وأعد المحاولة.</p>
+          ) : groups.length === 0 ? (
+            <p className="text-xs text-muted">جارٍ تحميل المجموعات…</p>
           ) : (
-            <div className="grid max-h-44 grid-cols-1 gap-1.5 overflow-y-auto sm:grid-cols-2">
-              {categories.map((c) => (
-                <label key={c.id} className="flex cursor-pointer items-center gap-2 rounded-control px-2 py-1.5 text-sm text-text hover:bg-border/40">
-                  <input type="checkbox" checked={categoryIds.includes(c.id)} onChange={() => toggleCategory(c.id)} className="h-4 w-4 accent-[var(--color-primary-deep,#3FA796)]" />
-                  <span className="truncate">{c.name}</span>
-                </label>
-              ))}
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {groups.map((g) => {
+                const names = categoryNames[g.id] ?? [];
+                return (
+                  <label key={g.id} className="flex cursor-pointer items-start gap-2.5 rounded-control border border-border px-3 py-2.5 text-sm text-text hover:bg-border/40">
+                    <input
+                      type="checkbox"
+                      checked={groupIds.includes(g.id)}
+                      onChange={() => toggleGroup(g.id)}
+                      data-testid={`group-${g.key}`}
+                      className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-primary-deep,#3FA796)]"
+                    />
+                    <span className="min-w-0">
+                      <span className="block font-semibold">{g.name}</span>
+                      <span className="block truncate text-xs text-muted">
+                        {g.categoriesCount} تصنيف{names.length > 0 ? `: ${names.slice(0, 4).join("، ")}${names.length > 4 ? "…" : ""}` : ""}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
             </div>
           )}
-          {categoryIds.length === 0 && <p className="mt-2 text-xs font-medium text-problem">بدون تصنيفات لن يستطيع السحب من أي صنف.</p>}
+          {groupIds.length === 0 && <p className="mt-2 text-xs font-medium text-problem">بدون مجموعات لن يستطيع السحب من أي صنف.</p>}
         </fieldset>
       )}
 

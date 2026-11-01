@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { api, login, makeUser, resetDb, PASSWORD } from "./helpers.ts";
+import { api, GROUP_ACCESSORIES, GROUP_MATERIALS, login, makeUser, resetDb, PASSWORD } from "./helpers.ts";
 import { prisma } from "../src/db.ts";
 
 // دورا «تعبئة» و«مشغل» + مستوى وصول المصمم للمخزون (بلا وصول / السحب فقط / كامل)
@@ -7,8 +7,10 @@ let admin: string, manager: string;
 let packer: string, operator: string, packerId: string, operatorId: string;
 let catA: string, catB: string, itemA: string, itemB: string;
 
-async function mkCat(name: string) {
-  return (await api(admin).post("/api/inventory/categories").send({ name })).body.category.id as string;
+async function mkCat(name: string, groupId: string = GROUP_MATERIALS) {
+  const r = await api(admin).post("/api/inventory/categories").send({ name, groupId });
+  expect(r.status).toBe(201);
+  return r.body.category.id as string;
 }
 async function mkItem(categoryId: string, name: string, qty = 50) {
   const r = await api(admin).post("/api/inventory").send({ name, categoryId, initialQuantity: qty, unitPrice: 10, minQuantity: 1 });
@@ -22,16 +24,16 @@ beforeAll(async () => {
   await makeUser("acc_mgr", "MANAGER");
   admin = await login("lol");
   manager = await login("acc_mgr");
-  catA = await mkCat("تصنيف أ");
-  catB = await mkCat("تصنيف ب");
+  catA = await mkCat("تصنيف أ", GROUP_MATERIALS);
+  catB = await mkCat("تصنيف ب", GROUP_ACCESSORIES);
   itemA = await mkItem(catA, "صنف أ");
   itemB = await mkItem(catB, "صنف ب");
   const p = await makeUser("acc_packer", "PACKER");
   const o = await makeUser("acc_operator", "OPERATOR");
   packerId = p.id;
   operatorId = o.id;
-  await prisma().userInventoryCategory.create({ data: { userId: packerId, categoryId: catA } });
-  await prisma().userInventoryCategory.create({ data: { userId: operatorId, categoryId: catB } });
+  await prisma().userInventoryGroup.create({ data: { userId: packerId, groupId: GROUP_MATERIALS } });
+  await prisma().userInventoryGroup.create({ data: { userId: operatorId, groupId: GROUP_ACCESSORIES } });
   packer = await login("acc_packer");
   operator = await login("acc_operator");
 });
@@ -85,8 +87,8 @@ describe("تعبئة/مشغل: القائمة البيضاء", () => {
   });
 });
 
-describe("تعبئة/مشغل: الترشيح بالتصنيفات", () => {
-  it("يرى أصناف تصنيفاته فقط، بلا أسعار ولا إحصاءات", async () => {
+describe("تعبئة/مشغل: الترشيح بالمجموعات الرئيسية", () => {
+  it("يرى أصناف تصنيفات مجموعته فقط، بلا أسعار ولا إحصاءات", async () => {
     const r = await api(packer).get("/api/inventory?includeInactive=true");
     expect(r.body.items.map((i: any) => i.id)).toEqual([itemA]);
     expect(r.body.stats).toBeUndefined();
@@ -115,19 +117,19 @@ describe("تعبئة/مشغل: الترشيح بالتصنيفات", () => {
     expect(await qty(itemA)).toBe(before);
     expect(await qty(itemB)).toBe(50);
   });
-  it("صفر تصنيفات ← قائمة فارغة وسحب مرفوض", async () => {
+  it("صفر مجموعات ← قائمة فارغة وسحب مرفوض", async () => {
     await makeUser("acc_none", "PACKER");
     const t = await login("acc_none");
     expect((await api(t).get("/api/inventory")).body.items).toEqual([]);
     expect((await api(t).get("/api/inventory/categories")).body.categories).toEqual([]);
     expect((await withdraw(t, [{ itemId: itemA, quantity: 1 }])).status).toBe(403);
   });
-  it("منح تصنيف أو سحبه ينعكس فوراً دون إعادة دخول", async () => {
+  it("منح مجموعة أو سحبها ينعكس فوراً دون إعادة دخول", async () => {
     const db = prisma();
-    await db.userInventoryCategory.create({ data: { userId: packerId, categoryId: catB } });
+    await db.userInventoryGroup.create({ data: { userId: packerId, groupId: GROUP_ACCESSORIES } });
     expect((await api(packer).get("/api/inventory")).body.items.length).toBe(2);
     expect((await withdraw(packer, [{ itemId: itemB, quantity: 1 }])).status).toBe(201);
-    await db.userInventoryCategory.delete({ where: { userId_categoryId: { userId: packerId, categoryId: catB } } });
+    await db.userInventoryGroup.delete({ where: { userId_groupId: { userId: packerId, groupId: GROUP_ACCESSORIES } } });
     expect((await api(packer).get("/api/inventory")).body.items.length).toBe(1);
     expect((await withdraw(packer, [{ itemId: itemB, quantity: 1 }])).status).toBe(403);
   });
@@ -137,62 +139,60 @@ describe("تعبئة/مشغل: الترشيح بالتصنيفات", () => {
     expect(log.body.movements.length).toBeGreaterThan(0);
     expect(log.body.movements.every((m: any) => m.createdById === packerId)).toBe(true);
   });
-  it("حذف تصنيف أو مستخدم ينظّف صفوف الربط (cascade)", async () => {
-    const c = await mkCat("مؤقت");
+  it("حذف مستخدم ينظّف صفوف مجموعاته (cascade)، وحذف تصنيف لا يمس صفوف المجموعات", async () => {
+    const c = await mkCat("مؤقت", GROUP_MATERIALS);
     const u = await makeUser("acc_tmp", "OPERATOR");
-    await prisma().userInventoryCategory.create({ data: { userId: u.id, categoryId: c } });
+    await prisma().userInventoryGroup.create({ data: { userId: u.id, groupId: GROUP_MATERIALS } });
     expect((await api(admin).delete(`/api/inventory/categories/${c}`)).status).toBe(200);
-    expect(await prisma().userInventoryCategory.count({ where: { userId: u.id } })).toBe(0);
-    const c2 = await mkCat("مؤقت2");
-    await prisma().userInventoryCategory.create({ data: { userId: u.id, categoryId: c2 } });
+    expect(await prisma().userInventoryGroup.count({ where: { userId: u.id } })).toBe(1);
     expect((await api(admin).delete(`/api/users/${u.id}`)).status).toBe(200);
-    expect(await prisma().userInventoryCategory.count({ where: { categoryId: c2 } })).toBe(0);
+    expect(await prisma().userInventoryGroup.count({ where: { userId: u.id } })).toBe(0);
   });
 });
 
-describe("إدارة المستخدمين: الدور والتصنيفات", () => {
+describe("إدارة المستخدمين: الدور والمجموعات", () => {
   const mk = (t: string, body: Record<string, unknown>) =>
     api(t).post("/api/users").send({ name: "م", password: PASSWORD, ...body });
 
   it("إنشاء مشغل بتصنيفات + مسمى افتراضي + يظهر في القائمة", async () => {
-    const r = await mk(manager, { username: "u_op1", email: "u_op1@e.test", role: "operator", allowedCategoryIds: [catA, catB, catA] });
+    const r = await mk(manager, { username: "u_op1", email: "u_op1@e.test", role: "operator", allowedGroupIds: [GROUP_MATERIALS, GROUP_ACCESSORIES, GROUP_MATERIALS] });
     expect(r.status).toBe(201);
     expect(r.body.user.jobTitle).toBe("مشغل");
     expect(r.body.user.inventoryAccess).toBe("withdraw");
-    expect([...r.body.user.allowedCategoryIds].sort()).toEqual([catA, catB].sort());
+    expect([...r.body.user.allowedGroupIds].sort()).toEqual([GROUP_MATERIALS, GROUP_ACCESSORIES].sort());
     const list = await api(admin).get("/api/users");
     const u = list.body.users.find((x: any) => x.username === "u_op1");
-    expect(u.allowedCategoryIds.length).toBe(2);
+    expect(u.allowedGroupIds.length).toBe(2);
     const pk = await mk(admin, { username: "u_pk1", email: "u_pk1@e.test", role: "packer" });
     expect(pk.body.user.jobTitle).toBe("تعبئة");
-    expect(pk.body.user.allowedCategoryIds).toEqual([]);
+    expect(pk.body.user.allowedGroupIds).toEqual([]);
   });
-  it("تصنيف غير موجود ← 400 ولا يُنشأ المستخدم", async () => {
-    const r = await mk(admin, { username: "u_bad", email: "u_bad@e.test", role: "packer", allowedCategoryIds: ["nope"] });
+  it("مجموعة غير موجودة ← 400 ولا يُنشأ المستخدم", async () => {
+    const r = await mk(admin, { username: "u_bad", email: "u_bad@e.test", role: "packer", allowedGroupIds: ["nope"] });
     expect(r.status).toBe(400);
     expect(await prisma().user.count({ where: { username: "u_bad" } })).toBe(0);
   });
-  it("تعديل التصنيفات يستبدلها، وحذفها كلها يترك صفراً", async () => {
+  it("تعديل المجموعات يستبدلها، وحذفها كلها يترك صفراً", async () => {
     const id = (await prisma().user.findUniqueOrThrow({ where: { username: "u_op1" } })).id;
-    const r = await api(admin).patch(`/api/users/${id}`).send({ allowedCategoryIds: [catB] });
+    const r = await api(admin).patch(`/api/users/${id}`).send({ allowedGroupIds: [GROUP_ACCESSORIES] });
     expect(r.status).toBe(200);
-    expect(r.body.user.allowedCategoryIds).toEqual([catB]);
-    const r2 = await api(admin).patch(`/api/users/${id}`).send({ allowedCategoryIds: [] });
-    expect(r2.body.user.allowedCategoryIds).toEqual([]);
-    // تعديل بيانات أخرى لا يمسّ التصنيفات
-    await api(admin).patch(`/api/users/${id}`).send({ allowedCategoryIds: [catA] });
+    expect(r.body.user.allowedGroupIds).toEqual([GROUP_ACCESSORIES]);
+    const r2 = await api(admin).patch(`/api/users/${id}`).send({ allowedGroupIds: [] });
+    expect(r2.body.user.allowedGroupIds).toEqual([]);
+    // تعديل بيانات أخرى لا يمسّ المجموعات
+    await api(admin).patch(`/api/users/${id}`).send({ allowedGroupIds: [GROUP_MATERIALS] });
     const r3 = await api(admin).patch(`/api/users/${id}`).send({ name: "اسم" });
-    expect(r3.body.user.allowedCategoryIds).toEqual([catA]);
+    expect(r3.body.user.allowedGroupIds).toEqual([GROUP_MATERIALS]);
   });
-  it("تحويل مشغل إلى مصمم يمسح التصنيفات ويبدأ بلا وصول", async () => {
+  it("تحويل مشغل إلى مصمم يمسح المجموعات ويبدأ بلا وصول", async () => {
     const id = (await prisma().user.findUniqueOrThrow({ where: { username: "u_op1" } })).id;
     const r = await api(admin).patch(`/api/users/${id}`).send({ role: "designer" });
     expect(r.status).toBe(200);
     expect(r.body.user.role).toBe("designer");
     expect(r.body.user.inventoryAccess).toBe("none");
     expect(r.body.user.jobTitle).toBe("مصمم");
-    expect(r.body.user.allowedCategoryIds).toBeUndefined();
-    expect(await prisma().userInventoryCategory.count({ where: { userId: id } })).toBe(0);
+    expect(r.body.user.allowedGroupIds).toBeUndefined();
+    expect(await prisma().userInventoryGroup.count({ where: { userId: id } })).toBe(0);
   });
   it("المدير لا يسند ADMIN (القاعدة القديمة باقية)", async () => {
     expect((await mk(manager, { username: "u_adm", email: "u_adm@e.test", role: "admin" })).status).toBe(403);

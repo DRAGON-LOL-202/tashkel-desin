@@ -7,23 +7,26 @@ import { ImageAttachmentsField } from "../ui/ImageAttachments";
 import { discardUpload } from "../../services/filesService";
 import { inventoryService } from "../../services/inventoryService";
 import { DEFAULT_INVENTORY_UNITS, calcTotalValue, fmtMoney, fmtQty } from "./format";
-import type { ImageAttachment, InventoryCategory, InventoryItem, InventoryItemInput } from "../../types";
+import { CategoryOptions } from "./CategoryOptions";
+import type { ImageAttachment, InventoryCategory, InventoryGroup, InventoryItem, InventoryItemInput } from "../../types";
 
 interface ItemModalProps {
   open: boolean;
   onClose: () => void;
   editing: InventoryItem | null;
   categories: InventoryCategory[];
+  /** المجموعتان الرئيسيتان؛ تُلزم عند إضافة تصنيف جديد */
+  groups: InventoryGroup[];
   units?: string[];
   /** يعيد التصنيف الجديد (أو الموجود مسبقاً) أو null عند الفشل */
-  onCreateCategory: (name: string, description?: string) => Promise<InventoryCategory | null>;
+  onCreateCategory: (name: string, groupId: string, description?: string) => Promise<InventoryCategory | null>;
   /** يعيد true عند النجاح لإغلاق النافذة */
   onSubmit: (input: InventoryItemInput) => Promise<boolean>;
 }
 
 const toNum = (s: string) => (s.trim() === "" ? NaN : Number(s));
 
-export function ItemModal({ open, onClose, editing, categories, units = [], onCreateCategory, onSubmit }: ItemModalProps) {
+export function ItemModal({ open, onClose, editing, categories, groups, units = [], onCreateCategory, onSubmit }: ItemModalProps) {
   const [name, setName] = useState(editing?.name ?? "");
   const [categoryId, setCategoryId] = useState(editing?.categoryId ?? "");
   const [images, setImages] = useState<ImageAttachment[]>(editing?.attachments ?? []);
@@ -45,6 +48,7 @@ export function ItemModal({ open, onClose, editing, categories, units = [], onCr
   const [addingCategory, setAddingCategory] = useState(categories.length === 0);
   const [newCategory, setNewCategory] = useState("");
   const [newCategoryDesc, setNewCategoryDesc] = useState("");
+  const [newCategoryGroup, setNewCategoryGroup] = useState("");
   const [creatingCategory, setCreatingCategory] = useState(false);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -86,14 +90,15 @@ export function ItemModal({ open, onClose, editing, categories, units = [], onCr
 
   const handleAddCategory = async () => {
     const value = newCategory.trim();
-    if (!value || creatingCategory) return;
+    if (!value || !newCategoryGroup || creatingCategory) return;
     setCreatingCategory(true);
-    const created = await onCreateCategory(value, newCategoryDesc.trim());
+    const created = await onCreateCategory(value, newCategoryGroup, newCategoryDesc.trim());
     setCreatingCategory(false);
     if (!created) return;
     setCategoryId(created.id);
     setNewCategory("");
     setNewCategoryDesc("");
+    setNewCategoryGroup("");
     setAddingCategory(false);
     setErrors((e) => ({ ...e, category: "" }));
   };
@@ -226,11 +231,7 @@ export function ItemModal({ open, onClose, editing, categories, units = [], onCr
                 className="pp-input pp-input--select cursor-pointer appearance-none"
               >
                 <option value="">اختر التصنيف…</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
+                <CategoryOptions categories={categories} />
               </select>
               <ChevronDown size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
             </div>
@@ -248,6 +249,20 @@ export function ItemModal({ open, onClose, editing, categories, units = [], onCr
           {addingCategory && (
             <div className="mt-2 rounded-control border border-border bg-background/60 p-3">
               <p className="mb-2 text-xs font-semibold text-text">إضافة تصنيف مخزون جديد</p>
+              <select
+                value={newCategoryGroup}
+                onChange={(e) => setNewCategoryGroup(e.target.value)}
+                aria-label="المجموعة الرئيسية للتصنيف الجديد"
+                data-testid="item-new-category-group"
+                className="pp-input pp-input--select mb-2 cursor-pointer"
+              >
+                <option value="">المجموعة الرئيسية (إلزامي)…</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <input
                   value={newCategory}
@@ -284,7 +299,7 @@ export function ItemModal({ open, onClose, editing, categories, units = [], onCr
                   size="sm"
                   variant="secondary"
                   icon={<Check size={15} />}
-                  disabled={!newCategory.trim() || creatingCategory}
+                  disabled={!newCategory.trim() || !newCategoryGroup || creatingCategory}
                   onClick={() => void handleAddCategory()}
                 >
                   {creatingCategory ? "جارٍ الحفظ..." : "إضافة واختيار"}

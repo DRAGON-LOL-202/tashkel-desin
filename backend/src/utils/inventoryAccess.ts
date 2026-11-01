@@ -1,7 +1,7 @@
 import type { InventoryAccess, Role } from "../generated/prisma/client.ts";
 import { prisma } from "../db.js";
 
-// تعبئة ومشغل: لا يصلان إلا إلى السحب، وبتصنيفات يحددها المدير. المصمم: مستوى الوصول يحدده المدير. الإدارة: كامل دائماً.
+// تعبئة ومشغل: لا يصلان إلا إلى السحب، وبمجموعات رئيسية (خامات / اكسسوارات وهدايا) يحددها المدير. المصمم: مستوى الوصول يحدده المدير. الإدارة: كامل دائماً.
 export const RESTRICTED_ROLES: readonly Role[] = ["PACKER", "OPERATOR"];
 export const isRestrictedRole = (u: { role: Role }) => RESTRICTED_ROLES.includes(u.role);
 
@@ -11,10 +11,13 @@ export function effectiveInventoryAccess(u: { role: Role; inventoryAccess: Inven
   return u.inventoryAccess;
 }
 
-/** معرّفات التصنيفات المسموحة لمستخدم مقيَّد (تُقرأ من القاعدة في كل طلب فتسري التغييرات فوراً). */
-export async function allowedCategoryIds(userId: string): Promise<string[]> {
-  const rows = await prisma().userInventoryCategory.findMany({ where: { userId }, select: { categoryId: true } });
-  return rows.map((r) => r.categoryId);
+/**
+ * معرّفات التصنيفات المسموحة لمستخدم مقيَّد = كل التصنيفات التابعة لمجموعاته الرئيسية.
+ * تُقرأ من القاعدة في كل طلب فتسري تغييرات المجموعات ونقل التصنيفات فوراً؛ التصنيف بلا مجموعة محجوب (deny by default).
+ */
+export async function allowedCategoryIds(userId: string, db: Pick<ReturnType<typeof prisma>, "inventoryCategory"> = prisma()): Promise<string[]> {
+  const rows = await db.inventoryCategory.findMany({ where: { group: { allowedUsers: { some: { userId } } } }, select: { id: true } });
+  return rows.map((r) => r.id);
 }
 
 /**

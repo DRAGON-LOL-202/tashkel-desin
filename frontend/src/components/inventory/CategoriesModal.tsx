@@ -7,25 +7,29 @@ import { Input } from "../ui/Field";
 import { useToast } from "../ui/ToastProvider";
 import { errorMessage } from "../../lib/api";
 import { inventoryService } from "../../services/inventoryService";
-import type { InventoryCategory } from "../../types";
+import type { InventoryCategory, InventoryGroup } from "../../types";
 
 interface CategoriesModalProps {
   open: boolean;
   onClose: () => void;
   categories: InventoryCategory[];
+  /** المجموعتان الرئيسيتان (خامات / اكسسوارات وهدايا) */
+  groups: InventoryGroup[];
   canManage: boolean;
   onChanged: () => Promise<void>;
 }
 
-export function CategoriesModal({ open, onClose, categories, canManage, onChanged }: CategoriesModalProps) {
+export function CategoriesModal({ open, onClose, categories, groups, canManage, onChanged }: CategoriesModalProps) {
   const [search, setSearch] = useState("");
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
+  const [newGroupId, setNewGroupId] = useState("");
   const [adding, setAdding] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editDesc, setEditDesc] = useState("");
+  const [editGroupId, setEditGroupId] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [deletingCat, setDeletingCat] = useState<InventoryCategory | null>(null);
@@ -36,11 +40,16 @@ export function CategoriesModal({ open, onClose, categories, canManage, onChange
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return categories;
-    return categories.filter(
-      (c) => c.name.toLowerCase().includes(q) || (c.description ?? "").toLowerCase().includes(q)
-    );
-  }, [categories, search]);
+    const list = q
+      ? categories.filter((c) => c.name.toLowerCase().includes(q) || (c.description ?? "").toLowerCase().includes(q))
+      : categories;
+    // غير المصنَّف أولاً (يحتاج تدخل المدير)، ثم حسب ترتيب المجموعات
+    const order = (c: InventoryCategory) => (c.groupId ? groups.findIndex((g) => g.id === c.groupId) + 1 : 0);
+    return [...list].sort((a, b) => order(a) - order(b));
+  }, [categories, groups, search]);
+
+  const unassignedCount = useMemo(() => categories.filter((c) => !c.groupId).length, [categories]);
+  const selectedForDelete = (id: string) => categories.find((c) => c.id === id);
 
   const otherCategories = useMemo(
     () => (deletingCat ? categories.filter((c) => c.id !== deletingCat.id) : []),
@@ -50,12 +59,13 @@ export function CategoriesModal({ open, onClose, categories, canManage, onChange
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
     const name = newName.trim();
-    if (!name || adding) return;
+    if (!name || !newGroupId || adding) return;
     setAdding(true);
     try {
-      await inventoryService.createCategory(name, newDesc.trim());
+      await inventoryService.createCategory(name, newGroupId, newDesc.trim());
       setNewName("");
       setNewDesc("");
+      setNewGroupId("");
       await onChanged();
       show("تمت إضافة التصنيف بنجاح");
     } catch (err) {
@@ -69,6 +79,7 @@ export function CategoriesModal({ open, onClose, categories, canManage, onChange
     setEditingId(c.id);
     setEditName(c.name);
     setEditDesc(c.description ?? "");
+    setEditGroupId(c.groupId ?? "");
   };
 
   const handleSaveEdit = async (id: string) => {
@@ -76,7 +87,7 @@ export function CategoriesModal({ open, onClose, categories, canManage, onChange
     if (!name || savingEdit) return;
     setSavingEdit(true);
     try {
-      await inventoryService.updateCategory(id, { name, description: editDesc.trim() });
+      await inventoryService.updateCategory(id, { name, description: editDesc.trim(), ...(editGroupId ? { groupId: editGroupId } : {}) });
       setEditingId(null);
       await onChanged();
       show("تم تحديث التصنيف");
@@ -132,7 +143,21 @@ export function CategoriesModal({ open, onClose, categories, canManage, onChange
         {canManage && (
           <form onSubmit={(e) => void handleCreate(e)} className="rounded-control border border-border bg-background/50 p-3.5">
             <p className="mb-2.5 text-xs font-bold text-text">إضافة تصنيف جديد</p>
-            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+              <select
+                value={newGroupId}
+                onChange={(e) => setNewGroupId(e.target.value)}
+                className="pp-input pp-input--select"
+                aria-label="المجموعة الرئيسية للتصنيف الجديد"
+                data-testid="new-category-group"
+              >
+                <option value="">المجموعة الرئيسية (إلزامي)</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
               <Input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
@@ -149,11 +174,20 @@ export function CategoriesModal({ open, onClose, categories, canManage, onChange
               />
             </div>
             <div className="mt-2.5 flex justify-end">
-              <Button type="submit" size="sm" disabled={!newName.trim() || adding} icon={<Plus size={15} />}>
+              <Button type="submit" size="sm" disabled={!newName.trim() || !newGroupId || adding} icon={<Plus size={15} />}>
                 {adding ? "جارٍ الإضافة..." : "إضافة تصنيف"}
               </Button>
             </div>
           </form>
+        )}
+
+        {unassignedCount > 0 && (
+          <div className="flex items-start gap-2 rounded-control border border-problem/40 bg-problem/10 p-3 text-xs" data-testid="unassigned-warning">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0 text-problem" />
+            <p className="text-text">
+              <strong>{unassignedCount}</strong> تصنيف غير مصنَّف تحت أي مجموعة — لن يظهر لمستخدمي «تعبئة» و«مشغل» حتى تحدد له المجموعة (خامات أو اكسسوارات وهدايا) من عمود «المجموعة».
+            </p>
+          </div>
         )}
 
         <div className="relative">
@@ -191,10 +225,15 @@ export function CategoriesModal({ open, onClose, categories, canManage, onChange
                       >
                         {otherCategories.map((c) => (
                           <option key={c.id} value={c.id}>
-                            {c.name} ({c.itemsCount} منتج)
+                            {c.name} ({c.itemsCount} منتج){c.groupName ? ` — ${c.groupName}` : " — غير مصنَّف"}
                           </option>
                         ))}
                       </select>
+                    )}
+                    {otherCategories.length > 0 && selectedForDelete(reassignId)?.groupId !== deletingCat.groupId && (
+                      <p className="text-xs font-semibold text-problem" data-testid="group-change-warning">
+                        تنبيه: التصنيف البديل في مجموعة مختلفة ({selectedForDelete(reassignId)?.groupName ?? "غير مصنَّف"}) عن مجموعة هذا التصنيف ({deletingCat.groupName ?? "غير مصنَّف"})، فتتغير صلاحية من يسحب من هذه المنتجات.
+                      </p>
                     )}
                   </div>
                 ) : (
@@ -230,6 +269,7 @@ export function CategoriesModal({ open, onClose, categories, canManage, onChange
               <thead>
                 <tr className="border-b border-border bg-background/60 text-right text-xs text-muted">
                   <th className="px-3 py-2.5 font-medium">التصنيف</th>
+                  <th className="px-3 py-2.5 font-medium">المجموعة</th>
                   <th className="px-3 py-2.5 font-medium">الوصف</th>
                   <th className="px-3 py-2.5 font-medium">عدد المنتجات</th>
                   {canManage && <th className="px-3 py-2.5 font-medium">إجراءات</th>}
@@ -250,6 +290,25 @@ export function CategoriesModal({ open, onClose, categories, canManage, onChange
                           />
                         ) : (
                           <span className="font-semibold text-text">{c.name}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {isEditing ? (
+                          <select
+                            value={editGroupId}
+                            onChange={(e) => setEditGroupId(e.target.value)}
+                            className="pp-input pp-input--select"
+                            aria-label="نقل التصنيف إلى مجموعة"
+                          >
+                            {!editGroupId && <option value="">غير مصنَّف</option>}
+                            {groups.map((g) => (
+                              <option key={g.id} value={g.id}>
+                                {g.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <Badge color={c.groupName ? "#148D72" : "#E0A100"}>{c.groupName ?? "غير مصنَّف"}</Badge>
                         )}
                       </td>
                       <td className="px-3 py-2.5 text-muted">
