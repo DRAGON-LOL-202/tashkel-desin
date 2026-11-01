@@ -12,9 +12,9 @@ export function usePermissions() {
     userId: user?.id,
     /** تعديل/حذف المهام ونقلها بين الأعضاء */
     canManageTasks: isStaff,
-    /** المخزون: الجميع يرى، الإدارة تضيف وتعدّل وتسجّل الحركات، والمدير العام وحده يحذف نهائياً */
+    /** المخزون: الجميع يرى، الإدارة (المدير العام والمدير) تضيف وتعدّل وتسجّل الحركات وتحذف نهائياً */
     canManageInventory: isStaff,
-    canDeleteInventory: user?.accessRole === "admin",
+    canDeleteInventory: isStaff,
     /** المصمم يحذف تعليقه فقط؛ الإدارة أي تعليق */
     canDeleteComment: (commentUserId?: string) => isStaff || (!!user && commentUserId === user.id),
   };

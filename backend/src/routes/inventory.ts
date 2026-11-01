@@ -2,7 +2,7 @@ import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import type { Prisma } from "../generated/prisma/client.ts";
 import { prisma } from "../db.js";
-import { isStaff, requireAuth, requireRole, requireStaff } from "../middleware/auth.js";
+import { isStaff, requireAuth, requireStaff } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { badRequest, conflict, forbidden, notFound } from "../utils/httpError.js";
 import { allowedCategoryIds, effectiveInventoryAccess, isRestrictedRole, isWithdrawOnlyAllowed } from "../utils/inventoryAccess.js";
@@ -37,7 +37,7 @@ import {
 // - «السحب فقط» لا يرى أسعاراً ولا إحصاءات قيمة، ولا يصل لغير مسارات السحب الأربعة.
 // - غير الإدارة يرى سحوباته فقط.
 // - الإدارة (ADMIN / MANAGER) تدير التصنيفات والعناصر والحركات والتقارير.
-// - المدير العام (ADMIN) وحده يملك الحذف النهائي لعنصر مخزون.
+// - الحذف النهائي لعنصر مخزون: المدير العام (ADMIN) والمدير (MANAGER).
 export const inventoryRouter = Router();
 inventoryRouter.use(requireAuth);
 
@@ -236,7 +236,7 @@ inventoryRouter.get(
 
     if (withdrawOnly) {
       // لا أسعار ولا قيمة ولا اقتراح إعادة طلب في ردود «السحب فقط»
-      res.json({ items: rows.map(({ unitPrice: _p, totalValue: _v, suggestedReorderQty: _r, ...rest }) => rest) });
+      res.json({ items: rows.map(({ unitPrice: _p, sellPrice: _s, totalValue: _v, suggestedReorderQty: _r, ...rest }) => rest) });
       return;
     }
     res.json({ items: rows, stats });
@@ -588,6 +588,7 @@ inventoryRouter.post(
             minQuantity: body.minQuantity,
             quantity: body.initialQuantity,
             unitPrice: body.unitPrice,
+            sellPrice: body.sellPrice,
             notes: body.notes,
           },
         });
@@ -653,6 +654,7 @@ inventoryRouter.patch(
           ...(body.unit !== undefined ? { unit: body.unit } : {}),
           ...(body.minQuantity !== undefined ? { minQuantity: body.minQuantity } : {}),
           ...(body.unitPrice !== undefined ? { unitPrice: body.unitPrice } : {}),
+          ...(body.sellPrice !== undefined ? { sellPrice: body.sellPrice } : {}),
           ...(body.notes !== undefined ? { notes: body.notes } : {}),
           ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
         },
@@ -751,10 +753,10 @@ inventoryRouter.post(
   })
 );
 
-// ===== حذف نهائي (المدير العام فقط) — يحذف سجل حركاته أيضاً؛ الأفضل الأرشفة عبر isActive =====
+// ===== حذف نهائي (المدير العام والمدير) — يحذف سجل حركاته أيضاً؛ الأفضل الأرشفة عبر isActive =====
 inventoryRouter.delete(
   "/:id",
-  requireRole("ADMIN"),
+  requireStaff,
   asyncHandler(async (req, res) => {
     const existing = await getItem(req.params.id);
     await prisma().inventoryItem.delete({ where: { id: existing.id } });

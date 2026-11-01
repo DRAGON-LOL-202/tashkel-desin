@@ -395,6 +395,8 @@ model InventoryItem {
   quantity     Decimal  @default(0) @db.Decimal(14, 3)
   minQuantity  Decimal  @default(0) @db.Decimal(14, 3)
   unitPrice    Decimal  @default(0) @db.Decimal(14, 2)
+  // سعر البيع (جنيه مصري) — منفصل عن سعر الوحدة (التكلفة) ولا يدخل في حساب قيمة المخزون
+  sellPrice    Decimal  @default(0) @db.Decimal(14, 2)
   lowAlertSent Boolean  @default(false)
   notes        String   @default("")
   isActive     Boolean  @default(true)

@@ -70,6 +70,7 @@ export function serializeInventoryItem(i: InventoryItemRow) {
   const quantity = num3(i.quantity);
   const minQuantity = num3(i.minQuantity);
   const unitPrice = num2(i.unitPrice);
+  const sellPrice = num2(i.sellPrice);
   const totalValue = calcTotalValue(quantity, unitPrice);
   const status = getStockStatus(quantity, minQuantity);
   const isOutOfStock = status === "OUT_OF_STOCK";
@@ -91,6 +92,7 @@ export function serializeInventoryItem(i: InventoryItemRow) {
     quantity,
     minQuantity,
     unitPrice,
+    sellPrice,
     totalValue,
     status,
     isOutOfStock,
