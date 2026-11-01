@@ -40,6 +40,9 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<UserRole>(editing?.accessRole ?? "designer");
   const [jobTitle, setJobTitle] = useState(initialJobTitle);
+  // كرت المهام: مفعّل افتراضياً للمستخدم الجديد، ويعدّله المدير حسب الحاجة
+  const initialShowCard = editing ? editing.showTaskCard : true;
+  const [showTaskCard, setShowTaskCard] = useState(initialShowCard);
   // المصمم: مستوى وصول المخزون. تعبئة/مشغل: المجموعات الرئيسية المسموح السحب من كل تصنيفاتها.
   const initialAccess: InventoryAccessLevel = editing?.accessRole === "designer" ? editing.inventoryAccess : "none";
   const initialGroupIds = editing?.allowedGroupIds ?? [];
@@ -108,6 +111,7 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
         password,
         role,
         ...(jobTitle.trim() ? { jobTitle: jobTitle.trim() } : {}),
+        showTaskCard,
         ...(role === "designer" ? { inventoryAccess } : {}),
         ...(restricted ? { allowedGroupIds: groupIds } : {}),
       };
@@ -120,6 +124,7 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
       if (!roleLocked && role !== editing.accessRole) patch.role = role;
       if (jobTitle.trim() && jobTitle.trim() !== initialJobTitle) patch.jobTitle = jobTitle.trim();
       if (password) patch.password = password;
+      if (showTaskCard !== initialShowCard) patch.showTaskCard = showTaskCard;
       if (role === "designer" && (inventoryAccess !== initialAccess || editing.accessRole !== "designer")) patch.inventoryAccess = inventoryAccess;
       // عند التحويل إلى تعبئة/مشغل نرسل المجموعات دائماً؛ وإلا عند تغيّرها فقط
       if (restricted && (editing.accessRole !== role || !sameSet(groupIds, initialGroupIds))) patch.allowedGroupIds = groupIds;
@@ -189,6 +194,14 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
           </Select>
         </FieldWrap>
       </div>
+
+      <label className="mb-4 flex cursor-pointer items-start gap-2.5 rounded-control border border-border px-3 py-2.5 text-sm text-text hover:bg-border/40" data-testid="show-task-card">
+        <input type="checkbox" checked={showTaskCard} onChange={(event) => setShowTaskCard(event.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-primary-deep,#3FA796)]" />
+        <span>
+          <span className="block font-semibold">إظهار كرت مهام لهذا المستخدم</span>
+          <span className="block text-xs text-muted">عند التعطيل لا يظهر له كرت في لوحة المهام ولا في إحصاءات الفريق، ولا يمكن إسناد مهام جديدة إليه.</span>
+        </span>
+      </label>
 
       {role === "designer" && (
         <div className="mb-4 rounded-control border border-border p-3" data-testid="inventory-access-section">

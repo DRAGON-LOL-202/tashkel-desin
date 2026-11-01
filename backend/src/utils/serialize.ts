@@ -11,6 +11,7 @@ export function publicUser(u: User, allowedGroupIds?: string[]) {
     role: u.role.toLowerCase() as "admin" | "manager" | "designer" | "packer" | "operator",
     inventoryAccess: effectiveInventoryAccess(u).toLowerCase() as "none" | "withdraw" | "full",
     jobTitle: u.jobTitle,
+    showTaskCard: u.showTaskCard,
     isActive: u.isActive,
     isSystemUser: u.isSystemUser,
     createdAt: u.createdAt.toISOString(),

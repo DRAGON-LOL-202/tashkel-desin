@@ -27,6 +27,7 @@ export function toMember(user: ApiUser): TeamMember {
     isActive: user.isActive,
     isSystemUser: user.isSystemUser,
     inventoryAccess: user.inventoryAccess ?? "none",
+    showTaskCard: user.showTaskCard ?? true,
     ...(user.allowedGroupIds ? { allowedGroupIds: user.allowedGroupIds } : {}),
   };
 }

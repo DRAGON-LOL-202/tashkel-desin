@@ -17,9 +17,10 @@ export function useTeamMembers() {
 
   const fetchMembers = useCallback(async (): Promise<TeamMember[] | null> => {
     if (!user) return null;
-    if (user.accessRole !== "admin" && user.accessRole !== "manager") return [user];
+    // كرت المهام يظهر لمن حدّد المدير ظهوره فقط (showTaskCard)
+    if (user.accessRole !== "admin" && user.accessRole !== "manager") return user.showTaskCard ? [user] : [];
     const all = await usersService.list();
-    return all.filter((member) => member.isActive);
+    return all.filter((member) => member.isActive && member.showTaskCard);
   }, [user]);
 
   const load = useCallback(async () => {

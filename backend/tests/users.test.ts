@@ -188,3 +188,23 @@ describe("users: PATCH /users/me", () => {
     expect(await login("designer1", "brand-new-pass")).toBeTruthy();
   });
 });
+
+describe("كرت المهام (showTaskCard)", () => {
+  it("الموجودون ظاهرون افتراضياً، والمدير يعدّل الحقل، وتعبئة/مشغل الجدد افتراضياً بلا كرت", async () => {
+    const admin = await login("lol");
+    const list = await api(admin).get("/api/users");
+    expect(list.body.users.every((u: any) => u.showTaskCard === true)).toBe(true);
+    const mk = (username: string, body: Record<string, unknown>) =>
+      api(admin).post("/api/users").send({ name: "م", username, email: `${username}@e.test`, password: PASSWORD, ...body });
+    const d = await mk("card_des", { role: "designer" });
+    expect(d.body.user.showTaskCard).toBe(true);
+    const o = await mk("card_op", { role: "operator" });
+    expect(o.body.user.showTaskCard).toBe(false);
+    const forced = await mk("card_op2", { role: "operator", showTaskCard: true });
+    expect(forced.body.user.showTaskCard).toBe(true);
+    const r = await api(admin).patch(`/api/users/${d.body.user.id}`).send({ showTaskCard: false });
+    expect(r.body.user.showTaskCard).toBe(false);
+    const me = await login("card_des");
+    expect((await api(me).get("/api/auth/me")).body.user.showTaskCard).toBe(false);
+  });
+});

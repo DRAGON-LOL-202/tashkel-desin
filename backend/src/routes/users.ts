@@ -15,7 +15,7 @@ import { createUserSchema, statusSchema, updateProfileSchema, updateUserSchema }
 export const usersRouter = Router();
 usersRouter.use(requireAuth);
 
-type UserPatch = Partial<Pick<User, "name" | "username" | "email" | "role" | "jobTitle" | "passwordHash" | "inventoryAccess">>;
+type UserPatch = Partial<Pick<User, "name" | "username" | "email" | "role" | "jobTitle" | "passwordHash" | "inventoryAccess" | "showTaskCard">>;
 
 const ROLE_LABEL: Record<Role, string> = { ADMIN: "مدير النظام", MANAGER: "مدير", DESIGNER: "مصمم", PACKER: "تعبئة", OPERATOR: "مشغل" };
 // المسمى الوظيفي الافتراضي لدوري تعبئة/مشغل (المصمم يأخذ افتراضي الـ schema)
@@ -114,6 +114,8 @@ usersRouter.post(
           passwordHash: await bcrypt.hash(body.password, 12),
           role: body.role,
           inventoryAccess: storedAccess(body.role, body.inventoryAccess, "NONE"),
+          // الافتراضي: كرت المهام لغير تعبئة/مشغل (حتى لا تتكاثر الكروت)؛ والمدير يغيّره صراحة
+          showTaskCard: body.showTaskCard ?? !isRestrictedRole(body),
           ...(jobTitle ? { jobTitle } : {}),
           isSystemUser: false,
           ...(groupIds.length > 0 ? { inventoryGroups: { create: groupIds.map((groupId) => ({ groupId })) } } : {}),
@@ -183,6 +185,7 @@ usersRouter.patch(
     if (body.name !== undefined) data.name = body.name;
     if (body.username !== undefined) data.username = body.username;
     if (body.email !== undefined) data.email = body.email;
+    if (body.showTaskCard !== undefined) data.showTaskCard = body.showTaskCard;
     const finalRole = body.role ?? target.role;
     const roleChanged = finalRole !== target.role;
     if (body.role !== undefined) data.role = body.role;

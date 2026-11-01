@@ -75,6 +75,8 @@ model User {
   passwordHash String
   role         Role     @default(DESIGNER)
   inventoryAccess InventoryAccess @default(NONE)
+  // يظهر له كرت في لوحة المهام؟ (يحدده المدير؛ الموجودون وقت الإضافة = true)
+  showTaskCard    Boolean         @default(true)
   jobTitle     String   @default("مصمم")
   isActive     Boolean  @default(true)
   isSystemUser Boolean  @default(false)

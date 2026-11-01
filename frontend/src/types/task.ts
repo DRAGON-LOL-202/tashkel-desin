@@ -73,6 +73,8 @@ export interface TeamMember {
   isActive: boolean;
   isSystemUser: boolean;
   inventoryAccess: InventoryAccessLevel;
+  /** يظهر له كرت في لوحة المهام */
+  showTaskCard: boolean;
   /** المجموعات الرئيسية المسموح السحب منها (تعبئة/مشغل فقط) */
   allowedGroupIds?: string[];
 }
