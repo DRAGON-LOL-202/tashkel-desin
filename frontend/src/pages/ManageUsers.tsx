@@ -15,13 +15,15 @@ import { UserModal } from "../components/users/UserModal";
 import { DeleteUserDialog } from "../components/users/DeleteUserDialog";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
-import { roleLabel, usersService } from "../services/usersService";
+import { inventoryAccessLabel, roleLabel, usersService } from "../services/usersService";
 import type { CreateUserInput, TeamMember, UpdateUserInput, UserRole } from "../types";
 
 const roleColor: Record<UserRole, string> = {
   admin: "#FF6B6B",
   manager: "#F2B84B",
   designer: "#3FA796",
+  packer: "#7C6BD6",
+  operator: "#4F8FE0",
 };
 
 export default function ManageUsersPage() {
@@ -152,6 +154,12 @@ export default function ManageUsersPage() {
 
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge color={roleColor[target.accessRole]}>{roleLabel[target.accessRole]}</Badge>
+                        {target.accessRole === "designer" && <Badge color="#78847F">{inventoryAccessLabel[target.inventoryAccess]}</Badge>}
+                        {(target.accessRole === "packer" || target.accessRole === "operator") && (
+                          <Badge color={target.allowedCategoryIds?.length ? "#78847F" : "#E0A100"}>
+                            {target.allowedCategoryIds?.length ? `${target.allowedCategoryIds.length} تصنيف للسحب` : "بلا تصنيفات"}
+                          </Badge>
+                        )}
                         <Badge color={target.isActive ? "#55C98B" : "#78847F"}>{target.isActive ? "مفعّل" : "معطّل"}</Badge>
                       </div>
 

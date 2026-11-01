@@ -2,7 +2,9 @@ export type TaskPriority = "low" | "medium" | "high";
 // معرّفات المستخدمين تأتي من قاعدة البيانات (نصوص عشوائية)
 export type TeamMemberId = string;
 export type TaskStatus = "not_started" | "running" | "paused" | "completed";
-export type UserRole = "admin" | "manager" | "designer";
+export type UserRole = "admin" | "manager" | "designer" | "packer" | "operator";
+/** وصول المستخدم للمخزون: بلا وصول / السحب فقط / كامل (الإدارة كامل دائماً، وتعبئة/مشغل سحب فقط) */
+export type InventoryAccessLevel = "none" | "withdraw" | "full";
 
 export interface StopNote {
   note: string;
@@ -70,6 +72,9 @@ export interface TeamMember {
   username: string;
   isActive: boolean;
   isSystemUser: boolean;
+  inventoryAccess: InventoryAccessLevel;
+  /** التصنيفات المسموح السحب منها (تعبئة/مشغل فقط) */
+  allowedCategoryIds?: string[];
 }
 
 export interface CreateTaskInput {

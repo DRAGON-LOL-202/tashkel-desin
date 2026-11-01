@@ -34,11 +34,13 @@ export default function WithdrawalsPage() {
   const { show } = useToast();
   const run = useSafeAction();
   const { user } = useAuth();
-  const stock = useResource<InventoryData>(inventoryService.list, EMPTY_INVENTORY_DATA);
+  const stock = useResource<InventoryData>(inventoryService.listForWithdraw, EMPTY_INVENTORY_DATA);
   const log = useResource<InventoryMovement[]>(inventoryService.withdrawals, NO_LOG);
 
   const items = useMemo(() => stock.data.items.filter((i) => i.isActive), [stock.data.items]);
   const categories = stock.data.categories;
+  // تعبئة/مشغل بلا أي تصنيف ممنوح: الباكند يعيد قائمة فارغة (deny by default)، فنوضح السبب بدل «لا توجد أصناف»
+  const noCategoriesGranted = (user?.accessRole === "packer" || user?.accessRole === "operator") && categories.length === 0;
 
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   const cartLines = Object.entries(cart)
@@ -171,7 +173,9 @@ export default function WithdrawalsPage() {
                 </select>
               </div>
 
-              {items.length === 0 ? (
+              {items.length === 0 && noCategoriesGranted ? (
+                <EmptyState icon={<PackageMinus size={24} />} title="لم تُمنح أي تصنيفات للسحب" description="تواصل مع الإدارة لمنحك تصنيفات المخزون المسموح لك السحب منها." />
+              ) : items.length === 0 ? (
                 <EmptyState icon={<PackageMinus size={24} />} title="لا توجد أصناف في المخزون" description="اطلب من الإدارة إضافة الأصناف أولاً." />
               ) : visible.length === 0 ? (
                 <p className="py-4 text-center text-sm text-muted">لا توجد نتائج مطابقة</p>

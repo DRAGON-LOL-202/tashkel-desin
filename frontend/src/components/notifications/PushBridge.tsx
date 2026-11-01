@@ -31,6 +31,8 @@ export function PushBridge() {
   const location = useLocation();
   const { show } = useToast();
   const userId = user?.id;
+  // تعبئة/مشغل لا إشعارات لهما ولا يصلان لمسارات الدفع (الباكند يرفضها)
+  const pushAllowed = !!user && user.accessRole !== "packer" && user.accessRole !== "operator";
 
   // المتصفح يمنع الصوت قبل أي تفاعل؛ أول نقرة/لمسة تفتح الصوت لبقية الجلسة
   useEffect(() => {
@@ -93,10 +95,10 @@ export function PushBridge() {
   }, [userId, location.pathname, location.search, navigate]);
 
   useEffect(() => {
-    if (userId) void syncPush(userId);
+    if (userId && pushAllowed) void syncPush(userId);
     // خروج المستخدم (أو تبديله) لا يترك إنذاراً يرنّ لحساب آخر
     else acknowledgeTimerAlerts();
-  }, [userId]);
+  }, [userId, pushAllowed]);
 
   return null;
 }

@@ -3,7 +3,14 @@ import { z } from "zod";
 const roleInput = z
   .string()
   .transform((s) => s.toUpperCase())
-  .pipe(z.enum(["ADMIN", "MANAGER", "DESIGNER"]));
+  .pipe(z.enum(["ADMIN", "MANAGER", "DESIGNER", "PACKER", "OPERATOR"]));
+
+// مستوى وصول المصمم للمخزون (يُتجاهل لغيره)، والتصنيفات لدوري «تعبئة» و«مشغل» فقط
+const inventoryAccessInput = z
+  .string()
+  .transform((s) => s.toUpperCase())
+  .pipe(z.enum(["NONE", "WITHDRAW", "FULL"]));
+const allowedCategoryIds = z.array(z.string().trim().min(1).max(64)).max(200);
 
 const name = z.string().trim().min(1).max(100);
 const username = z
@@ -24,6 +31,8 @@ export const createUserSchema = z.object({
   password,
   role: roleInput.default("DESIGNER"),
   jobTitle: jobTitle.optional(),
+  inventoryAccess: inventoryAccessInput.optional(),
+  allowedCategoryIds: allowedCategoryIds.optional(),
 });
 
 export const updateUserSchema = z
@@ -34,6 +43,8 @@ export const updateUserSchema = z
     password: password.optional(),
     role: roleInput.optional(),
     jobTitle: jobTitle.optional(),
+    inventoryAccess: inventoryAccessInput.optional(),
+    allowedCategoryIds: allowedCategoryIds.optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: "لا توجد حقول للتعديل" });
 

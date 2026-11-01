@@ -1,11 +1,12 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import type { User } from "../generated/prisma/client.ts";
+import type { InventoryAccess, Role, User } from "../generated/prisma/client.ts";
 import { prisma } from "../db.js";
 import { requireAuth, requireStaff } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { badRequest, conflict, forbidden, HttpError, notFound } from "../utils/httpError.js";
 import { publicUser } from "../utils/serialize.js";
+import { isRestrictedRole } from "../utils/inventoryAccess.js";
 import { deleteUnreferencedObjects } from "../utils/attachments.js";
 import { notify, staffIds } from "../utils/notify.js";
 import { keysOf } from "../utils/attachmentKeys.ts";
@@ -14,7 +15,43 @@ import { createUserSchema, statusSchema, updateProfileSchema, updateUserSchema }
 export const usersRouter = Router();
 usersRouter.use(requireAuth);
 
-type UserPatch = Partial<Pick<User, "name" | "username" | "email" | "role" | "jobTitle" | "passwordHash">>;
+type UserPatch = Partial<Pick<User, "name" | "username" | "email" | "role" | "jobTitle" | "passwordHash" | "inventoryAccess">>;
+
+const ROLE_LABEL: Record<Role, string> = { ADMIN: "مدير النظام", MANAGER: "مدير", DESIGNER: "مصمم", PACKER: "تعبئة", OPERATOR: "مشغل" };
+// المسمى الوظيفي الافتراضي لدوري تعبئة/مشغل (المصمم يأخذ افتراضي الـ schema)
+const DEFAULT_TITLE: Partial<Record<Role, string>> = { PACKER: "تعبئة", OPERATOR: "مشغل", DESIGNER: "مصمم" };
+
+/** مستوى وصول المخزون المخزَّن: تعبئة/مشغل = سحب فقط، الإدارة = كامل، والمصمم حسب اختيار المدير (الافتراضي بلا وصول). */
+function storedAccess(role: Role, requested: InventoryAccess | undefined, fallback: InventoryAccess): InventoryAccess {
+  if (role === "ADMIN" || role === "MANAGER") return "FULL";
+  if (role === "PACKER" || role === "OPERATOR") return "WITHDRAW";
+  return requested ?? fallback;
+}
+
+/** يتحقق أن كل التصنيفات موجودة ويزيل التكرار. */
+async function validCategoryIds(ids: string[]): Promise<string[]> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return [];
+  const found = await prisma().inventoryCategory.count({ where: { id: { in: unique } } });
+  if (found !== unique.length) throw badRequest("أحد تصنيفات المخزون غير موجود");
+  return unique;
+}
+
+/** يحمّل التصنيفات المسموحة لعدة مستخدمين دفعة واحدة. */
+async function categoriesByUser(userIds: string[]): Promise<Map<string, string[]>> {
+  const rows = await prisma().userInventoryCategory.findMany({ where: { userId: { in: userIds } }, select: { userId: true, categoryId: true } });
+  const map = new Map<string, string[]>();
+  for (const r of rows) map.set(r.userId, [...(map.get(r.userId) ?? []), r.categoryId]);
+  return map;
+}
+
+async function presentUsers(users: User[]) {
+  const map = await categoriesByUser(users.filter(isRestrictedRole).map((u) => u.id));
+  return users.map((u) => publicUser(u, map.get(u.id) ?? []));
+}
+async function presentUser(u: User) {
+  return (await presentUsers([u]))[0];
+}
 const isUniqueViolation = (e: unknown) => (e as { code?: string })?.code === "P2002";
 const idOf = (v: unknown) => (typeof v === "string" && v.length > 0 && v.length <= 64 ? v : "");
 
@@ -50,7 +87,7 @@ usersRouter.get(
   "/",
   asyncHandler(async (_req, res) => {
     const users = await prisma().user.findMany({ orderBy: [{ isSystemUser: "desc" }, { createdAt: "asc" }] });
-    res.json({ users: users.map(publicUser) });
+    res.json({ users: await presentUsers(users) });
   })
 );
 
@@ -66,7 +103,9 @@ usersRouter.post(
       select: { username: true },
     });
     if (dup) throw conflict("اسم المستخدم أو البريد الإلكتروني مستخدم بالفعل");
+    const categoryIds = isRestrictedRole(body) ? await validCategoryIds(body.allowedCategoryIds ?? []) : [];
     try {
+      const jobTitle = body.jobTitle ?? DEFAULT_TITLE[body.role];
       const user = await db.user.create({
         data: {
           name: body.name,
@@ -74,8 +113,10 @@ usersRouter.post(
           email: body.email,
           passwordHash: await bcrypt.hash(body.password, 12),
           role: body.role,
-          ...(body.jobTitle ? { jobTitle: body.jobTitle } : {}),
+          inventoryAccess: storedAccess(body.role, body.inventoryAccess, "NONE"),
+          ...(jobTitle ? { jobTitle } : {}),
           isSystemUser: false,
+          ...(categoryIds.length > 0 ? { inventoryCategories: { create: categoryIds.map((categoryId) => ({ categoryId })) } } : {}),
         },
       });
       await notify({
@@ -85,7 +126,7 @@ usersRouter.post(
         title: "موظف جديد",
         message: `أضاف ${req.user!.name} الحساب «${user.name}»`,
       });
-      res.status(201).json({ user: publicUser(user) });
+      res.status(201).json({ user: await presentUser(user) });
     } catch (e) {
       if (isUniqueViolation(e)) throw conflict("اسم المستخدم أو البريد الإلكتروني مستخدم بالفعل");
       throw e;
@@ -98,7 +139,7 @@ usersRouter.get(
   asyncHandler(async (req, res) => {
     const user = await prisma().user.findUnique({ where: { id: idOf(req.params.id) } });
     if (!user) throw notFound("المستخدم غير موجود");
-    res.json({ user: publicUser(user) });
+    res.json({ user: await presentUser(user) });
   })
 );
 
@@ -115,7 +156,7 @@ usersRouter.patch(
       if (target.isSystemUser) throw new HttpError(403, "لا يمكن تعطيل مستخدم نظام", "SYSTEM_USER");
     }
     const updated = await prisma().user.update({ where: { id: target.id }, data: { isActive } });
-    res.json({ user: publicUser(updated) });
+    res.json({ user: await presentUser(updated) });
   })
 );
 
@@ -142,8 +183,18 @@ usersRouter.patch(
     if (body.name !== undefined) data.name = body.name;
     if (body.username !== undefined) data.username = body.username;
     if (body.email !== undefined) data.email = body.email;
+    const finalRole = body.role ?? target.role;
+    const roleChanged = finalRole !== target.role;
     if (body.role !== undefined) data.role = body.role;
+    // تغيير الدور مع بقاء المسمى الافتراضي للدور القديم ← ينتقل للمسمى الافتراضي للدور الجديد
     if (body.jobTitle !== undefined) data.jobTitle = body.jobTitle;
+    else if (roleChanged && DEFAULT_TITLE[finalRole] && target.jobTitle === DEFAULT_TITLE[target.role]) data.jobTitle = DEFAULT_TITLE[finalRole]!;
+    // المصمم الذي لم يُحدَّد له وصول عند التحويل إليه يبدأ بلا وصول؛ ومن بقي مصمماً يحتفظ بوصوله
+    const designerFallback: InventoryAccess = target.role === "DESIGNER" ? target.inventoryAccess : "NONE";
+    const newAccess = storedAccess(finalRole, body.inventoryAccess, designerFallback);
+    if (newAccess !== target.inventoryAccess) data.inventoryAccess = newAccess;
+    const restricted = isRestrictedRole({ role: finalRole });
+    const newCategoryIds = restricted && body.allowedCategoryIds !== undefined ? await validCategoryIds(body.allowedCategoryIds) : undefined;
     if (body.password !== undefined) data.passwordHash = await bcrypt.hash(body.password, 12);
 
     if (body.username !== undefined || body.email !== undefined) {
@@ -160,17 +211,27 @@ usersRouter.patch(
       if (dup) throw conflict("اسم المستخدم أو البريد الإلكتروني مستخدم بالفعل");
     }
     try {
-      const updated = await db.user.update({ where: { id: target.id }, data });
+      const updated = await db.$transaction(async (tx) => {
+        const u = await tx.user.update({ where: { id: target.id }, data });
+        if (!restricted) {
+          // دور غير مقيَّد ← لا تصنيفات (تُمسح عند التحويل من تعبئة/مشغل)
+          await tx.userInventoryCategory.deleteMany({ where: { userId: target.id } });
+        } else if (newCategoryIds !== undefined) {
+          await tx.userInventoryCategory.deleteMany({ where: { userId: target.id } });
+          if (newCategoryIds.length > 0) await tx.userInventoryCategory.createMany({ data: newCategoryIds.map((categoryId) => ({ userId: target.id, categoryId })) });
+        }
+        return u;
+      });
       if (body.role !== undefined && body.role !== target.role) {
         await notify({
           recipients: [target.id],
           actor,
           type: "ROLE_CHANGED",
           title: "تغيير الصلاحيات",
-          message: `غيّر ${actor.name} صلاحيات حسابك إلى «${body.role}»`,
+          message: `غيّر ${actor.name} صلاحيات حسابك إلى «${ROLE_LABEL[body.role]}»`,
         });
       }
-      res.json({ user: publicUser(updated) });
+      res.json({ user: await presentUser(updated) });
     } catch (e) {
       if (isUniqueViolation(e)) throw conflict("اسم المستخدم أو البريد الإلكتروني مستخدم بالفعل");
       throw e;

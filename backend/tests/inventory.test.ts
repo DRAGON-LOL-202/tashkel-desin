@@ -7,7 +7,8 @@ let catId: string;
 
 beforeAll(async () => {
   await resetDb();
-  await makeUser("invdes");
+  // المصممون الحاليون رُحِّلوا إلى «مخزون كامل» (migration 0012)، والجدد يبدأون بلا وصول
+  await makeUser("invdes", "DESIGNER", { inventoryAccess: "FULL" });
   admin = await login("lol");
   manager = await login("amr");
   designer = await login("invdes");

@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal } from "../ui/Modal";
 import { FieldWrap, Input, Select } from "../ui/Field";
 import { Button } from "../ui/Button";
-import { roleLabel } from "../../services/usersService";
-import type { CreateUserInput, TeamMember, UpdateUserInput, UserRole } from "../../types";
+import { inventoryAccessLabel, roleLabel } from "../../services/usersService";
+import { inventoryService } from "../../services/inventoryService";
+import { isRestrictedRole } from "../../lib/permissions";
+import type { CreateUserInput, InventoryAccessLevel, InventoryCategory, TeamMember, UpdateUserInput, UserRole } from "../../types";
 
 interface UserModalProps {
   open: boolean;
@@ -21,6 +23,14 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type Errors = Partial<Record<"name" | "username" | "email" | "password", string>>;
 
+const ACCESS_OPTIONS: InventoryAccessLevel[] = ["none", "withdraw", "full"];
+const ACCESS_HINT: Record<InventoryAccessLevel, string> = {
+  none: "لا تظهر له صفحات المخزون ولا السحب.",
+  withdraw: "تظهر له صفحة السحب فقط (من كل التصنيفات) بلا أسعار.",
+  full: "يرى المخزون والنواقص والأسعار والسحب (للقراءة والسحب فقط).",
+};
+const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
+
 export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModalProps) {
   // المسمى الوظيفي المعروض يرجع لاسم الدور عند غيابه؛ لا نعتبره مسمى فعلياً في هذه الحالة
   const initialJobTitle = editing && editing.role !== roleLabel[editing.accessRole] ? editing.role : "";
@@ -30,13 +40,43 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<UserRole>(editing?.accessRole ?? "designer");
   const [jobTitle, setJobTitle] = useState(initialJobTitle);
+  // المصمم: مستوى وصول المخزون. تعبئة/مشغل: التصنيفات المسموح السحب منها.
+  const initialAccess: InventoryAccessLevel = editing?.accessRole === "designer" ? editing.inventoryAccess : "none";
+  const initialCategoryIds = editing?.allowedCategoryIds ?? [];
+  const [inventoryAccess, setInventoryAccess] = useState<InventoryAccessLevel>(initialAccess);
+  const [categoryIds, setCategoryIds] = useState<string[]>(initialCategoryIds);
+  const [categories, setCategories] = useState<InventoryCategory[]>([]);
+  const [categoriesError, setCategoriesError] = useState(false);
   const [errors, setErrors] = useState<Errors>({});
   const [submitting, setSubmitting] = useState(false);
 
   const isAdminActor = actor.accessRole === "admin";
   // دور ADMIN لا يُمنح إلا من ADMIN؛ ولا يُغيَّر دور الذات ولا دور مستخدم النظام (يرفضه الـ backend أيضاً)
   const roleLocked = !!editing && (editing.id === actor.id || editing.isSystemUser);
-  const roleOptions: UserRole[] = isAdminActor ? ["designer", "manager", "admin"] : ["designer", "manager"];
+  const roleOptions: UserRole[] = isAdminActor ? ["designer", "packer", "operator", "manager", "admin"] : ["designer", "packer", "operator", "manager"];
+  const restricted = isRestrictedRole(role);
+
+  // قائمة التصنيفات تُجلب عند الحاجة فقط (اختيار تعبئة/مشغل)
+  useEffect(() => {
+    if (!open || !restricted || categories.length > 0) return;
+    let cancelled = false;
+    inventoryService
+      .listCategories()
+      .then((list) => {
+        if (!cancelled) {
+          setCategories(list);
+          setCategoriesError(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCategoriesError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, restricted, categories.length]);
+
+  const toggleCategory = (id: string) => setCategoryIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
 
   const validate = (): Errors => {
     const next: Errors = {};
@@ -65,6 +105,8 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
         password,
         role,
         ...(jobTitle.trim() ? { jobTitle: jobTitle.trim() } : {}),
+        ...(role === "designer" ? { inventoryAccess } : {}),
+        ...(restricted ? { allowedCategoryIds: categoryIds } : {}),
       };
     } else {
       // إرسال الحقول التي تغيّرت فقط
@@ -75,6 +117,9 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
       if (!roleLocked && role !== editing.accessRole) patch.role = role;
       if (jobTitle.trim() && jobTitle.trim() !== initialJobTitle) patch.jobTitle = jobTitle.trim();
       if (password) patch.password = password;
+      if (role === "designer" && (inventoryAccess !== initialAccess || editing.accessRole !== "designer")) patch.inventoryAccess = inventoryAccess;
+      // عند التحويل إلى تعبئة/مشغل نرسل التصنيفات دائماً؛ وإلا عند تغيّرها فقط
+      if (restricted && (editing.accessRole !== role || !sameSet(categoryIds, initialCategoryIds))) patch.allowedCategoryIds = categoryIds;
       if (Object.keys(patch).length === 0) {
         onClose();
         return;
@@ -141,6 +186,44 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
           </Select>
         </FieldWrap>
       </div>
+
+      {role === "designer" && (
+        <div className="mb-4 rounded-control border border-border p-3" data-testid="inventory-access-section">
+          <label htmlFor="user-inventory-access" className="block text-sm font-medium text-text mb-1.5">
+            صلاحية المخزون
+          </label>
+          <Select id="user-inventory-access" value={inventoryAccess} onChange={(event) => setInventoryAccess(event.target.value as InventoryAccessLevel)}>
+            {ACCESS_OPTIONS.map((value) => (
+              <option key={value} value={value}>
+                {inventoryAccessLabel[value]}
+              </option>
+            ))}
+          </Select>
+          <p className="mt-1.5 text-xs text-muted">{ACCESS_HINT[inventoryAccess]}</p>
+        </div>
+      )}
+
+      {restricted && (
+        <fieldset className="mb-4 rounded-control border border-border p-3" data-testid="allowed-categories-section">
+          <legend className="px-1 text-sm font-medium text-text">تصنيفات السحب المسموحة</legend>
+          <p className="mb-2 text-xs text-muted">يصل هذا المستخدم إلى صفحة السحب فقط، ولا يسحب إلا من التصنيفات المحددة هنا.</p>
+          {categoriesError ? (
+            <p className="text-xs text-problem">تعذّر تحميل التصنيفات، أغلق النافذة وأعد المحاولة.</p>
+          ) : categories.length === 0 ? (
+            <p className="text-xs text-muted">لا توجد تصنيفات مخزون بعد (أو جارٍ التحميل).</p>
+          ) : (
+            <div className="grid max-h-44 grid-cols-1 gap-1.5 overflow-y-auto sm:grid-cols-2">
+              {categories.map((c) => (
+                <label key={c.id} className="flex cursor-pointer items-center gap-2 rounded-control px-2 py-1.5 text-sm text-text hover:bg-border/40">
+                  <input type="checkbox" checked={categoryIds.includes(c.id)} onChange={() => toggleCategory(c.id)} className="h-4 w-4 accent-[var(--color-primary-deep,#3FA796)]" />
+                  <span className="truncate">{c.name}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          {categoryIds.length === 0 && <p className="mt-2 text-xs font-medium text-problem">بدون تصنيفات لن يستطيع السحب من أي صنف.</p>}
+        </fieldset>
+      )}
 
       <div className="mt-2 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose} disabled={submitting}>

@@ -5,7 +5,15 @@ export const roleLabel: Record<UserRole, string> = {
   admin: "مدير النظام",
   manager: "مدير",
   designer: "مصمم",
+  packer: "تعبئة",
+  operator: "مشغل",
 };
+
+export const inventoryAccessLabel = {
+  none: "بلا وصول للمخزون",
+  withdraw: "السحب فقط",
+  full: "المخزون كامل",
+} as const;
 
 /** تحويل مستخدم الـ API إلى نموذج العرض المستخدم في الواجهة */
 export function toMember(user: ApiUser): TeamMember {
@@ -18,6 +26,8 @@ export function toMember(user: ApiUser): TeamMember {
     username: user.username,
     isActive: user.isActive,
     isSystemUser: user.isSystemUser,
+    inventoryAccess: user.inventoryAccess ?? "none",
+    ...(user.allowedCategoryIds ? { allowedCategoryIds: user.allowedCategoryIds } : {}),
   };
 }
 

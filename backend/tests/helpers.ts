@@ -14,7 +14,7 @@ export async function resetDb() {
   await runSeed();
 }
 
-export async function makeUser(username: string, role: "ADMIN" | "MANAGER" | "DESIGNER" = "DESIGNER", extra: Record<string, unknown> = {}) {
+export async function makeUser(username: string, role: "ADMIN" | "MANAGER" | "DESIGNER" | "PACKER" | "OPERATOR" = "DESIGNER", extra: Record<string, unknown> = {}) {
   return prisma().user.create({
     data: {
       name: username,

@@ -1,4 +1,4 @@
-import type { UserRole } from "./task";
+import type { InventoryAccessLevel, UserRole } from "./task";
 
 /** شكل المستخدم كما يعيده الـ backend (بدون passwordHash أبداً) */
 export interface ApiUser {
@@ -10,6 +10,8 @@ export interface ApiUser {
   jobTitle: string | null;
   isActive: boolean;
   isSystemUser: boolean;
+  inventoryAccess: InventoryAccessLevel;
+  allowedCategoryIds?: string[];
   createdAt: string;
 }
 
@@ -20,6 +22,10 @@ export interface CreateUserInput {
   password: string;
   role: UserRole;
   jobTitle?: string;
+  /** للمصمم فقط (يُتجاهل لغيره) */
+  inventoryAccess?: InventoryAccessLevel;
+  /** لتعبئة/مشغل فقط */
+  allowedCategoryIds?: string[];
 }
 
 export type UpdateUserInput = Partial<Omit<CreateUserInput, "password">> & { password?: string };

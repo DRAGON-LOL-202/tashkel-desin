@@ -77,6 +77,20 @@ export const inventoryService = {
     return { items, categories: catRes.categories, stats, units };
   },
 
+  /**
+   * لصفحة السحب: الأصناف المفعّلة والتصنيفات فقط. لا يستدعي /units ولا /movements (ممنوعان لمن يملك «السحب فقط»)،
+   * والباكند يعيد لتعبئة/مشغل تصنيفاتهما فقط وبلا أسعار ولا إحصاءات.
+   */
+  async listForWithdraw(): Promise<InventoryData> {
+    const [invRes, catRes] = await Promise.all([
+      api<{ items: InventoryItem[] }>("/inventory"),
+      api<{ categories: InventoryCategory[] }>("/inventory/categories"),
+    ]);
+    // الحقول المالية غائبة من رد «السحب فقط»؛ تُملأ بأصفار لإرضاء النوع ولا تُعرض في هذه الصفحة
+    const items = invRes.items.map((i) => ({ ...i, unitPrice: i.unitPrice ?? 0, totalValue: i.totalValue ?? 0, suggestedReorderQty: i.suggestedReorderQty ?? 0 }));
+    return { items, categories: catRes.categories, stats: EMPTY_INVENTORY_STATS, units: [...DEFAULT_INVENTORY_UNITS] };
+  },
+
   async listCategories(q?: string): Promise<InventoryCategory[]> {
     const qs = q?.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
     const { categories } = await api<{ categories: InventoryCategory[] }>(`/inventory/categories${qs}`);

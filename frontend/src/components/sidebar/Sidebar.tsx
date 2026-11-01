@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { AlertTriangle, Bell, CalendarRange, Home, LogOut, MessageSquare, PanelRightClose, PanelRightOpen, Tag, Warehouse, PackageMinus, Target, UserCog, UserRound, Users } from "lucide-react";
 import { useAuth } from "../auth/AuthProvider";
-import type { AppPage } from "../../lib/permissions";
+import { pagesFor, type AppPage } from "../../lib/permissions";
 import { useResource } from "../../hooks/useResource";
 import { notificationsService } from "../../services/notificationsService";
 
@@ -19,6 +19,20 @@ const navItems = [
   { to: "/manage-users", label: "إدارة المستخدمين", icon: UserCog, page: "manageUsers" as AppPage },
 ];
 
+// المصمم وتعبئة/مشغل: قائمة مختصرة تُرشَّح بحسب صلاحياته (pagesFor)
+const memberItems = [
+  { to: "/daily-tasks", label: "المهام اليومية", icon: Home, page: "dailyTasks" as AppPage },
+  { to: "/notifications", label: "الإشعارات", icon: Bell, page: "notifications" as AppPage },
+  { to: "/feedback", label: "Feedback", icon: MessageSquare, page: "feedback" as AppPage },
+  { to: "/inventory", label: "المخزون", icon: Warehouse, end: true, page: "inventory" as AppPage },
+  { to: "/inventory/shortages", label: "نواقص المخزون", icon: AlertTriangle, page: "inventory" as AppPage },
+  { to: "/withdrawals", label: "السحب", icon: PackageMinus, page: "withdrawals" as AppPage },
+  { to: "/profile", label: "صفحتي", icon: UserRound, page: "profile" as AppPage },
+];
+
+// تعبئة/مشغل لا يملكان صلاحية الإشعارات: لا نستدعي الـ API أصلاً (كان سيعيد 403)
+const noCounts = async () => ({ total: 0, unread: 0 });
+
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
@@ -28,20 +42,11 @@ interface SidebarProps {
 export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const isDesigner = user?.accessRole === "designer";
+  const allowedPages = user ? pagesFor(user) : [];
+  const isStaffUser = user?.accessRole === "admin" || user?.accessRole === "manager";
   // عدّاد غير المقروء: يتحدث تلقائياً مع كل تغيير في النظام (useResource مشترك مع المزامنة اللحظية)
-  const { data: counts } = useResource(notificationsService.counts, { total: 0, unread: 0 });
-  const visibleItems = isDesigner
-    ? [
-        { to: "/daily-tasks", label: "المهام اليومية", icon: Home, page: "dailyTasks" as AppPage },
-        { to: "/notifications", label: "الإشعارات", icon: Bell, page: "notifications" as AppPage },
-        { to: "/feedback", label: "Feedback", icon: MessageSquare, page: "feedback" as AppPage },
-        { to: "/inventory", label: "المخزون", icon: Warehouse, end: true, page: "inventory" as AppPage },
-        { to: "/inventory/shortages", label: "نواقص المخزون", icon: AlertTriangle, page: "inventory" as AppPage },
-        { to: "/withdrawals", label: "السحب", icon: PackageMinus, page: "withdrawals" as AppPage },
-        { to: "/profile", label: "صفحتي", icon: UserRound, page: "profile" as AppPage },
-      ]
-    : navItems;
+  const { data: counts } = useResource(allowedPages.includes("notifications") ? notificationsService.counts : noCounts, { total: 0, unread: 0 });
+  const visibleItems = isStaffUser ? navItems : memberItems.filter((item) => allowedPages.includes(item.page));
 
   return (
     <aside

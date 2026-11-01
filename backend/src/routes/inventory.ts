@@ -4,7 +4,8 @@ import type { Prisma } from "../generated/prisma/client.ts";
 import { prisma } from "../db.js";
 import { isStaff, requireAuth, requireRole, requireStaff } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
-import { badRequest, conflict, notFound } from "../utils/httpError.js";
+import { badRequest, conflict, forbidden, notFound } from "../utils/httpError.js";
+import { allowedCategoryIds, effectiveInventoryAccess, isRestrictedRole, isWithdrawOnlyAllowed } from "../utils/inventoryAccess.js";
 import {
   computeInventoryStats,
   inventoryItemInclude,
@@ -31,11 +32,26 @@ import {
 } from "../validators/inventory.js";
 
 // الصلاحيات:
-// - أي مستخدم مسجّل يرى المخزون وينفّذ السحب (POST /withdrawals)، والمصمم يرى سحوباته فقط.
+// - مستوى الوصول (inventoryAccess): الإدارة كامل دائماً؛ المصمم حسب ما يحدده المدير (بلا وصول / السحب فقط / كامل)؛
+//   «تعبئة» و«مشغل» سحب فقط وبتصنيفات محددة لكل مستخدم.
+// - «السحب فقط» لا يرى أسعاراً ولا إحصاءات قيمة، ولا يصل لغير مسارات السحب الأربعة.
+// - غير الإدارة يرى سحوباته فقط.
 // - الإدارة (ADMIN / MANAGER) تدير التصنيفات والعناصر والحركات والتقارير.
 // - المدير العام (ADMIN) وحده يملك الحذف النهائي لعنصر مخزون.
 export const inventoryRouter = Router();
 inventoryRouter.use(requireAuth);
+
+// بوابة مستوى الوصول: بلا وصول ← 403 على كل شيء؛ السحب فقط ← القائمة البيضاء (GET / و/categories و/withdrawals وPOST /withdrawals).
+inventoryRouter.use((req, _res, next) => {
+  const level = effectiveInventoryAccess(req.user!);
+  if (level === "NONE") return next(forbidden("ليس لديك صلاحية الوصول للمخزون"));
+  if (level === "WITHDRAW" && !isWithdrawOnlyAllowed(req.method, req.path)) return next(forbidden());
+  next();
+});
+
+const isWithdrawOnly = (u: Parameters<typeof effectiveInventoryAccess>[0]) => effectiveInventoryAccess(u) === "WITHDRAW";
+/** التصنيفات المسموحة لتعبئة/مشغل؛ null = بلا قيد تصنيفات (إدارة أو مصمم) */
+const categoryScope = (u: Parameters<typeof isRestrictedRole>[0] & { id: string }) => (isRestrictedRole(u) ? allowedCategoryIds(u.id) : Promise.resolve(null));
 
 const CATEGORY_INCLUDE = { _count: { select: { items: true } } } as const;
 
@@ -138,6 +154,12 @@ async function handleLowStockTransition(
   }
 }
 
+/** حركة بلا لقطة سعر ولا قيمة (لمن يملك «السحب فقط») */
+function stripMovementPrices<T extends { unitPriceSnapshot: number; movementValue: number }>(m: T): Omit<T, "unitPriceSnapshot" | "movementValue"> {
+  const { unitPriceSnapshot: _p, movementValue: _v, ...rest } = m;
+  return rest;
+}
+
 /** بداية اليوم الحالي لحساب عدد حركات اليوم */
 function startOfTodayUtc(): Date {
   const now = new Date();
@@ -166,20 +188,27 @@ inventoryRouter.get(
     const sortBy = typeof req.query.sortBy === "string" ? req.query.sortBy : "name";
     const sortDir = req.query.sortDir === "desc" ? -1 : 1;
 
+    const withdrawOnly = isWithdrawOnly(req.user!);
+    const scope = await categoryScope(req.user!);
     const [allItems, todayMovementsCount] = await Promise.all([
       prisma().inventoryItem.findMany({
+        // «السحب فقط»: المفعّلة فقط، ولتعبئة/مشغل تصنيفاتهما فقط (بلا تصنيفات ← لا أصناف)
+        where: withdrawOnly ? { isActive: true, ...(scope ? { categoryId: { in: scope } } : {}) } : undefined,
         include: inventoryItemInclude,
         orderBy: [{ name: "asc" }, { id: "asc" }],
       }),
-      prisma().inventoryMovement.count({
-        where: { createdAt: { gte: startOfTodayUtc() } },
-      }),
+      withdrawOnly
+        ? Promise.resolve(0)
+        : prisma().inventoryMovement.count({
+            where: { createdAt: { gte: startOfTodayUtc() } },
+          }),
     ]);
 
     const allSerialized = allItems.map(serializeInventoryItem);
-    const stats = computeInventoryStats(allSerialized, todayMovementsCount);
+    // إحصاءات القيمة والإجمالي لا تُحسب ولا تُرسل لمن يملك «السحب فقط»
+    const stats = withdrawOnly ? undefined : computeInventoryStats(allSerialized, todayMovementsCount);
 
-    let rows = allSerialized.filter((i) => (includeInactive ? true : i.isActive));
+    let rows = allSerialized.filter((i) => (includeInactive && !withdrawOnly ? true : i.isActive));
     if (categoryId) rows = rows.filter((i) => i.categoryId === categoryId);
     if (q) {
       const ql = q.toLowerCase();
@@ -194,12 +223,17 @@ inventoryRouter.get(
 
     if (sortBy === "quantity") {
       rows.sort((a, b) => (a.quantity - b.quantity) * sortDir || a.name.localeCompare(b.name, "ar"));
-    } else if (sortBy === "value") {
+    } else if (sortBy === "value" && !withdrawOnly) {
       rows.sort((a, b) => (a.totalValue - b.totalValue) * sortDir || a.name.localeCompare(b.name, "ar"));
     } else if (sortBy === "name" && sortDir === -1) {
       rows.reverse();
     }
 
+    if (withdrawOnly) {
+      // لا أسعار ولا قيمة ولا اقتراح إعادة طلب في ردود «السحب فقط»
+      res.json({ items: rows.map(({ unitPrice: _p, totalValue: _v, suggestedReorderQty: _r, ...rest }) => rest) });
+      return;
+    }
     res.json({ items: rows, stats });
   })
 );
@@ -235,15 +269,19 @@ inventoryRouter.get(
   "/categories",
   asyncHandler(async (req, res) => {
     const q = typeof req.query.q === "string" ? req.query.q.trim().slice(0, 100) : "";
+    const scope = await categoryScope(req.user!);
     const items = await prisma().inventoryCategory.findMany({
-      where: q
-        ? {
-            OR: [
-              { name: { contains: q, mode: "insensitive" } },
-              { description: { contains: q, mode: "insensitive" } },
-            ],
-          }
-        : undefined,
+      where: {
+        ...(scope ? { id: { in: scope } } : {}),
+        ...(q
+          ? {
+              OR: [
+                { name: { contains: q, mode: "insensitive" } },
+                { description: { contains: q, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+      },
       include: CATEGORY_INCLUDE,
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     });
@@ -403,12 +441,17 @@ inventoryRouter.post(
         if (dupBatch) throw conflict("تم تنفيذ عملية السحب هذه مسبقاً");
       }
       await tx.$queryRaw`SELECT "id" FROM "InventoryItem" WHERE "id" = ANY(${ids}::text[]) ORDER BY "id" FOR UPDATE`;
+      const allowedScope = isRestrictedRole(req.user!)
+        ? new Set((await tx.userInventoryCategory.findMany({ where: { userId }, select: { categoryId: true } })).map((r) => r.categoryId))
+        : null;
       const items = await tx.inventoryItem.findMany({ where: { id: { in: ids } } });
       const byId = new Map(items.map((i) => [i.id, i]));
       const created: { id: string }[] = [];
       for (const line of [...body.lines].sort((a, b) => (a.itemId < b.itemId ? -1 : 1))) {
         const item = byId.get(line.itemId);
         if (!item) throw notFound("أحد الأصناف غير موجود");
+        // تعبئة/مشغل: التحقق داخل المعاملة وبعد قفل الصفوف؛ أي صنف خارج تصنيفاته يرفض الطلب كله بلا خصم جزئي
+        if (allowedScope && !allowedScope.has(item.categoryId)) throw forbidden("لا تملك صلاحية السحب من أحد هذه الأصناف");
         if (!item.isActive) throw badRequest(`«${item.name}» غير مفعّل`);
         const before = num3(item.quantity);
         const after = round3(before - line.quantity);
@@ -449,7 +492,8 @@ inventoryRouter.post(
     });
 
     await handleLowStockTransition(transitions);
-    res.status(201).json({ batchId, movements: movements.map(serializeInventoryMovement) });
+    const out = movements.map(serializeInventoryMovement);
+    res.status(201).json({ batchId, movements: isWithdrawOnly(req.user!) ? out.map(stripMovementPrices) : out });
   })
 );
 
@@ -466,7 +510,8 @@ inventoryRouter.get(
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: limit,
     });
-    res.json({ movements: rows.map(serializeInventoryMovement) });
+    const out = rows.map(serializeInventoryMovement);
+    res.json({ movements: isWithdrawOnly(req.user!) ? out.map(stripMovementPrices) : out });
   })
 );
 

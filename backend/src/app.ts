@@ -18,6 +18,7 @@ import { pushRouter } from "./routes/push.js";
 import { inventoryRouter } from "./routes/inventory.js";
 import { bumpDataVersion } from "./utils/syncVersion.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
+import { restrictedRoleGate } from "./middleware/auth.js";
 
 export function createApp() {
   const app = express();
@@ -42,6 +43,7 @@ export function createApp() {
   });
 
   app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
+  app.use("/api", restrictedRoleGate);
   app.use("/api/auth", authRouter);
   app.use("/api/users", usersRouter);
   app.use("/api/tasks", tasksRouter);

@@ -5,6 +5,7 @@ import { prisma } from "../db.js";
 import { env } from "../utils/env.js";
 import { forbidden, unauthorized } from "../utils/httpError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { isRestrictedRole, isRestrictedRoleAllowed } from "../utils/inventoryAccess.js";
 
 declare module "express-serve-static-core" {
   interface Request {
@@ -17,7 +18,7 @@ export function signToken(user: Pick<User, "id" | "role">): string {
 }
 
 // المستخدم الحالي يُحدَّد من قاعدة البيانات (الدور والتفعيل)، ولا يُوثق بمحتوى التوكن وحده.
-export const requireAuth = asyncHandler(async (req: Request, _res: Response, next: NextFunction) => {
+async function authenticate(req: Request): Promise<User> {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) throw unauthorized();
   let sub: string;
@@ -30,7 +31,30 @@ export const requireAuth = asyncHandler(async (req: Request, _res: Response, nex
   }
   const user = await prisma().user.findUnique({ where: { id: sub } });
   if (!user || !user.isActive) throw unauthorized("الحساب غير متاح");
+  return user;
+}
+
+// req.user لا يُضبط إلا من هذه الدوال (بعد التحقق من التوكن)، فإن وُجد من البوابة لا نعيد الاستعلام.
+export const requireAuth = asyncHandler(async (req: Request, _res: Response, next: NextFunction) => {
+  if (!req.user) req.user = await authenticate(req);
+  next();
+});
+
+/**
+ * بوابة القائمة البيضاء (fail-closed) تُركَّب مرة واحدة على /api قبل كل الراوترات:
+ * «تعبئة» و«مشغل» لا يصلان إلا إلى مسارات السحب والملف الشخصي والمزامنة، وأي مسار آخر (حتى المستقبلي) ← 403.
+ * لا تعترض غير المصادَق عليهم: تتركهم للراوترات (401 / تسجيل الدخول).
+ */
+export const restrictedRoleGate = asyncHandler(async (req: Request, _res: Response, next: NextFunction) => {
+  if (!req.headers.authorization?.startsWith("Bearer ")) return next();
+  let user: User;
+  try {
+    user = await authenticate(req);
+  } catch {
+    return next(); // توكن/حساب غير صالح: الراوتر نفسه يردّ 401
+  }
   req.user = user;
+  if (isRestrictedRole(user) && !isRestrictedRoleAllowed(req.method, req.path)) return next(forbidden());
   next();
 });
 

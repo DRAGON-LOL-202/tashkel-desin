@@ -11,6 +11,15 @@ enum Role {
   ADMIN
   MANAGER
   DESIGNER
+  PACKER
+  OPERATOR
+}
+
+// وصول المستخدم للمخزون (يخص المصمم؛ الإدارة كاملة دائماً، وتعبئة/مشغل سحب فقط بتصنيفات محددة)
+enum InventoryAccess {
+  NONE
+  WITHDRAW
+  FULL
 }
 
 enum TaskPriority {
@@ -65,6 +74,7 @@ model User {
   email        String   @unique
   passwordHash String
   role         Role     @default(DESIGNER)
+  inventoryAccess InventoryAccess @default(NONE)
   jobTitle     String   @default("مصمم")
   isActive     Boolean  @default(true)
   isSystemUser Boolean  @default(false)
@@ -85,6 +95,7 @@ model User {
   notificationsCaused   Notification[] @relation("NotificationActor")
   pushSubscriptions     PushSubscription[]
   inventoryMovements    InventoryMovement[]
+  inventoryCategories   UserInventoryCategory[]
 }
 
 // المهام الفرعية = Task بـ parentId (قرار موثّق في HANDOFF: الفرعية لها تايمر وتعليقات ومسؤول).
@@ -338,6 +349,20 @@ model InventoryCategory {
   updatedAt   DateTime @updatedAt
 
   items InventoryItem[]
+  allowedUsers UserInventoryCategory[]
+}
+
+// التصنيفات المسموح لمستخدم (تعبئة/مشغل) السحب منها. حذف المستخدم أو التصنيف ينظّف الصفوف تلقائياً.
+model UserInventoryCategory {
+  userId     String
+  categoryId String
+  createdAt  DateTime @default(now())
+
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category InventoryCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([userId, categoryId])
+  @@index([categoryId])
 }
 
 // عنصر مخزون مستقل تماماً عن صفحة أسعار المنتجات. الرصيد quantity والسعر unitPrice لا يهبطان تحت الصفر.

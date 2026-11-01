@@ -22,12 +22,13 @@ import { TimerAlarmDialog } from "./components/notifications/TimerAlarmDialog";
 function HomeRoute() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  return user.accessRole === "designer" ? <Navigate to="/daily-tasks" replace /> : <Dashboard />;
+  const home = defaultPathForRole(user);
+  return home !== "/" ? <Navigate to={home} replace /> : <Dashboard />;
 }
 
 function FallbackRoute() {
   const { user } = useAuth();
-  return <Navigate to={user ? defaultPathForRole(user.accessRole) : "/login"} replace />;
+  return <Navigate to={user ? defaultPathForRole(user) : "/login"} replace />;
 }
 
 export default function App() {

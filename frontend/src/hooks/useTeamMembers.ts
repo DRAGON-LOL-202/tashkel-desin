@@ -7,7 +7,7 @@ import { useLiveSync } from "./useLiveSync";
 
 /**
  * أعضاء الفريق يأتون من جدول Users (المفعّلون فقط) — أي مستخدم جديد يظهر تلقائياً بدون مهام وهمية.
- * المصمم لا يستدعي /users (403)، فيرى نفسه فقط.
+ * غير الإدارة (مصمم/تعبئة/مشغل) لا يستدعي /users (403)، فيرى نفسه فقط.
  */
 export function useTeamMembers() {
   const { user } = useAuth();
@@ -17,7 +17,7 @@ export function useTeamMembers() {
 
   const fetchMembers = useCallback(async (): Promise<TeamMember[] | null> => {
     if (!user) return null;
-    if (user.accessRole === "designer") return [user];
+    if (user.accessRole !== "admin" && user.accessRole !== "manager") return [user];
     const all = await usersService.list();
     return all.filter((member) => member.isActive);
   }, [user]);

@@ -7,8 +7,8 @@ import { useAuth } from "./AuthProvider";
 export function ProtectedRoute({ page, children }: { page: AppPage; children: ReactNode }) {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  if (!canAccessPage(user.accessRole, page)) {
-    return <Navigate to={defaultPathForRole(user.accessRole)} replace />;
+  if (!canAccessPage(user, page)) {
+    return <Navigate to={defaultPathForRole(user)} replace />;
   }
   return <>{children}</>;
 }

@@ -15,7 +15,7 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (user) return <Navigate to={defaultPathForRole(user.accessRole)} replace />;
+  if (user) return <Navigate to={defaultPathForRole(user)} replace />;
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
