@@ -63,6 +63,8 @@ export interface InventoryItem {
   minQuantity: number;
   /** سعر الوحدة بالجنيه المصري */
   unitPrice: number;
+  /** سعر البيع بالجنيه المصري */
+  sellPrice: number;
   /** إجمالي القيمة = الكمية الحالية × سعر الوحدة */
   totalValue: number;
   /** حالة المخزون: AVAILABLE (متوفر) | LOW_STOCK (منخفض) | OUT_OF_STOCK (نافد) */
@@ -120,6 +122,7 @@ export interface InventoryItemInput {
   unit: string;
   minQuantity: number;
   unitPrice: number;
+  sellPrice: number;
   notes: string;
   /** عند الإنشاء فقط */
   initialQuantity?: number;

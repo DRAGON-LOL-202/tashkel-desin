@@ -47,6 +47,7 @@ function buildItemsSheet(title: string, sheetTitle: string, items: InventoryItem
     { v: "الكمية الحالية", s: "header" },
     { v: "الحد الأدنى", s: "header" },
     { v: "سعر الوحدة (ج.م)", s: "header" },
+    { v: "سعر البيع (ج.م)", s: "header" },
     { v: "إجمالي القيمة (ج.م)", s: "header" },
     { v: "حالة المخزون", s: "header" },
     { v: "ملاحظات", s: "header" },
@@ -66,6 +67,7 @@ function buildItemsSheet(title: string, sheetTitle: string, items: InventoryItem
       { v: i.quantity, s: "number" },
       { v: i.minQuantity, s: "number" },
       { v: i.unitPrice, s: "number" },
+      { v: i.sellPrice ?? 0, s: "number" },
       { v: val, s: "number" },
       { v: statusLabel, s: "center" },
       { v: i.notes || "—", s: "text" },
@@ -81,14 +83,15 @@ function buildItemsSheet(title: string, sheetTitle: string, items: InventoryItem
     { v: Math.round(totalQtyMilli) / 1000, s: "totalNumber" },
     { v: "", s: "total" },
     { v: "", s: "total" },
+    { v: "", s: "total" },
     { v: Math.round(totalValueCents) / 100, s: "totalNumber" },
     { v: "", s: "total" },
     { v: "", s: "total" },
   ];
 
   const rows: XlsxRow[] = [
-    [{ v: title, s: "title" }, null, null, null, null, null, null, null, null, null, null],
-    [{ v: filterSummary, s: "center" }, null, null, null, null, null, null, null, null, null, null],
+    [{ v: title, s: "title" }, null, null, null, null, null, null, null, null, null, null, null],
+    [{ v: filterSummary, s: "center" }, null, null, null, null, null, null, null, null, null, null, null],
     headers,
     ...dataRows,
     totalRow,
@@ -98,9 +101,9 @@ function buildItemsSheet(title: string, sheetTitle: string, items: InventoryItem
     name: sheetTitle,
     rtl: true,
     freezeRows: 3,
-    merges: ["A1:K1", "A2:K2"],
-    autoFilter: `A3:K${Math.max(3, 3 + dataRows.length)}`,
-    widths: [6, 28, 16, 18, 12, 15, 14, 16, 18, 14, 28],
+    merges: ["A1:L1", "A2:L2"],
+    autoFilter: `A3:L${Math.max(3, 3 + dataRows.length)}`,
+    widths: [6, 28, 16, 18, 12, 15, 14, 16, 16, 18, 14, 28],
     rows,
   };
 }

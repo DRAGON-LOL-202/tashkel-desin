@@ -41,11 +41,26 @@ describe("inventory: الوصول", () => {
     expect((await api(designer).patch(`/api/inventory/categories/${catId}`).send({ name: "ممنوع", groupId: GROUP_MATERIALS })).status).toBe(403);
     expect((await api(designer).delete(`/api/inventory/categories/${catId}`)).status).toBe(403);
   });
-  it("الحذف النهائي للمدير العام فقط", async () => {
-    const item = await mkItem(manager, { name: "للحذف" });
-    expect((await api(manager).delete(`/api/inventory/${item.id}`)).status).toBe(403);
-    expect((await api(admin).delete(`/api/inventory/${item.id}`)).status).toBe(200);
-    expect((await api(admin).get(`/api/inventory/${item.id}/movements`)).status).toBe(404);
+  it("الحذف النهائي للمدير العام والمدير فقط (المصمم ← 403)", async () => {
+    const a = await mkItem(manager, { name: "للحذف 1" });
+    const b = await mkItem(manager, { name: "للحذف 2" });
+    expect((await api(designer).delete(`/api/inventory/${a.id}`)).status).toBe(403);
+    expect((await api(manager).delete(`/api/inventory/${a.id}`)).status).toBe(200);
+    expect((await api(manager).get(`/api/inventory/${a.id}/movements`)).status).toBe(404);
+    expect((await api(admin).delete(`/api/inventory/${b.id}`)).status).toBe(200);
+    expect((await api(admin).get(`/api/inventory/${b.id}/movements`)).status).toBe(404);
+  });
+  it("سعر البيع: يُحفظ ويُعدَّل ويُعاد في القائمة", async () => {
+    const item = await mkItem(manager, { name: "بسعر بيع", unitPrice: 40, sellPrice: 65.5 });
+    expect(item.sellPrice).toBe(65.5);
+    expect(item.unitPrice).toBe(40);
+    const upd = await api(manager).patch(`/api/inventory/${item.id}`).send({ sellPrice: 80 });
+    expect(upd.status).toBe(200);
+    expect(upd.body.item.sellPrice).toBe(80);
+    expect(upd.body.item.totalValue).toBe(0); // لا تدخل في قيمة المخزون
+    expect((await api(manager).patch(`/api/inventory/${item.id}`).send({ sellPrice: -1 })).status).toBe(400);
+    const def = await mkItem(manager, { name: "بلا سعر بيع" });
+    expect(def.sellPrice).toBe(0);
   });
 });
 

@@ -98,6 +98,7 @@ model User {
   pushSubscriptions     PushSubscription[]
   inventoryMovements    InventoryMovement[]
   inventoryGroups       UserInventoryGroup[]
+  salesOrders           SalesOrder[]
 }
 
 // المهام الفرعية = Task بـ parentId (قرار موثّق في HANDOFF: الفرعية لها تايمر وتعليقات ومسؤول).
@@ -395,6 +396,8 @@ model InventoryItem {
   quantity     Decimal  @default(0) @db.Decimal(14, 3)
   minQuantity  Decimal  @default(0) @db.Decimal(14, 3)
   unitPrice    Decimal  @default(0) @db.Decimal(14, 2)
+  // سعر البيع (جنيه مصري) — منفصل عن سعر الوحدة (التكلفة) ولا يدخل في حساب قيمة المخزون
+  sellPrice    Decimal  @default(0) @db.Decimal(14, 2)
   lowAlertSent Boolean  @default(false)
   notes        String   @default("")
   isActive     Boolean  @default(true)
@@ -403,6 +406,8 @@ model InventoryItem {
 
   category  InventoryCategory   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   movements InventoryMovement[]
+  salesProductComponents SalesProductComponent[]
+  salesOrderComponents   SalesOrderComponent[]
 
   @@index([categoryId])
   @@index([isActive])
@@ -431,4 +436,98 @@ model InventoryMovement {
   @@index([itemId, createdAt])
   @@index([batchId])
   @@index([type, createdAt])
+}
+
+// ===== المبيعات العامة =====
+// حالة الأوردر: التنفيذ/الشحن/التسليم تخصم مكوناته من المخزون (مرة واحدة)، والعودة لـ «مسجل» أو «مرتجع» تعيدها.
+enum SalesOrderStatus {
+  REGISTERED
+  EXECUTED
+  SHIPPED
+  DELIVERED
+  RETURNED
+}
+
+// منتج مبيعات ثابت (مثل «بوكس كبير») له محتويات من المخزون تُنسخ إلى الأوردر عند إضافته.
+model SalesProduct {
+  id        String   @id @default(cuid())
+  name      String
+  notes     String   @default("")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  components SalesProductComponent[]
+  orderLines SalesOrderLine[]
+
+  @@index([isActive])
+}
+
+model SalesProductComponent {
+  id        String  @id @default(cuid())
+  productId String
+  itemId    String
+  quantity  Decimal @db.Decimal(14, 3)
+
+  product SalesProduct  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  item    InventoryItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, itemId])
+  @@index([itemId])
+}
+
+model SalesOrder {
+  id            String           @id @default(cuid())
+  // يوم الأوردر (YYYY-MM-DD) مثل تاريخ المهام
+  date          String           @db.VarChar(10)
+  // رقم البوليصة (يدخله المستخدم)
+  waybill       String           @default("")
+  // اسم المقفل (من أغلق الأوردر)
+  closerName    String           @default("")
+  status        SalesOrderStatus @default(REGISTERED)
+  // هل خُصمت المكونات من المخزون فعلاً؟ يمنع الخصم المزدوج
+  stockDeducted Boolean          @default(false)
+  notes         String           @default("")
+  createdById   String
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  createdBy User             @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  lines     SalesOrderLine[]
+
+  @@index([date])
+  @@index([status])
+  @@index([waybill])
+}
+
+model SalesOrderLine {
+  id          String   @id @default(cuid())
+  orderId     String
+  productId   String?
+  // اسم المنتج وقت الإضافة (يبقى حتى لو حُذف المنتج الثابت)
+  productName String
+  quantity    Int      @default(1)
+  createdAt   DateTime @default(now())
+
+  order      SalesOrder             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product    SalesProduct?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  components SalesOrderComponent[]
+
+  @@index([orderId])
+}
+
+// محتويات البند منسوخة من المنتج الثابت (كمية الوحدة الواحدة). السعران يُثبَّتان لحظة التنفيذ.
+model SalesOrderComponent {
+  id                String   @id @default(cuid())
+  lineId            String
+  itemId            String
+  quantity          Decimal  @db.Decimal(14, 3)
+  unitCostSnapshot  Decimal? @db.Decimal(14, 2)
+  unitSellSnapshot  Decimal? @db.Decimal(14, 2)
+
+  line SalesOrderLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  item InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@index([lineId])
+  @@index([itemId])
 }

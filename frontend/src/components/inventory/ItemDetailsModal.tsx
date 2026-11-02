@@ -134,6 +134,10 @@ export function ItemDetailsModal({
                 <span className="font-semibold text-text">{fmtMoney(item.unitPrice)}</span>
               </div>
               <div>
+                <span className="block text-xs text-muted">سعر البيع</span>
+                <span className="font-semibold text-text">{fmtMoney(item.sellPrice ?? 0)}</span>
+              </div>
+              <div>
                 <span className="block text-xs text-muted">إجمالي القيمة</span>
                 <span className="text-base font-bold text-primary-deep">{fmtMoney(item.totalValue)}</span>
               </div>

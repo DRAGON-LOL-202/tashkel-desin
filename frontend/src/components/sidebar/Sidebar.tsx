@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { AlertTriangle, Bell, CalendarRange, Home, LogOut, MessageSquare, PanelRightClose, PanelRightOpen, Tag, Warehouse, PackageMinus, Target, UserCog, UserRound, Users } from "lucide-react";
+import { AlertTriangle, Bell, CalendarRange, Home, LogOut, MessageSquare, PanelRightClose, PanelRightOpen, Tag, Warehouse, PackageMinus, ShoppingBag, Target, UserCog, UserRound, Users } from "lucide-react";
 import { useAuth } from "../auth/AuthProvider";
 import { pagesFor, type AppPage } from "../../lib/permissions";
 import { useResource } from "../../hooks/useResource";
@@ -16,6 +16,7 @@ const navItems = [
   { to: "/inventory", label: "المخزون", icon: Warehouse, end: true, page: "inventory" as AppPage },
   { to: "/inventory/shortages", label: "نواقص المخزون", icon: AlertTriangle, page: "inventory" as AppPage },
   { to: "/withdrawals", label: "السحب", icon: PackageMinus, page: "withdrawals" as AppPage },
+  { to: "/sales", label: "مبيعات عامة", icon: ShoppingBag, page: "sales" as AppPage },
   { to: "/manage-users", label: "إدارة المستخدمين", icon: UserCog, page: "manageUsers" as AppPage },
 ];
 

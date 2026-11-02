@@ -42,6 +42,7 @@ export function ItemModal({ open, onClose, editing, categories, groups, units = 
   const [min, setMin] = useState(String(editing?.minQuantity ?? 0));
   const [initial, setInitial] = useState("0");
   const [unitPrice, setUnitPrice] = useState(String(editing?.unitPrice ?? 0));
+  const [sellPrice, setSellPrice] = useState(String(editing?.sellPrice ?? 0));
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [isActive, setIsActive] = useState(editing?.isActive ?? true);
 
@@ -124,6 +125,8 @@ export function ItemModal({ open, onClose, editing, categories, groups, units = 
     if (!Number.isFinite(minN) || minN < 0) next.min = "أدخل رقماً صحيحاً (0 أو أكثر)";
     const priceN = toNum(unitPrice);
     if (!Number.isFinite(priceN) || priceN < 0) next.unitPrice = "أدخل سعراً صحيحاً (0 أو أكثر)";
+    const sellN = toNum(sellPrice);
+    if (!Number.isFinite(sellN) || sellN < 0) next.sellPrice = "أدخل سعر بيع صحيحاً (0 أو أكثر)";
     const initN = toNum(initial);
     if (!editing && (!Number.isFinite(initN) || initN < 0)) next.initial = "أدخل رقماً صحيحاً (0 أو أكثر)";
     setErrors(next);
@@ -137,6 +140,7 @@ export function ItemModal({ open, onClose, editing, categories, groups, units = 
       unit: unit.trim(),
       minQuantity: minN,
       unitPrice: priceN,
+      sellPrice: sellN,
       notes: notes.trim(),
       ...(editing
         ? {
@@ -392,7 +396,20 @@ export function ItemModal({ open, onClose, editing, categories, groups, units = 
             />
           </FieldWrap>
 
-          <FieldWrap label="8. الحد الأدنى للمخزون" htmlFor="inv-min" error={errors.min}>
+          <FieldWrap label="8. سعر البيع (بالجنيه المصري)" htmlFor="inv-sell-price" error={errors.sellPrice}>
+            <Input
+              id="inv-sell-price"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step="any"
+              value={sellPrice}
+              onChange={(e) => setSellPrice(e.target.value)}
+              placeholder="0.00"
+            />
+          </FieldWrap>
+
+          <FieldWrap label="9. الحد الأدنى للمخزون" htmlFor="inv-min" error={errors.min}>
             <Input
               id="inv-min"
               type="number"
@@ -413,7 +430,7 @@ export function ItemModal({ open, onClose, editing, categories, groups, units = 
           <span className="text-base font-bold text-primary-deep">{fmtMoney(previewTotalValue)}</span>
         </div>
 
-        <FieldWrap label="9. ملاحظات" htmlFor="inv-notes">
+        <FieldWrap label="10. ملاحظات" htmlFor="inv-notes">
           <Textarea id="inv-notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={1000} placeholder="أي تفاصيل أو مواصفات إضافية للمنتج..." />
         </FieldWrap>
 

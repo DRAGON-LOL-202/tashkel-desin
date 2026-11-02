@@ -12,7 +12,7 @@ export const GROUP_ACCESSORIES = "invgrp_accessories_gifts";
 
 export async function resetDb() {
   await prisma().$executeRawUnsafe(
-    'TRUNCATE "InventoryMovement","InventoryItem","InventoryCategory","ProductVariant","Product","ProductCategory","AttendanceSession","TaskTimeLog","TaskComment","Task","Feedback","Goal","CalendarEvent","User" RESTART IDENTITY CASCADE'
+    'TRUNCATE "SalesOrder","SalesProduct","InventoryMovement","InventoryItem","InventoryCategory","ProductVariant","Product","ProductCategory","AttendanceSession","TaskTimeLog","TaskComment","Task","Feedback","Goal","CalendarEvent","User" RESTART IDENTITY CASCADE'
   );
   await runSeed();
 }

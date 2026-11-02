@@ -1,11 +1,11 @@
 import type { TeamMember, UserRole } from "../types";
 
-export type AppPage = "dailyTasks" | "feedback" | "goals" | "schedule" | "users" | "products" | "inventory" | "withdrawals" | "manageUsers" | "profile" | "notifications";
+export type AppPage = "dailyTasks" | "feedback" | "goals" | "schedule" | "users" | "products" | "inventory" | "withdrawals" | "sales" | "manageUsers" | "profile" | "notifications";
 
 /** ما يلزم لتحديد الصفحات: الدور + مستوى وصول المخزون (للمصمم يحدده المدير) */
 export type AccessSubject = Pick<TeamMember, "accessRole" | "inventoryAccess">;
 
-const STAFF_PAGES: AppPage[] = ["dailyTasks", "notifications", "feedback", "goals", "schedule", "users", "products", "inventory", "withdrawals", "manageUsers", "profile"];
+const STAFF_PAGES: AppPage[] = ["dailyTasks", "notifications", "feedback", "goals", "schedule", "users", "products", "inventory", "withdrawals", "sales", "manageUsers", "profile"];
 const DESIGNER_BASE: AppPage[] = ["dailyTasks", "notifications", "feedback", "profile"];
 // تعبئة ومشغل: السحب وصفحتهما فقط (الباكند يفرض ذلك بقائمة بيضاء؛ هذا للعرض فقط)
 const RESTRICTED_PAGES: AppPage[] = ["withdrawals", "profile"];
