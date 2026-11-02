@@ -24,11 +24,11 @@ interface SalesOrderCardProps {
 
 // أيقونة كل حالة على زر الحالة
 const STATUS_ICON: Record<SalesOrderStatus, ReactNode> = {
-  REGISTERED: <Play size={16} className="fill-current" />,
-  EXECUTED: <ScanBarcode size={18} />,
-  SHIPPED: <RefreshCw size={16} />,
-  DELIVERED: <Eye size={17} />,
-  RETURNED: <Undo2 size={18} />,
+  REGISTERED: <Play size={13} className="fill-current" />,
+  EXECUTED: <ScanBarcode size={15} />,
+  SHIPPED: <RefreshCw size={14} />,
+  DELIVERED: <Eye size={15} />,
+  RETURNED: <Undo2 size={15} />,
 };
 
 const GREEN_FILL = "linear-gradient(180deg, #0f7a45 0%, #0a5a33 100%)";
@@ -88,20 +88,20 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
 
   return (
     <article
-      className="pp-card relative flex flex-col gap-3 !rounded-3xl p-4 sm:p-5"
-      style={{ borderInlineEnd: `5px solid ${meta.color}` }}
+      className="pp-card relative flex flex-col gap-2 !rounded-2xl p-3"
+      style={{ borderInlineEnd: `4px solid ${meta.color}` }}
       data-status={order.status}
       aria-label={`أوردر ${index}`}
     >
       {/* الصف العلوي: الرقم + الحالة ... من أضافه */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="flex h-11 min-w-11 items-center justify-center rounded-full border border-border bg-background/60 px-3 text-lg font-bold text-text">{index}</span>
+        <span className="flex h-8 min-w-8 items-center justify-center rounded-full border border-border bg-background/60 px-2 text-sm font-bold text-text">{index}</span>
         <span
-          className="inline-flex h-11 items-center gap-2 rounded-full px-4 text-base font-bold"
+          className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-sm font-bold"
           style={{ backgroundColor: `${meta.color}1F`, color: meta.color, border: `1px solid ${meta.color}55` }}
         >
           {meta.label}
-          <span className="h-3 w-3 rounded-full" style={{ backgroundColor: meta.color }} aria-hidden />
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: meta.color }} aria-hidden />
         </span>
         {order.stockDeducted && (
           <span className="flex items-center gap-1 text-xs font-medium text-primary-deep">
@@ -110,12 +110,12 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
         )}
         <span className="me-auto" />
         {showDate && (
-          <span className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-background/60 px-3 text-xs font-medium text-muted">
+          <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background/60 px-2.5 text-xs font-medium text-muted">
             <Calendar size={16} className="text-primary-deep" />
             {formatArabicDate(order.date, "d MMMM yyyy")}
           </span>
         )}
-        <span className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-background/60 px-4 text-sm font-medium text-text">
+        <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background/60 px-3 text-xs font-medium text-text">
           <User size={16} className="text-[#2a3f7a]" />
           أضافه: {order.createdByName}
         </span>
@@ -123,7 +123,7 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
 
       {/* رقم البوليصة واسم المقفل */}
       <div className="grid grid-cols-2">
-        <label className="flex min-w-0 flex-col gap-1 pe-3">
+        <label className="flex min-w-0 flex-col pe-3">
           <span className="flex items-center gap-1.5 text-xs font-medium text-muted">
             <Calendar size={16} className="text-primary-deep" /> رقم البوليصة
           </span>
@@ -134,10 +134,10 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
             onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
             placeholder="أدخل رقم البوليصة"
             maxLength={60}
-            className="w-full min-w-0 bg-transparent text-lg font-bold text-text outline-none placeholder:text-text/70"
+            className="w-full min-w-0 bg-transparent text-sm font-bold text-text outline-none placeholder:text-text/70"
           />
         </label>
-        <label className="flex min-w-0 flex-col gap-1 border-s border-border ps-3">
+        <label className="flex min-w-0 flex-col border-s border-border ps-3">
           <span className="flex items-center gap-1.5 text-xs font-medium text-muted">
             <CircleHelp size={16} className="text-text" /> اسم المُقفل
           </span>
@@ -149,7 +149,7 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
             placeholder="من أغلق الأوردر؟"
             maxLength={80}
             list={`closers-${order.id}`}
-            className="w-full min-w-0 bg-transparent text-lg font-bold text-text outline-none placeholder:text-text/70"
+            className="w-full min-w-0 bg-transparent text-sm font-bold text-text outline-none placeholder:text-text/70"
           />
           <datalist id={`closers-${order.id}`}>
             {closers.map((c) => (
@@ -160,15 +160,15 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
       </div>
 
       {/* شريط المنتجات: شريحة خضراء لكل منتج + مكوناتها + عرض الكل */}
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-background/50 p-2">
+      <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-border bg-background/50 p-1.5">
         {order.lines.map((line) => (
-          <span key={line.id} className="inline-flex h-12 items-center gap-3 rounded-2xl px-5 text-lg font-bold text-white" style={{ background: GREEN_FILL, boxShadow: GREEN_SHADOW }}>
+          <span key={line.id} className="inline-flex h-9 items-center gap-2 rounded-xl px-3 text-sm font-bold text-white" style={{ background: GREEN_FILL, boxShadow: GREEN_SHADOW }}>
             {line.productName}
-            <span dir="ltr" className="text-base">× {line.quantity}</span>
+            <span dir="ltr" className="text-xs">× {line.quantity}</span>
           </span>
         ))}
         {previewChips.map((c) => (
-          <span key={c.key} className="inline-flex h-10 max-w-[9rem] items-center gap-1 rounded-xl border border-border bg-surface px-3 text-xs font-medium text-muted" title={`${c.name} × ${fmtQty(c.qty)}`}>
+          <span key={c.key} className="inline-flex h-7 max-w-[8rem] items-center gap-1 rounded-lg border border-border bg-surface px-2 text-[11px] font-medium text-muted" title={`${c.name} × ${fmtQty(c.qty)}`}>
             <span className="truncate">{c.name}</span>
             <span dir="ltr" className="shrink-0 font-bold text-text">× {fmtQty(c.qty)}</span>
           </span>
@@ -177,9 +177,9 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
           type="button"
           onClick={() => setShowAll((v) => !v)}
           aria-expanded={showAll}
-          className="me-auto inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-text transition-colors hover:border-primary-deep"
+          className="me-auto inline-flex h-7 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs font-semibold text-text transition-colors hover:border-primary-deep"
         >
-          <LayoutGrid size={18} className="text-primary-deep" />
+          <LayoutGrid size={14} className="text-primary-deep" />
           {showAll ? "إخفاء" : "عرض الكل"}
           {!showAll && allChips.length > PREVIEW_CHIPS && <span className="text-xs text-muted">(+{allChips.length - PREVIEW_CHIPS})</span>}
         </button>
@@ -266,38 +266,38 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
       )}
 
       {/* التكلفة وسعر البيع والربح (تُحسب تلقائياً من المخزون) */}
-      <div className="grid grid-cols-3 rounded-2xl border border-border bg-background/50 py-3 text-center">
-        <div className="flex flex-col items-center gap-1">
+      <div className="grid grid-cols-3 rounded-xl border border-border bg-background/50 py-1.5 text-center">
+        <div className="flex flex-col items-center">
           <span className="flex items-center gap-1.5 text-xs font-medium text-muted">
-            <Coins size={18} className="text-amber-500" /> سعر التكلفة
+            <Coins size={14} className="text-amber-500" /> سعر التكلفة
           </span>
-          <span className="text-xl font-extrabold text-text">{fmtMoney(order.costTotal)}</span>
+          <span className="text-base font-extrabold text-text">{fmtMoney(order.costTotal)}</span>
         </div>
-        <div className="flex flex-col items-center gap-1 border-s border-border">
+        <div className="flex flex-col items-center border-s border-border">
           <span className="flex items-center gap-1.5 text-xs font-medium text-muted">
-            <Tag size={18} className="fill-[#1E8E5A] text-[#1E8E5A]" /> سعر البيع
+            <Tag size={14} className="fill-[#1E8E5A] text-[#1E8E5A]" /> سعر البيع
           </span>
-          <span className="text-xl font-extrabold text-[#1E8E5A]">{fmtMoney(order.sellTotal)}</span>
+          <span className="text-base font-extrabold text-[#1E8E5A]">{fmtMoney(order.sellTotal)}</span>
         </div>
-        <div className="flex flex-col items-center gap-1 border-s border-border">
+        <div className="flex flex-col items-center border-s border-border">
           <span className="flex items-center gap-1.5 text-xs font-medium text-muted">
-            {profitNegative ? <TrendingDown size={18} className="text-[#D64545]" /> : <TrendingUp size={18} className="text-[#1E8E5A]" />} الربح
+            {profitNegative ? <TrendingDown size={14} className="text-[#D64545]" /> : <TrendingUp size={14} className="text-[#1E8E5A]" />} الربح
           </span>
-          <span className={`text-xl font-extrabold ${profitNegative ? "text-[#D64545]" : "text-[#1E8E5A]"}`}>{fmtMoney(order.profit)}</span>
+          <span className={`text-base font-extrabold ${profitNegative ? "text-[#D64545]" : "text-[#1E8E5A]"}`}>{fmtMoney(order.profit)}</span>
         </div>
       </div>
 
       {/* الحالة + زر المزيد (ملاحظات / حذف) */}
-      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="حالة الأوردر">
+      <div className="flex flex-wrap items-center gap-1" role="group" aria-label="حالة الأوردر">
         <button
           type="button"
           onClick={() => setMore((v) => !v)}
           aria-expanded={more}
           aria-label="المزيد"
           title="ملاحظات وحذف"
-          className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-background/60 text-text transition-colors hover:border-primary-deep"
+          className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background/60 text-text transition-colors hover:border-primary-deep"
         >
-          <ChevronDown size={20} className={`transition-transform ${more ? "rotate-180" : ""}`} />
+          <ChevronDown size={16} className={`transition-transform ${more ? "rotate-180" : ""}`} />
         </button>
         {SALES_STATUS_ORDER.map((s) => {
           const m = SALES_STATUS_META[s];
@@ -310,8 +310,8 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
               aria-pressed={active}
               title={m.hint}
               onClick={() => !active && void act(() => onStatus(order, s))}
-              className={`inline-flex items-center gap-2 rounded-full font-semibold transition-colors disabled:opacity-60 ${
-                active ? "me-auto h-11 px-5 text-base font-bold text-white" : "h-11 border border-border bg-background/60 px-3 text-sm text-text hover:border-primary-deep"
+              className={`inline-flex items-center gap-1.5 rounded-full font-semibold transition-colors disabled:opacity-60 ${
+                active ? "me-auto h-8 px-3.5 text-sm font-bold text-white" : "h-8 border border-border bg-background/60 px-2.5 text-xs text-text hover:border-primary-deep"
               }`}
               style={active ? { background: GREEN_FILL, boxShadow: GREEN_SHADOW } : undefined}
             >

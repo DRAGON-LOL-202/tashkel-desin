@@ -287,7 +287,7 @@ export default function SalesPage() {
               />
             </div>
           ) : (
-            <div className="grid items-start gap-4 xl:grid-cols-2">
+            <div className="grid items-start gap-3 xl:grid-cols-2 2xl:grid-cols-3">
               {visible.map((o) => (
                 <SalesOrderCard
                   key={o.id}
