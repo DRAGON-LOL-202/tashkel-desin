@@ -28,6 +28,12 @@ export const salesService = {
     return orders;
   },
 
+  /** أوردرات فترة (YYYY-MM-DD إلى YYYY-MM-DD) للتصدير الشهري، مرتبة بالتاريخ */
+  async listOrdersRange(from: string, to: string): Promise<SalesOrder[]> {
+    const { orders } = await api<{ orders: SalesOrder[] }>("/sales/orders", { query: { from, to } });
+    return orders;
+  },
+
   /** بحث برقم البوليصة أو اسم المقفل في كل الأيام */
   async searchOrders(q: string): Promise<SalesOrder[]> {
     const { orders } = await api<{ orders: SalesOrder[] }>("/sales/orders", { query: { q } });

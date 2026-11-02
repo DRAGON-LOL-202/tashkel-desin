@@ -313,20 +313,31 @@ salesRouter.delete(
 );
 
 // ===== الأوردرات =====
-// ?date=YYYY-MM-DD أوردرات يوم، أو ?q= بحث برقم البوليصة/اسم المقفل في كل الأيام
+// ?date=YYYY-MM-DD أوردرات يوم، أو ?from=&to= أوردرات فترة (للتصدير الشهري، حتى 366 يوماً)، أو ?q= بحث برقم البوليصة/اسم المقفل في كل الأيام
 salesRouter.get(
   "/orders",
   asyncHandler(async (req, res) => {
     const q = typeof req.query.q === "string" ? req.query.q.trim().slice(0, 80) : "";
     const date = typeof req.query.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date) ? req.query.date : "";
-    if (!q && !date) throw badRequest("حدّد التاريخ أو كلمة البحث");
+    const isoDay = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "");
+    const from = isoDay(req.query.from);
+    const to = isoDay(req.query.to);
+    const ranged = !q && !date && from !== "" && to !== "";
+    if (!q && !date && !ranged) throw badRequest("حدّد التاريخ أو كلمة البحث");
+    if (ranged) {
+      const span = (Date.parse(to) - Date.parse(from)) / 86_400_000;
+      if (!(span >= 0)) throw badRequest("تاريخ البداية بعد تاريخ النهاية");
+      if (span > 366) throw badRequest("الفترة أطول من سنة");
+    }
     const rows = await prisma().salesOrder.findMany({
       where: q
         ? { OR: [{ waybill: { contains: q, mode: "insensitive" } }, { closerName: { contains: q, mode: "insensitive" } }] }
-        : { date },
+        : ranged
+          ? { date: { gte: from, lte: to } }
+          : { date },
       include: salesOrderInclude,
-      orderBy: q ? [{ date: "desc" }, { createdAt: "desc" }] : [{ createdAt: "asc" }, { id: "asc" }],
-      take: q ? 100 : 500,
+      orderBy: q ? [{ date: "desc" }, { createdAt: "desc" }] : ranged ? [{ date: "asc" }, { createdAt: "asc" }, { id: "asc" }] : [{ createdAt: "asc" }, { id: "asc" }],
+      take: q ? 100 : ranged ? 5000 : 500,
     });
     res.json({ orders: rows.map(serializeSalesOrder) });
   })

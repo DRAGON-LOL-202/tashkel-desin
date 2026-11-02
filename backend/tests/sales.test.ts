@@ -286,6 +286,21 @@ describe("sales: الأوردرات والخصم من المخزون", () => {
     expect((await api(manager).get("/api/sales/orders")).status).toBe(400);
   });
 
+  it("أوردرات فترة (للتصدير الشهري): from/to، وفترة معكوسة أو طويلة ← 400", async () => {
+    await mkOrder({ date: "2026-09-05", waybill: "RNG-1" });
+    await mkOrder({ date: "2026-09-20", waybill: "RNG-2" });
+    await mkOrder({ date: "2026-10-02", waybill: "RNG-OUT" });
+    const r = await api(manager).get("/api/sales/orders?from=2026-09-01&to=2026-09-30");
+    expect(r.status).toBe(200);
+    const w = r.body.orders.map((o: any) => o.waybill);
+    expect(w).toEqual(expect.arrayContaining(["RNG-1", "RNG-2"]));
+    expect(w).not.toContain("RNG-OUT");
+    expect(r.body.orders.map((o: any) => o.date)).toEqual([...r.body.orders.map((o: any) => o.date)].sort());
+    expect((await api(manager).get("/api/sales/orders?from=2026-09-30&to=2026-09-01")).status).toBe(400);
+    expect((await api(manager).get("/api/sales/orders?from=2024-01-01&to=2026-09-01")).status).toBe(400);
+    expect((await api(manager).get("/api/sales/orders?from=2026-09-01")).status).toBe(400);
+  });
+
   it("تحقق المدخلات: تاريخ/حالة/عدد غير صالح ← 400", async () => {
     expect((await api(manager).post("/api/sales/orders").send({ date: "غلط", lines: [{ productId: bigBox.id }] })).status).toBe(400);
     expect((await api(manager).post("/api/sales/orders").send({ date: "2026-11-01", lines: [] })).status).toBe(400);

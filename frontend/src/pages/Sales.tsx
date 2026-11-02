@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Boxes, Pencil, Plus, Receipt, Search, ShoppingBag, Trash2 } from "lucide-react";
+import { Boxes, Download, Pencil, Plus, Receipt, Search, ShoppingBag, Trash2 } from "lucide-react";
 import { AppLayout } from "../components/layout/AppLayout";
 import { Header } from "../components/header/Header";
 import { DateNavigator } from "../components/tasks/DateNavigator";
@@ -16,7 +16,8 @@ import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { useToast } from "../components/ui/ToastProvider";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
-import { todayISO } from "../lib/date";
+import { downloadSalesDaily, downloadSalesMonthly } from "../lib/exportSales";
+import { formatArabicDate, monthRange, todayISO } from "../lib/date";
 import { EMPTY_INVENTORY_DATA, inventoryService } from "../services/inventoryService";
 import { salesService } from "../services/salesService";
 import type { InventoryData, SalesOrder, SalesOrderPatch, SalesOrderStatus, SalesProduct, SalesProductInput } from "../types";
@@ -44,6 +45,7 @@ export default function SalesPage() {
   const [editor, setEditor] = useState<{ editing: SalesProduct | null } | null>(null);
   const [deletingOrder, setDeletingOrder] = useState<SalesOrder | null>(null);
   const [deletingProduct, setDeletingProduct] = useState<SalesProduct | null>(null);
+  const [exporting, setExporting] = useState<"day" | "month" | null>(null);
 
   const { show } = useToast();
   const run = useSafeAction();
@@ -140,6 +142,26 @@ export default function SalesPage() {
     return r.ok;
   };
 
+  // تصدير Excel: يومي (اليوم المختار) أو شهري (شهر اليوم المختار). يُجلب من الخادم وقت الضغط ليكون محدّثاً.
+  const month = date.slice(0, 7);
+  const exportExcel = async (kind: "day" | "month") => {
+    if (exporting) return;
+    setExporting(kind);
+    try {
+      const { from, to } = monthRange(month);
+      const r = await run(() => (kind === "day" ? salesService.listOrders(date) : salesService.listOrdersRange(from, to)));
+      if (!r.ok) return;
+      if (r.value.length === 0) {
+        show(kind === "day" ? "لا توجد أوردرات في هذا اليوم للتصدير" : "لا توجد أوردرات في هذا الشهر للتصدير");
+        return;
+      }
+      if (kind === "day") downloadSalesDaily(date, r.value);
+      else downloadSalesMonthly(month, r.value);
+    } finally {
+      setExporting(null);
+    }
+  };
+
   const confirmDeleteOrder = async () => {
     if (!deletingOrder) return;
     const target = deletingOrder;
@@ -205,6 +227,16 @@ export default function SalesPage() {
       ) : (
         <div className="flex flex-col gap-5">
           <DateNavigator value={date} onChange={(d) => { setDate(d); setSearchInput(""); setQ(""); }} />
+
+          {/* تصدير Excel يومي وشهري */}
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="تصدير Excel">
+            <Button variant="secondary" size="sm" icon={<Download size={15} />} disabled={exporting !== null} onClick={() => void exportExcel("day")}>
+              {exporting === "day" ? "جارٍ التصدير..." : "Excel يومي"}
+            </Button>
+            <Button variant="secondary" size="sm" icon={<Download size={15} />} disabled={exporting !== null} onClick={() => void exportExcel("month")}>
+              {exporting === "month" ? "جارٍ التصدير..." : `Excel شهري — ${formatArabicDate(`${month}-01`, "MMMM yyyy")}`}
+            </Button>
+          </div>
 
           {/* إضافة سريعة: اضغط على المنتج فيُضاف أوردر جديد بمحتوياته */}
           <section className="pp-panel flex flex-col gap-3 p-4" aria-label="إضافة أوردر">
