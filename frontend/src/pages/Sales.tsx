@@ -321,7 +321,7 @@ export default function SalesPage() {
         onDelete={setDeletingProduct}
       />
 
-      {editor && <ProductEditorModal key={editor.editing?.id ?? "new"} open onClose={() => setEditor(null)} editing={editor.editing} items={activeItems} onSubmit={submitProduct} />}
+      {editor && <ProductEditorModal key={editor.editing?.id ?? "new"} open onClose={() => setEditor(null)} editing={editor.editing} items={activeItems} categories={stock.data.categories} onSubmit={submitProduct} />}
 
       <ConfirmDialog
         open={!!deletingOrder}

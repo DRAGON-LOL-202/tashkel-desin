@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Plus, Search, Trash2 } from "lucide-react";
-import type { InventoryItem, SalesProduct, SalesProductInput } from "../../types";
+import type { InventoryCategory, InventoryItem, SalesProduct, SalesProductInput } from "../../types";
+import { groupCategories, UNASSIGNED_LABEL } from "../inventory/groupCategories";
 import { calcTotalValue, fmtMoney, fmtQty } from "../inventory/format";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
@@ -13,6 +14,8 @@ interface ProductEditorModalProps {
   editing: SalesProduct | null;
   /** أصناف المخزون (المفعّلة) لاختيار المحتويات منها */
   items: InventoryItem[];
+  /** تصنيفات المخزون لفلترة المكوّنات (المجموعة الرئيسية ثم التصنيف) */
+  categories: InventoryCategory[];
   onSubmit: (input: SalesProductInput) => Promise<boolean>;
 }
 
@@ -22,24 +25,38 @@ interface Row {
 }
 
 // تعريف منتج ثابت: الاسم + محتوياته من المخزون. التكلفة وسعر البيع تُحسبان تلقائياً من سعر الوحدة وسعر البيع في المخزون.
-export function ProductEditorModal({ open, onClose, editing, items, onSubmit }: ProductEditorModalProps) {
+export function ProductEditorModal({ open, onClose, editing, items, categories, onSubmit }: ProductEditorModalProps) {
   const [name, setName] = useState(editing?.name ?? "");
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [rows, setRows] = useState<Row[]>(() => editing?.components.map((c) => ({ itemId: c.itemId, quantity: String(c.quantity) })) ?? []);
   const [search, setSearch] = useState("");
+  const [groupFilter, setGroupFilter] = useState("all"); // اسم المجموعة الرئيسية أو all
+  const [categoryFilter, setCategoryFilter] = useState("all"); // معرّف التصنيف أو all
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   const used = new Set(rows.map((r) => r.itemId));
+  const groups = useMemo(() => groupCategories(categories), [categories]);
+  const categoryGroup = useMemo(() => new Map(categories.map((c) => [c.id, c.groupName ?? UNASSIGNED_LABEL])), [categories]);
+  const visibleCategories = groupFilter === "all" ? categories : categories.filter((c) => (c.groupName ?? UNASSIGNED_LABEL) === groupFilter);
+  const filtering = groupFilter !== "all" || categoryFilter !== "all";
+
+  const pickGroup = (g: string) => {
+    setGroupFilter(g);
+    setCategoryFilter("all");
+  };
+
   const results = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items
       .filter((i) => !used.has(i.id))
+      .filter((i) => groupFilter === "all" || (categoryGroup.get(i.categoryId) ?? UNASSIGNED_LABEL) === groupFilter)
+      .filter((i) => categoryFilter === "all" || i.categoryId === categoryFilter)
       .filter((i) => !q || `${i.name} ${i.sku ?? ""}`.toLowerCase().includes(q))
-      .slice(0, 8);
+      .slice(0, filtering ? 60 : 8);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, search, rows]);
+  }, [items, search, rows, groupFilter, categoryFilter, categoryGroup]);
 
   const totals = useMemo(() => {
     let cost = 0;
@@ -111,6 +128,41 @@ export function ProductEditorModal({ open, onClose, editing, items, onSubmit }: 
             <Search size={16} className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-muted" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ابحث في المخزون لإضافة مكوّن (ساعة، عطر، وردة...)" aria-label="بحث في المخزون" className="pp-input pp-input--icon" />
           </div>
+
+          {/* الفلاتر الأساسية: المجموعة الرئيسية ثم التصنيف */}
+          {categories.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5" role="group" aria-label="فلاتر المخزون">
+              {[{ label: "الكل", value: "all" }, ...groups.map((g) => ({ label: g.label, value: g.label }))].map((g) => {
+                const active = groupFilter === g.value;
+                return (
+                  <button
+                    key={g.value}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => pickGroup(g.value)}
+                    className={`inline-flex h-8 items-center rounded-full border px-3 text-xs font-semibold transition-colors ${active ? "border-transparent text-white" : "border-border bg-background/60 text-text hover:border-primary-deep"}`}
+                    style={active ? { background: "linear-gradient(180deg, #0f7a45 0%, #0a5a33 100%)" } : undefined}
+                  >
+                    {g.label}
+                  </button>
+                );
+              })}
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                aria-label="فلترة بالتصنيف"
+                className="pp-input pp-input--select !h-8 w-auto min-w-36 cursor-pointer !py-0 text-xs"
+              >
+                <option value="all">كل التصنيفات</option>
+                {visibleCategories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {results.length > 0 ? (
             <ul className="mt-1.5 flex max-h-48 flex-col gap-1 overflow-y-auto">
               {results.map((i) => (
@@ -133,7 +185,7 @@ export function ProductEditorModal({ open, onClose, editing, items, onSubmit }: 
               ))}
             </ul>
           ) : (
-            <p className="mt-2 text-xs text-muted">{items.length === 0 ? "لا توجد أصناف مفعّلة في المخزون." : search ? "لا توجد نتائج مطابقة." : "كل أصناف المخزون أُضيفت."}</p>
+            <p className="mt-2 text-xs text-muted">{items.length === 0 ? "لا توجد أصناف مفعّلة في المخزون." : search || filtering ? "لا توجد نتائج مطابقة." : "كل أصناف المخزون أُضيفت."}</p>
           )}
         </FieldWrap>
 
