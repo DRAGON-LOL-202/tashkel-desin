@@ -387,6 +387,7 @@ salesRouter.patch(
     const existing = await getOrder(req.params.id);
     const body = updateOrderSchema.parse(req.body);
     if (body.waybill !== undefined && body.waybill !== existing.waybill) await assertWaybillFree(body.waybill, existing.id);
+    if (body.returnFlagged === true && (existing.status === "RETURNED" || body.status === "RETURNED")) throw badRequest("الأوردر مسجل كمرتجع بالفعل");
 
     const { order, transitions } = await prisma().$transaction(async (tx) => {
       await lockOrder(tx, existing.id);
@@ -399,6 +400,12 @@ salesRouter.patch(
           ...(body.waybill !== undefined ? { waybill: body.waybill } : {}),
           ...(body.closerName !== undefined ? { closerName: body.closerName } : {}),
           ...(body.notes !== undefined ? { notes: body.notes } : {}),
+          // التحويل إلى «مرتجع» يُنهي المراجعة فتُمسح العلامة؛ وإلا تتبع طلب المستخدم
+          ...(body.status === "RETURNED" || body.returnFlagged === false
+            ? { returnFlagged: false, returnFlaggedAt: null }
+            : body.returnFlagged === true && !existing.returnFlagged
+              ? { returnFlagged: true, returnFlaggedAt: new Date() }
+              : {}),
         },
       });
       const fresh = await tx.salesOrder.findUniqueOrThrow({ where: { id: existing.id }, include: salesOrderInclude });

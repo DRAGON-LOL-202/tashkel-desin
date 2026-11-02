@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, Calendar, CalendarDays, ChevronDown, CircleHelp, Coins, Eye, LayoutGrid, Minus, PackageCheck, Pencil, Play, Plus, RefreshCw, ScanBarcode, Tag, Trash2, TrendingDown, TrendingUp, Undo2, User } from "lucide-react";
+import { AlertTriangle, Calendar, CalendarDays, ChevronDown, CircleHelp, Coins, Eye, Flag, LayoutGrid, Minus, PackageCheck, Pencil, Play, Plus, RefreshCw, ScanBarcode, Tag, Trash2, TrendingDown, TrendingUp, Undo2, User } from "lucide-react";
 import type { ReactNode } from "react";
 import type { InventoryItem, SalesOrder, SalesOrderPatch, SalesOrderStatus, SalesProduct } from "../../types";
 import { fmtMoney, fmtQty } from "../inventory/format";
@@ -134,6 +134,21 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
             {formatArabicDate(order.date, "d MMMM yyyy")}
           </span>
         )}
+        {order.status !== "RETURNED" && (
+          <button
+            type="button"
+            disabled={busy}
+            aria-pressed={order.returnFlagged}
+            onClick={() => void act(() => onPatch(order, { returnFlagged: !order.returnFlagged }))}
+            title={order.returnFlagged ? "إلغاء علامة المرتجع" : "تعليم الأوردر كمرتجع ليراجعه الموظف (لا يعيد شيئاً للمخزون)"}
+            className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors disabled:opacity-60 ${
+              order.returnFlagged ? "border-problem/60 bg-problem/15 text-problem" : "border-border bg-background/60 text-text hover:border-problem"
+            }`}
+          >
+            <Flag size={15} className={order.returnFlagged ? "fill-current" : "text-problem"} />
+            {order.returnFlagged ? "إلغاء المرتجع" : "مرتجع"}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setMoving(true)}
@@ -148,6 +163,13 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
           أضافه: {order.createdByName}
         </span>
       </div>
+
+      {order.returnFlagged && order.status !== "RETURNED" && (
+        <div className="flex items-center gap-2 rounded-xl border border-problem/40 bg-problem/10 px-3 py-1.5 text-xs text-problem" role="status">
+          <Flag size={14} className="shrink-0 fill-current" />
+          <span className="font-semibold">أوردر مرتجع بانتظار المراجعة — راجعه ثم اضغط «مرتجع» في الحالات أسفل الكارت لتسجيله (لم يُعَد شيء للمخزون).</span>
+        </div>
+      )}
 
       {/* رقم البوليصة واسم المقفل */}
       <div className="grid grid-cols-2">

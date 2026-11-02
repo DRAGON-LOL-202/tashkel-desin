@@ -74,6 +74,9 @@ export interface SalesOrder {
   profit: number;
   /** تكلفة المكونات التالفة عند المرتجع (تدخل في تالف اليوم) */
   damagedTotal: number;
+  /** الشركة علّمت الأوردر «مرتجع» ليراجعه الموظف ويسجله (لا أثر على المخزون) */
+  returnFlagged: boolean;
+  returnFlaggedAt: string | null;
   /** نقص الرصيد قبل التنفيذ */
   shortages: SalesShortage[];
   /** مكونات مؤرشفة في المخزون (تمنع التنفيذ) */
@@ -101,6 +104,8 @@ export interface SalesOrderPatch {
   closerName?: string;
   notes?: string;
   status?: SalesOrderStatus;
+  /** علامة «مرتجع» للمراجعة (لا تغيّر الحالة ولا المخزون) */
+  returnFlagged?: boolean;
   /** مع status = RETURNED: معرّفات المكونات التالفة التي لا تعود للمخزون */
   damagedComponentIds?: string[];
 }

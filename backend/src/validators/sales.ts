@@ -73,6 +73,8 @@ export const updateOrderSchema = z
     closerName: closerName.optional(),
     notes: notes.optional(),
     status: z.enum(SALES_ORDER_STATUSES, { message: "حالة غير صالحة" }).optional(),
+    // علامة «مرتجع» للمراجعة: لا تغيّر الحالة ولا المخزون
+    returnFlagged: z.boolean({ message: "قيمة غير صالحة" }).optional(),
     // المكونات التالفة عند المرتجع (معرّفات SalesOrderComponent): لا تعود للمخزون
     damagedComponentIds: z.array(id).max(500, "عدد المكونات كبير جداً").optional(),
   })

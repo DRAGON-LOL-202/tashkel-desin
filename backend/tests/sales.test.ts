@@ -385,3 +385,31 @@ describe("sales: نقل أوردر ليوم آخر", () => {
     expect((await api(manager).patch(`/api/sales/orders/${o.id}`).send({ date: "غلط" })).status).toBe(400);
   });
 });
+
+describe("sales: علامة «مرتجع» للمراجعة", () => {
+  it("التعليم لا يغيّر الحالة ولا المخزون، ويُلغى، ويُمسح عند التحويل إلى مرتجع", async () => {
+    const o = await mkOrder({ date: "2026-07-01", waybill: "FLAG-1" });
+    expect((await setStatus(o.id, "EXECUTED")).status).toBe(200);
+    const before = await qty(watch.id);
+    const f = await api(manager).patch(`/api/sales/orders/${o.id}`).send({ returnFlagged: true });
+    expect(f.status).toBe(200);
+    expect(f.body.order.returnFlagged).toBe(true);
+    expect(f.body.order.returnFlaggedAt).toBeTruthy();
+    expect(f.body.order.status).toBe("EXECUTED");
+    expect(f.body.order.stockDeducted).toBe(true);
+    expect(await qty(watch.id)).toBe(before);
+
+    const off = await api(manager).patch(`/api/sales/orders/${o.id}`).send({ returnFlagged: false });
+    expect(off.body.order.returnFlagged).toBe(false);
+    expect(off.body.order.returnFlaggedAt).toBeNull();
+
+    await api(manager).patch(`/api/sales/orders/${o.id}`).send({ returnFlagged: true });
+    const ret = await api(manager).patch(`/api/sales/orders/${o.id}`).send({ status: "RETURNED", damagedComponentIds: [] });
+    expect(ret.status).toBe(200);
+    expect(ret.body.order.returnFlagged).toBe(false);
+    expect(await qty(watch.id)).toBe(before + 1); // الإرجاع الفعلي هو الذي يعيد المخزون
+    expect((await api(manager).patch(`/api/sales/orders/${o.id}`).send({ returnFlagged: true })).status).toBe(400);
+    expect((await api(manager).patch(`/api/sales/orders/${o.id}`).send({ returnFlagged: "x" })).status).toBe(400);
+  });
+});
+

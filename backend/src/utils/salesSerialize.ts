@@ -135,6 +135,9 @@ export function serializeSalesOrder(o: SalesOrderRow) {
     profit: fromCents(sellCents - costCents),
     /** تكلفة التالف في هذا الأوردر (يدخل في إجمالي التالف لليوم) */
     damagedTotal: fromCents(damagedCents),
+    /** الشركة علّمت الأوردر «مرتجع» ليراجعه الموظف ويسجله (لا أثر على المخزون) */
+    returnFlagged: o.returnFlagged,
+    returnFlaggedAt: o.returnFlaggedAt ? o.returnFlaggedAt.toISOString() : null,
     shortages,
     archivedItems,
   };

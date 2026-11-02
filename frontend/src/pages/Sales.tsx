@@ -41,7 +41,7 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
   const [date, setDate] = useState(todayISO());
   const [searchInput, setSearchInput] = useState("");
   const [q, setQ] = useState("");
-  const [statusFilter, setStatusFilter] = useState<SalesOrderStatus | "ALL">("ALL");
+  const [statusFilter, setStatusFilter] = useState<SalesOrderStatus | "ALL" | "FLAGGED">("ALL");
   const [newOrderOpen, setNewOrderOpen] = useState(false);
   const [productsOpen, setProductsOpen] = useState(false);
   const [editor, setEditor] = useState<{ editing: SalesProduct | null } | null>(null);
@@ -70,7 +70,7 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
 
   const stale = orders.data.key !== key;
   const dayOrders = useMemo(() => (stale ? NO_ORDERS : orders.data.orders), [stale, orders.data.orders]);
-  const visible = useMemo(() => (statusFilter === "ALL" ? dayOrders : dayOrders.filter((o) => o.status === statusFilter)), [dayOrders, statusFilter]);
+  const visible = useMemo(() => (statusFilter === "ALL" ? dayOrders : statusFilter === "FLAGGED" ? dayOrders.filter((o) => o.returnFlagged && o.status !== "RETURNED") : dayOrders.filter((o) => o.status === statusFilter)), [dayOrders, statusFilter]);
   const activeProducts = useMemo(() => products.data.filter((p) => p.isActive && p.components.length > 0), [products.data]);
   const activeItems = useMemo(() => stock.data.items.filter((i) => i.isActive), [stock.data.items]);
 
@@ -99,6 +99,8 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
     }
     return { total: cents / 100, orders };
   }, [dayOrders]);
+
+  const flaggedCount = useMemo(() => dayOrders.filter((o) => o.returnFlagged && o.status !== "RETURNED").length, [dayOrders]);
 
   const countsByStatus = useMemo(() => {
     const m = new Map<SalesOrderStatus, number>();
@@ -346,6 +348,15 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
                   {SALES_STATUS_META[s].label} ({countsByStatus.get(s) ?? 0})
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => setStatusFilter("FLAGGED")}
+                aria-pressed={statusFilter === "FLAGGED"}
+                className={`task-btn !px-3 !py-1.5 !text-xs ${statusFilter === "FLAGGED" ? "task-btn--primary" : "task-btn--secondary"}`}
+                title="أوردرات علّمتها الشركة مرتجع وتنتظر مراجعة الموظف"
+              >
+                بانتظار مراجعة المرتجع ({flaggedCount})
+              </button>
             </div>
             <div className="relative lg:w-72">
               <Search size={16} className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-muted" />

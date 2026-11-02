@@ -487,6 +487,9 @@ model SalesOrder {
   status        SalesOrderStatus @default(REGISTERED)
   // هل خُصمت المكونات من المخزون فعلاً؟ يمنع الخصم المزدوج
   stockDeducted Boolean          @default(false)
+  // علامة «مرتجع» من الشركة: الموظف يراجع الأوردر ثم يسجله مرتجعاً (لا تمس المخزون؛ تُمسح عند التحويل إلى مرتجع)
+  returnFlagged   Boolean        @default(false)
+  returnFlaggedAt DateTime?
   notes         String           @default("")
   createdById   String
   createdAt     DateTime         @default(now())
