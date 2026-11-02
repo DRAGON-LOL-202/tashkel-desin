@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Boxes, Plus, Receipt, Search, ShoppingBag } from "lucide-react";
+import { Boxes, Pencil, Plus, Receipt, Search, ShoppingBag, Trash2 } from "lucide-react";
 import { AppLayout } from "../components/layout/AppLayout";
 import { Header } from "../components/header/Header";
 import { DateNavigator } from "../components/tasks/DateNavigator";
@@ -227,9 +227,17 @@ export default function SalesPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs text-muted">اضغط لإضافة أوردر لهذا اليوم:</span>
                 {activeProducts.map((p) => (
-                  <button key={p.id} type="button" onClick={() => quickAdd(p)} className="task-btn task-btn--secondary" title={p.components.map((c) => c.itemName).join("، ")}>
-                    <Plus size={14} /> {p.name}
-                  </button>
+                  <div key={p.id} className="inline-flex items-center gap-1">
+                    <button type="button" onClick={() => quickAdd(p)} className="task-btn task-btn--secondary" title={p.components.map((c) => c.itemName).join("، ")}>
+                      <Plus size={14} /> {p.name}
+                    </button>
+                    <button type="button" onClick={() => setEditor({ editing: p })} aria-label={`تعديل ${p.name}`} title="تعديل المنتج الثابت" className="task-icon-btn !h-8 !w-8">
+                      <Pencil size={14} />
+                    </button>
+                    <button type="button" onClick={() => setDeletingProduct(p)} aria-label={`حذف ${p.name}`} title="حذف المنتج الثابت" className="task-icon-btn task-icon-btn--danger !h-8 !w-8">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 ))}
                 <button type="button" onClick={() => setEditor({ editing: null })} className="task-btn task-btn--ghost">
                   <Plus size={14} /> منتج ثابت جديد
