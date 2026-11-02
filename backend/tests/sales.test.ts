@@ -367,3 +367,21 @@ describe("sales: تعديل مكوّنات أوردر واحد", () => {
     expect((await api(manager).delete(`${base(o)}/${c3.id}`)).status).toBe(400);
   });
 });
+
+describe("sales: نقل أوردر ليوم آخر", () => {
+  it("تغيير التاريخ فقط: يظهر في اليوم الجديد ويختفي من القديم، والحالة والمخزون كما هما", async () => {
+    const o = await mkOrder({ date: "2026-08-01", waybill: "MOVE-1" });
+    expect((await setStatus(o.id, "EXECUTED")).status).toBe(200);
+    const before = await qty(watch.id);
+    const r = await api(manager).patch(`/api/sales/orders/${o.id}`).send({ date: "2026-08-09" });
+    expect(r.status).toBe(200);
+    expect(r.body.order.date).toBe("2026-08-09");
+    expect(r.body.order.status).toBe("EXECUTED");
+    expect(await qty(watch.id)).toBe(before);
+    const oldDay = await api(manager).get("/api/sales/orders?date=2026-08-01");
+    const newDay = await api(manager).get("/api/sales/orders?date=2026-08-09");
+    expect(oldDay.body.orders.map((x: any) => x.id)).not.toContain(o.id);
+    expect(newDay.body.orders.map((x: any) => x.id)).toContain(o.id);
+    expect((await api(manager).patch(`/api/sales/orders/${o.id}`).send({ date: "غلط" })).status).toBe(400);
+  });
+});

@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { AlertTriangle, Calendar, ChevronDown, CircleHelp, Coins, Eye, LayoutGrid, Minus, PackageCheck, Pencil, Play, Plus, RefreshCw, ScanBarcode, Tag, Trash2, TrendingDown, TrendingUp, Undo2, User } from "lucide-react";
+import { AlertTriangle, Calendar, CalendarDays, ChevronDown, CircleHelp, Coins, Eye, LayoutGrid, Minus, PackageCheck, Pencil, Play, Plus, RefreshCw, ScanBarcode, Tag, Trash2, TrendingDown, TrendingUp, Undo2, User } from "lucide-react";
 import type { ReactNode } from "react";
 import type { InventoryItem, SalesOrder, SalesOrderPatch, SalesOrderStatus, SalesProduct } from "../../types";
 import { fmtMoney, fmtQty } from "../inventory/format";
 import { formatArabicDate } from "../../lib/date";
 import { OrderComponentsEditor } from "./OrderComponentsEditor";
+import { MoveOrderModal } from "./MoveOrderModal";
 import { OrderEditModal } from "./OrderEditModal";
 import { ReturnOrderModal } from "./ReturnOrderModal";
 import { SALES_STATUS_META, SALES_STATUS_ORDER } from "./status";
@@ -21,6 +22,8 @@ interface SalesOrderCardProps {
   onStatus: (order: SalesOrder, status: SalesOrderStatus) => Promise<void>;
   /** مرتجع مع تحديد المكونات التالفة (لأوردر خُصمت مكوناته) */
   onReturn: (order: SalesOrder, damagedComponentIds: string[]) => Promise<boolean>;
+  /** نقل الأوردر إلى يوم آخر؛ يرجع true عند النجاح */
+  onMove: (order: SalesOrder, date: string) => Promise<boolean>;
   onDelete: (order: SalesOrder) => void;
   onAddLine: (order: SalesOrder, productId: string) => Promise<void>;
   onSetLineQty: (order: SalesOrder, lineId: string, quantity: number) => Promise<void>;
@@ -48,13 +51,14 @@ const GREEN_SHADOW = "0 10px 18px -10px rgba(10, 90, 51, 0.7)";
 const PREVIEW_CHIPS = 3;
 
 // كرت أوردر: رقم وحالة ومن أضافه، ثم رقم البوليصة والمقفل، شريط المنتجات، التكلفة وسعر البيع والربح، وأزرار الحالة.
-export function SalesOrderCard({ order, index, showDate, products, closers, onPatch, onStatus, onReturn, onDelete, onAddLine, onSetLineQty, onRemoveLine, items, onAddComponent, onSetComponentQty, onRemoveComponent }: SalesOrderCardProps) {
+export function SalesOrderCard({ order, index, showDate, products, closers, onPatch, onStatus, onReturn, onMove, onDelete, onAddLine, onSetLineQty, onRemoveLine, items, onAddComponent, onSetComponentQty, onRemoveComponent }: SalesOrderCardProps) {
   const meta = SALES_STATUS_META[order.status];
   const [waybill, setWaybill] = useState(order.waybill);
   const [closer, setCloser] = useState(order.closerName);
   const [notes, setNotes] = useState(order.notes);
   const [busy, setBusy] = useState(false);
   const [returning, setReturning] = useState(false); // نافذة المرتجع وتحديد التالف
+  const [moving, setMoving] = useState(false); // نافذة نقل الأوردر ليوم آخر
   const [editing, setEditing] = useState(false); // قائمة تعديل الأوردر
   const [showAll, setShowAll] = useState(false); // تفاصيل كل المنتجات ومكوناتها
   const [more, setMore] = useState(order.notes !== ""); // الملاحظات والحذف
@@ -128,6 +132,15 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
             {formatArabicDate(order.date, "d MMMM yyyy")}
           </span>
         )}
+        <button
+          type="button"
+          onClick={() => setMoving(true)}
+          title="نقل الأوردر إلى يوم آخر"
+          className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background/60 px-3 text-xs font-semibold text-text transition-colors hover:border-primary-deep"
+        >
+          <CalendarDays size={16} className="text-primary-deep" />
+          نقل ليوم
+        </button>
         <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background/60 px-3 text-xs font-medium text-text">
           <User size={16} className="text-[#2a3f7a]" />
           أضافه: {order.createdByName}
@@ -373,6 +386,8 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
           <strong>{fmtMoney(order.damagedTotal)}</strong>
         </div>
       )}
+
+      {moving && <MoveOrderModal open order={order} onClose={() => setMoving(false)} onConfirm={(d) => onMove(order, d)} />}
 
       {editing && editable && (
         <OrderEditModal

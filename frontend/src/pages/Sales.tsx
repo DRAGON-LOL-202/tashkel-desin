@@ -125,6 +125,14 @@ export default function SalesPage() {
     return r.ok;
   };
 
+  // نقل الأوردر إلى يوم آخر (تاريخه فقط؛ لا يمس الحالة ولا المخزون)
+  const moveOrder = async (o: SalesOrder, newDate: string) => {
+    const r = await run(() => salesService.updateOrder(o.id, { date: newDate }));
+    await refresh();
+    if (r.ok) show(`نُقل الأوردر إلى ${formatArabicDate(newDate, "d MMMM yyyy")}`);
+    return r.ok;
+  };
+
   const changeStatus = async (o: SalesOrder, status: SalesOrderStatus) => {
     const r = await run(() => salesService.updateOrder(o.id, { status }));
     await refresh();
@@ -367,6 +375,7 @@ export default function SalesPage() {
                   onPatch={patchOrder}
                   onStatus={changeStatus}
                   onReturn={returnOrder}
+                  onMove={moveOrder}
                   onDelete={setDeletingOrder}
                   onAddLine={addLine}
                   onSetLineQty={setLineQty}
