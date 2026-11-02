@@ -14,6 +14,8 @@ export interface SalesComponent {
   /** الرصيد المتاح الآن في المخزون */
   available: number;
   itemActive: boolean;
+  /** تالف عند المرتجع (لا يعود للمخزون) */
+  damaged: boolean;
 }
 
 /** منتج ثابت (مثل «بوكس كبير») */
@@ -70,6 +72,8 @@ export interface SalesOrder {
   costTotal: number;
   sellTotal: number;
   profit: number;
+  /** تكلفة المكونات التالفة عند المرتجع (تدخل في تالف اليوم) */
+  damagedTotal: number;
   /** نقص الرصيد قبل التنفيذ */
   shortages: SalesShortage[];
   /** مكونات مؤرشفة في المخزون (تمنع التنفيذ) */
@@ -97,4 +101,6 @@ export interface SalesOrderPatch {
   closerName?: string;
   notes?: string;
   status?: SalesOrderStatus;
+  /** مع status = RETURNED: معرّفات المكونات التالفة التي لا تعود للمخزون */
+  damagedComponentIds?: string[];
 }

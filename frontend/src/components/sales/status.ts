@@ -7,7 +7,7 @@ export const SALES_STATUS_META: Record<SalesOrderStatus, { label: string; color:
   EXECUTED: { label: "تم التنفيذ", color: "#2E8BC0", hint: "يخصم المكونات من المخزون" },
   SHIPPED: { label: "شحن", color: "#D97706", hint: "المكونات مخصومة" },
   DELIVERED: { label: "تم التسليم", color: "#1E8E5A", hint: "المكونات مخصومة" },
-  RETURNED: { label: "مرتجع", color: "#D64545", hint: "يعيد المكونات إلى المخزون" },
+  RETURNED: { label: "مرتجع", color: "#D64545", hint: "يعيد المكونات إلى المخزون (عدا التالف)" },
 };
 
 /** هل تُخصم المكونات في هذه الحالة؟ (مطابق للباكند) */

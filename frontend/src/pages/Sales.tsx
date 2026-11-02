@@ -84,6 +84,18 @@ export default function SalesPage() {
     return { count, cost: cost / 100, sell: sell / 100, profit: (sell - cost) / 100 };
   }, [dayOrders]);
 
+  // إجمالي تالف اليوم (من مرتجعات أوردرات هذا اليوم)
+  const damaged = useMemo(() => {
+    let cents = 0;
+    let orders = 0;
+    for (const o of dayOrders) {
+      if (o.status !== "RETURNED" || o.damagedTotal <= 0) continue;
+      orders += 1;
+      cents += Math.round(o.damagedTotal * 100);
+    }
+    return { total: cents / 100, orders };
+  }, [dayOrders]);
+
   const countsByStatus = useMemo(() => {
     const m = new Map<SalesOrderStatus, number>();
     for (const o of dayOrders) m.set(o.status, (m.get(o.status) ?? 0) + 1);
@@ -118,6 +130,14 @@ export default function SalesPage() {
     const was = o.stockDeducted;
     const now = r.value.stockDeducted;
     show(!was && now ? "تم التنفيذ وخُصمت المكونات من المخزون" : was && !now ? "أُعيدت المكونات إلى المخزون" : `تم تغيير الحالة إلى «${SALES_STATUS_META[status].label}»`);
+  };
+
+  // مرتجع مع تحديد التالف: التالف لا يعود للمخزون ويدخل في تالف اليوم
+  const returnOrder = async (o: SalesOrder, damagedComponentIds: string[]) => {
+    const r = await run(() => salesService.updateOrder(o.id, { status: "RETURNED", damagedComponentIds }));
+    await refresh();
+    if (r.ok) show(damagedComponentIds.length > 0 ? `تم المرتجع: ${damagedComponentIds.length} تالف، وأُعيد الباقي إلى المخزون` : "تم المرتجع وأُعيدت المكونات إلى المخزون");
+    return r.ok;
   };
 
   const confirmDeleteOrder = async () => {
@@ -220,7 +240,7 @@ export default function SalesPage() {
 
           {/* ملخص اليوم */}
           {!searching && (
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="ملخص اليوم">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5" aria-label="ملخص اليوم">
               <div className="pp-card p-3.5">
                 <p className="text-xs text-muted">عدد الأوردرات</p>
                 <p className="mt-1 text-lg font-bold text-text">{summary.count}</p>
@@ -236,6 +256,10 @@ export default function SalesPage() {
               <div className="pp-card p-3.5">
                 <p className="text-xs text-muted">الربح</p>
                 <p className={`mt-1 text-lg font-bold ${summary.profit < 0 ? "text-problem" : "text-text"}`}>{fmtMoney(summary.profit)}</p>
+              </div>
+              <div className="pp-card p-3.5">
+                <p className="text-xs text-muted">تالف اليوم{damaged.orders > 0 ? ` (${damaged.orders} أوردر)` : ""}</p>
+                <p className={`mt-1 text-lg font-bold ${damaged.total > 0 ? "text-problem" : "text-text"}`}>{fmtMoney(damaged.total)}</p>
               </div>
             </div>
           )}
@@ -298,6 +322,7 @@ export default function SalesPage() {
                   closers={closers.data}
                   onPatch={patchOrder}
                   onStatus={changeStatus}
+                  onReturn={returnOrder}
                   onDelete={setDeletingOrder}
                   onAddLine={addLine}
                   onSetLineQty={setLineQty}

@@ -120,6 +120,45 @@ describe("sales: الأوردرات والخصم من المخزون", () => {
     expect(await qty(watch.id)).toBe(w0);
   });
 
+  it("مرتجع بتالف: التالف لا يعود للمخزون ويُحسب تكلفته، والباقي يعود، والخروج من «مرتجع» يمسح العلامة", async () => {
+    const o = await mkOrder({ waybill: "W-DMG" });
+    const w0 = await qty(watch.id);
+    const p0 = await qty(perfume.id);
+    const r0 = await qty(rose.id);
+    await setStatus(o.id, "EXECUTED");
+    const comps = o.lines[0].components as { id: string; itemName: string }[];
+    const watchComp = comps.find((c) => c.itemName === "ساعة")!;
+    const roseComp = comps.find((c) => c.itemName === "وردة")!;
+
+    // لا يصح تحديد تالف مع حالة غير «مرتجع»، ولا مكوّن غريب
+    expect((await api(manager).patch(`/api/sales/orders/${o.id}`).send({ status: "SHIPPED", damagedComponentIds: [watchComp.id] })).status).toBe(400);
+    expect((await api(manager).patch(`/api/sales/orders/${o.id}`).send({ status: "RETURNED", damagedComponentIds: ["nope"] })).status).toBe(400);
+
+    const ret = await api(manager).patch(`/api/sales/orders/${o.id}`).send({ status: "RETURNED", damagedComponentIds: [watchComp.id, roseComp.id] });
+    expect(ret.status).toBe(200);
+    expect(ret.body.order.stockDeducted).toBe(false);
+    // تالف: ساعة (100) + وردتان (2×5) = 110
+    expect(ret.body.order.damagedTotal).toBe(110);
+    expect(ret.body.order.lines[0].components.filter((c: any) => c.damaged).map((c: any) => c.itemName).sort()).toEqual(["ساعة", "وردة"]);
+    // الساعة والوردة لا تعودان، والعطر وحده يعود
+    expect(await qty(watch.id)).toBe(w0 - 1);
+    expect(await qty(rose.id)).toBe(r0 - 2);
+    expect(await qty(perfume.id)).toBe(p0);
+    const rets = await prisma().inventoryMovement.findMany({ where: { referenceId: `sales:${o.id}`, type: "RETURN" } });
+    expect(rets.map((m) => m.itemId)).toEqual([perfume.id]);
+
+    // الخروج من «مرتجع» يمسح علامات التالف
+    const again = await setStatus(o.id, "REGISTERED");
+    expect(again.body.order.damagedTotal).toBe(0);
+    expect(again.body.order.lines[0].components.some((c: any) => c.damaged)).toBe(false);
+  });
+
+  it("تحديد تالف على أوردر «مسجل» لم يُخصم ← 400", async () => {
+    const o = await mkOrder();
+    const comp = o.lines[0].components[0];
+    expect((await api(manager).patch(`/api/sales/orders/${o.id}`).send({ status: "RETURNED", damagedComponentIds: [comp.id] })).status).toBe(400);
+  });
+
   it("الرصيد غير الكافي يرفض التنفيذ كله بلا خصم جزئي (409)", async () => {
     const scarce = await mkItem({ name: "نادر", initialQuantity: 1, unitPrice: 10, sellPrice: 20 });
     const p = await api(manager).post("/api/sales/products").send({ name: "بوكس نادر", components: [{ itemId: rose.id, quantity: 1 }, { itemId: scarce.id, quantity: 2 }] });

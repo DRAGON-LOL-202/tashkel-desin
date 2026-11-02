@@ -73,8 +73,13 @@ export const updateOrderSchema = z
     closerName: closerName.optional(),
     notes: notes.optional(),
     status: z.enum(SALES_ORDER_STATUSES, { message: "حالة غير صالحة" }).optional(),
+    // المكونات التالفة عند المرتجع (معرّفات SalesOrderComponent): لا تعود للمخزون
+    damagedComponentIds: z.array(id).max(500, "عدد المكونات كبير جداً").optional(),
   })
-  .refine((v) => Object.keys(v).length > 0, { message: "لا توجد حقول للتعديل" });
+  .refine((v) => Object.keys(v).length > 0, { message: "لا توجد حقول للتعديل" })
+  .refine((v) => v.damagedComponentIds === undefined || v.damagedComponentIds.length === 0 || v.status === "RETURNED", {
+    message: "تحديد التالف متاح عند اختيار «مرتجع» فقط",
+  });
 
 export const addLineSchema = z.object({ productId: id, quantity: lineQty.default(1) });
 export const updateLineSchema = z.object({ quantity: lineQty });

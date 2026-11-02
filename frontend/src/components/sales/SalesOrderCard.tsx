@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import type { SalesOrder, SalesOrderPatch, SalesOrderStatus, SalesProduct } from "../../types";
 import { fmtMoney, fmtQty } from "../inventory/format";
 import { formatArabicDate } from "../../lib/date";
+import { ReturnOrderModal } from "./ReturnOrderModal";
 import { SALES_STATUS_META, SALES_STATUS_ORDER } from "./status";
 
 interface SalesOrderCardProps {
@@ -16,6 +17,8 @@ interface SalesOrderCardProps {
   closers: string[];
   onPatch: (order: SalesOrder, patch: SalesOrderPatch) => Promise<boolean>;
   onStatus: (order: SalesOrder, status: SalesOrderStatus) => Promise<void>;
+  /** مرتجع مع تحديد المكونات التالفة (لأوردر خُصمت مكوناته) */
+  onReturn: (order: SalesOrder, damagedComponentIds: string[]) => Promise<boolean>;
   onDelete: (order: SalesOrder) => void;
   onAddLine: (order: SalesOrder, productId: string) => Promise<void>;
   onSetLineQty: (order: SalesOrder, lineId: string, quantity: number) => Promise<void>;
@@ -37,12 +40,13 @@ const GREEN_SHADOW = "0 10px 18px -10px rgba(10, 90, 51, 0.7)";
 const PREVIEW_CHIPS = 3;
 
 // كرت أوردر: رقم وحالة ومن أضافه، ثم رقم البوليصة والمقفل، شريط المنتجات، التكلفة وسعر البيع والربح، وأزرار الحالة.
-export function SalesOrderCard({ order, index, showDate, products, closers, onPatch, onStatus, onDelete, onAddLine, onSetLineQty, onRemoveLine }: SalesOrderCardProps) {
+export function SalesOrderCard({ order, index, showDate, products, closers, onPatch, onStatus, onReturn, onDelete, onAddLine, onSetLineQty, onRemoveLine }: SalesOrderCardProps) {
   const meta = SALES_STATUS_META[order.status];
   const [waybill, setWaybill] = useState(order.waybill);
   const [closer, setCloser] = useState(order.closerName);
   const [notes, setNotes] = useState(order.notes);
   const [busy, setBusy] = useState(false);
+  const [returning, setReturning] = useState(false); // نافذة المرتجع وتحديد التالف
   const [showAll, setShowAll] = useState(false); // تفاصيل كل المنتجات ومكوناتها
   const [more, setMore] = useState(order.notes !== ""); // الملاحظات والحذف
 
@@ -83,7 +87,7 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
   const profitNegative = order.profit < 0;
 
   // شرائح المكونات المجمّعة من كل البنود (للشريط المختصر)
-  const allChips = order.lines.flatMap((line) => line.components.map((c) => ({ key: `${line.id}-${c.id}`, name: c.itemName, qty: c.quantity * line.quantity })));
+  const allChips = order.lines.flatMap((line) => line.components.map((c) => ({ key: `${line.id}-${c.id}`, name: c.itemName, qty: c.quantity * line.quantity, damaged: c.damaged })));
   const previewChips = allChips.slice(0, PREVIEW_CHIPS);
 
   return (
@@ -168,7 +172,7 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
           </span>
         ))}
         {previewChips.map((c) => (
-          <span key={c.key} className="inline-flex h-7 max-w-[8rem] items-center gap-1 rounded-lg border border-border bg-surface px-2 text-[11px] font-medium text-muted" title={`${c.name} × ${fmtQty(c.qty)}`}>
+          <span key={c.key} className={`inline-flex h-7 max-w-[8rem] items-center gap-1 rounded-lg border px-2 text-[11px] font-medium ${c.damaged ? "border-problem/60 bg-problem/10 text-problem" : "border-border bg-surface text-muted"}`} title={`${c.name} × ${fmtQty(c.qty)}`}>
             <span className="truncate">{c.name}</span>
             <span dir="ltr" className="shrink-0 font-bold text-text">× {fmtQty(c.qty)}</span>
           </span>
@@ -223,10 +227,11 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
                     return (
                       <span
                         key={c.id}
-                        className={`rounded-full border px-2 py-0.5 text-[11px] ${short ? "border-problem/50 text-problem" : "border-border text-muted"}`}
+                        className={`rounded-full border px-2 py-0.5 text-[11px] ${short || c.damaged ? "border-problem/50 text-problem" : "border-border text-muted"}`}
                         title={order.stockDeducted ? undefined : `المتاح في المخزون: ${fmtQty(c.available)} ${c.unit}`}
                       >
                         {c.itemName} × {fmtQty(c.quantity * line.quantity)}
+                        {c.damaged && " (تالف)"}
                       </span>
                     );
                   })}
@@ -309,7 +314,12 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
               disabled={busy}
               aria-pressed={active}
               title={m.hint}
-              onClick={() => !active && void act(() => onStatus(order, s))}
+              onClick={() => {
+                if (active) return;
+                // مرتجع لأوردر خُصمت مكوناته: تُفتح نافذة المحتويات لتحديد التالف
+                if (s === "RETURNED" && order.stockDeducted) setReturning(true);
+                else void act(() => onStatus(order, s));
+              }}
               className={`inline-flex items-center gap-1.5 rounded-full font-semibold transition-colors disabled:opacity-60 ${
                 active ? "me-auto h-8 px-3.5 text-sm font-bold text-white" : "h-8 border border-border bg-background/60 px-2.5 text-xs text-text hover:border-primary-deep"
               }`}
@@ -322,6 +332,17 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
           );
         })}
       </div>
+
+      {order.status === "RETURNED" && order.damagedTotal > 0 && (
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-problem/40 bg-problem/10 px-3 py-1.5 text-xs text-problem" role="status">
+          <span className="flex items-center gap-1.5 font-semibold">
+            <AlertTriangle size={14} /> تالف في هذا المرتجع
+          </span>
+          <strong>{fmtMoney(order.damagedTotal)}</strong>
+        </div>
+      )}
+
+      {returning && <ReturnOrderModal open order={order} onClose={() => setReturning(false)} onConfirm={(ids) => onReturn(order, ids)} />}
 
       {more && (
         <div className="flex flex-wrap items-center gap-2">

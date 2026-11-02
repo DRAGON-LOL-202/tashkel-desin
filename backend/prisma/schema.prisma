@@ -524,6 +524,8 @@ model SalesOrderComponent {
   quantity          Decimal  @db.Decimal(14, 3)
   unitCostSnapshot  Decimal? @db.Decimal(14, 2)
   unitSellSnapshot  Decimal? @db.Decimal(14, 2)
+  // تالف عند المرتجع: لا يعود للمخزون ويُحسب في إجمالي التالف لليوم
+  damaged           Boolean  @default(false)
 
   line SalesOrderLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
   item InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Restrict)

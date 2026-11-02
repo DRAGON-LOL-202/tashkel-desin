@@ -27,6 +27,7 @@ interface ComponentLike {
   quantity: { toString(): string };
   unitCostSnapshot?: { toString(): string } | null;
   unitSellSnapshot?: { toString(): string } | null;
+  damaged?: boolean;
   item: { name: string; unit: string; unitPrice: { toString(): string }; sellPrice: { toString(): string }; quantity: { toString(): string }; isActive: boolean };
 }
 
@@ -45,6 +46,7 @@ function serializeComponent(c: ComponentLike) {
     unitSell,
     available: num3(c.item.quantity),
     itemActive: c.item.isActive,
+    damaged: c.damaged === true,
   };
 }
 
@@ -77,6 +79,7 @@ export function serializeSalesProduct(p: SalesProductRow) {
 export function serializeSalesOrder(o: SalesOrderRow) {
   let costCents = 0;
   let sellCents = 0;
+  let damagedCents = 0; // تكلفة المكونات التالفة (بسعر التكلفة المثبّت وقت التنفيذ)
   const needsMilli = new Map<string, { name: string; unit: string; available: number; active: boolean; milli: number }>();
 
   const lines = o.lines.map((l) => {
@@ -85,6 +88,7 @@ export function serializeSalesOrder(o: SalesOrderRow) {
     costCents += unit.costCents * l.quantity;
     sellCents += unit.sellCents * l.quantity;
     for (const c of components) {
+      if (c.damaged) damagedCents += toCents(calcTotalValue(c.quantity, c.unitCost)) * l.quantity;
       const cur = needsMilli.get(c.itemId) ?? { name: c.itemName, unit: c.unit, available: c.available, active: c.itemActive, milli: 0 };
       cur.milli += Math.round(c.quantity * 1000) * l.quantity;
       needsMilli.set(c.itemId, cur);
@@ -129,6 +133,8 @@ export function serializeSalesOrder(o: SalesOrderRow) {
     costTotal: fromCents(costCents),
     sellTotal: fromCents(sellCents),
     profit: fromCents(sellCents - costCents),
+    /** تكلفة التالف في هذا الأوردر (يدخل في إجمالي التالف لليوم) */
+    damagedTotal: fromCents(damagedCents),
     shortages,
     archivedItems,
   };

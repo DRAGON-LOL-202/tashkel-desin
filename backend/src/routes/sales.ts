@@ -54,10 +54,11 @@ async function assertWaybillFree(waybill: string, exceptId?: string) {
 }
 
 /** المكوّنات المطلوبة من المخزون لأوردر (مجمّعة لكل صنف) بالألف من الوحدة لتفادي أخطاء الفاصلة العائمة */
-function neededByItem(order: { lines: { quantity: number; components: { itemId: string; quantity: { toString(): string } }[] }[] }) {
+function neededByItem(order: { lines: { quantity: number; components: { id: string; itemId: string; quantity: { toString(): string } }[] }[] }, skip?: Set<string>) {
   const needs = new Map<string, number>();
   for (const l of order.lines) {
     for (const c of l.components) {
+      if (skip?.has(c.id)) continue; // مكوّن تالف: لا يُحتسب ضمن ما يعود للمخزون
       needs.set(c.itemId, (needs.get(c.itemId) ?? 0) + Math.round(num3(c.quantity) * 1000) * l.quantity);
     }
   }
@@ -140,9 +141,10 @@ async function restoreStock(
   order: Awaited<ReturnType<typeof getOrder>>,
   userId: string,
   reason: string,
-  clearSnapshots: boolean
+  clearSnapshots: boolean,
+  damaged?: Set<string>
 ): Promise<LowStockTransition[]> {
-  const needs = neededByItem(order);
+  const needs = neededByItem(order, damaged);
   const ids = [...needs.keys()].sort();
   const byId = new Map((await lockItems(tx, ids)).map((i) => [i.id, i]));
   const transitions: LowStockTransition[] = [];
@@ -163,7 +165,7 @@ async function restoreStock(
         unitPriceSnapshot: num2(item.unitPrice),
         reason: `${reason} — ${orderLabel(order)}`,
         referenceId: `sales:${order.id}`,
-        note: "إعادة تلقائية للمخزون",
+        note: damaged && damaged.size > 0 ? "إعادة تلقائية للمخزون (باستثناء التالف)" : "إعادة تلقائية للمخزون",
         createdById: userId,
       },
     });
@@ -185,16 +187,30 @@ async function restoreStock(
 }
 
 /** تغيير حالة الأوردر مع ما يلزم من خصم/إعادة. يُستدعى داخل معاملة والأوردر مقفول. */
-async function applyStatus(tx: Tx, orderId: string, target: SalesOrderStatus, userId: string): Promise<LowStockTransition[]> {
+async function applyStatus(tx: Tx, orderId: string, target: SalesOrderStatus, userId: string, damagedIds: string[] = []): Promise<LowStockTransition[]> {
   const order = await tx.salesOrder.findUniqueOrThrow({ where: { id: orderId }, include: salesOrderInclude });
   const wantDeducted = DEDUCTING.has(target);
   let transitions: LowStockTransition[] = [];
+
+  // التالف: يُحدَّد عند مرتجع أوردر خُصمت مكوناته فقط، ولا يعود للمخزون
+  const damaged = new Set(damagedIds);
+  if (damaged.size > 0) {
+    const own = new Set(order.lines.flatMap((l) => l.components.map((c) => c.id)));
+    if ([...damaged].some((id) => !own.has(id))) throw badRequest("أحد المكونات التالفة لا يخص هذا الأوردر");
+    if (target !== "RETURNED" || !order.stockDeducted) throw badRequest("تحديد التالف متاح عند إرجاع أوردر تم تنفيذه فقط");
+  }
   if (wantDeducted && !order.stockDeducted) {
     transitions = await deductStock(tx, order, userId);
   } else if (!wantDeducted && order.stockDeducted) {
-    transitions = await restoreStock(tx, order, userId, target === "RETURNED" ? "مرتجع مبيعات" : "إلغاء تنفيذ أوردر", target === "REGISTERED");
+    transitions = await restoreStock(tx, order, userId, target === "RETURNED" ? "مرتجع مبيعات" : "إلغاء تنفيذ أوردر", target === "REGISTERED", damaged);
   } else if (target === "REGISTERED") {
     await tx.salesOrderComponent.updateMany({ where: { line: { orderId } }, data: { unitCostSnapshot: null, unitSellSnapshot: null } });
+  }
+  // علامات التالف تخص واقعة المرتجع: تُحفظ معها، وتُمسح عند الخروج من «مرتجع»
+  if (damaged.size > 0) {
+    await tx.salesOrderComponent.updateMany({ where: { id: { in: [...damaged] }, line: { orderId } }, data: { damaged: true } });
+  } else if (order.status === "RETURNED" && target !== "RETURNED") {
+    await tx.salesOrderComponent.updateMany({ where: { line: { orderId } }, data: { damaged: false } });
   }
   await tx.salesOrder.update({ where: { id: orderId }, data: { status: target, stockDeducted: wantDeducted } });
   return transitions;
@@ -362,7 +378,7 @@ salesRouter.patch(
     const { order, transitions } = await prisma().$transaction(async (tx) => {
       await lockOrder(tx, existing.id);
       let moved: LowStockTransition[] = [];
-      if (body.status !== undefined) moved = await applyStatus(tx, existing.id, body.status, req.user!.id);
+      if (body.status !== undefined) moved = await applyStatus(tx, existing.id, body.status, req.user!.id, body.damagedComponentIds);
       await tx.salesOrder.update({
         where: { id: existing.id },
         data: {
