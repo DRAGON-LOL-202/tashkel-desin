@@ -16,7 +16,7 @@ const navItems = [
   { to: "/inventory", label: "المخزون", icon: Warehouse, end: true, page: "inventory" as AppPage },
   { to: "/inventory/shortages", label: "نواقص المخزون", icon: AlertTriangle, page: "inventory" as AppPage },
   { to: "/withdrawals", label: "السحب", icon: PackageMinus, page: "withdrawals" as AppPage },
-  { to: "/sales", label: "مبيعات عامة", icon: ShoppingBag, page: "sales" as AppPage },
+  { to: "/sales", label: "مبيعات إلكترونية", icon: ShoppingBag, page: "sales" as AppPage },
   { to: "/manage-users", label: "إدارة المستخدمين", icon: UserCog, page: "manageUsers" as AppPage },
 ];
 

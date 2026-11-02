@@ -32,7 +32,7 @@ const NO_PAYLOAD: OrdersPayload = { key: "", orders: NO_ORDERS };
 const NO_PRODUCTS: SalesProduct[] = [];
 const NO_STRINGS: string[] = [];
 
-// المبيعات العامة: أوردرات يومية (بوليصة + مقفل + منتجات ثابتة بمحتوياتها من المخزون).
+// المبيعات الإلكترونية: أوردرات يومية (بوليصة + مقفل + منتجات ثابتة بمحتوياتها من المخزون).
 // التنفيذ يخصم المكونات من المخزون تلقائياً، والمرتجع يعيدها. التكلفة وسعر البيع يُحسبان من بيانات المخزون.
 export default function SalesPage() {
   const [date, setDate] = useState(todayISO());
@@ -167,7 +167,7 @@ export default function SalesPage() {
     <AppLayout
       headerSlot={(openMobileNav) => (
         <Header
-          title="مبيعات عامة"
+          title="مبيعات إلكترونية"
           description="أوردرات يومية من منتجات ثابتة، ويُخصم المخزون تلقائياً عند التنفيذ"
           onOpenMobileNav={openMobileNav}
           action={

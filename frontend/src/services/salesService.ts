@@ -1,7 +1,7 @@
 import { api } from "../lib/api";
 import type { SalesOrder, SalesOrderCreateInput, SalesOrderPatch, SalesProduct, SalesProductInput } from "../types";
 
-// المبيعات العامة (للإدارة فقط). الدوال لا تستخدم this فيمكن تمريرها مباشرة إلى useResource.
+// المبيعات الإلكترونية (للإدارة فقط). الدوال لا تستخدم this فيمكن تمريرها مباشرة إلى useResource.
 export const salesService = {
   async listProducts(): Promise<SalesProduct[]> {
     const { products } = await api<{ products: SalesProduct[] }>("/sales/products");
