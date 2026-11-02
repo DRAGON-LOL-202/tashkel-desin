@@ -13,6 +13,7 @@ interface OrderEditModalProps {
   products: SalesProduct[];
   items: InventoryItem[];
   busy: boolean;
+  hideMoney?: boolean;
   act: (fn: () => Promise<unknown>) => Promise<void>;
   onAddLine: (order: SalesOrder, productId: string) => Promise<void>;
   onSetLineQty: (order: SalesOrder, lineId: string, quantity: number) => Promise<void>;
@@ -23,7 +24,7 @@ interface OrderEditModalProps {
 }
 
 // قائمة تعديل الأوردر (قبل التنفيذ): عدد كل منتج، مكوناته (كمية/حذف/إضافة)، وإضافة منتج، لهذا الأوردر فقط.
-export function OrderEditModal({ open, onClose, order, products, items, busy, act, onAddLine, onSetLineQty, onRemoveLine, onAddComponent, onSetComponentQty, onRemoveComponent }: OrderEditModalProps) {
+export function OrderEditModal({ open, onClose, order, products, items, busy, hideMoney, act, onAddLine, onSetLineQty, onRemoveLine, onAddComponent, onSetComponentQty, onRemoveComponent }: OrderEditModalProps) {
   const activeProducts = products.filter((p) => p.isActive && p.components.length > 0);
   const shortItems = new Set(order.shortages.map((s) => s.itemId));
 
@@ -45,9 +46,13 @@ export function OrderEditModal({ open, onClose, order, products, items, busy, ac
                   <Plus size={14} />
                 </button>
               </div>
-              <span className="mr-auto text-xs text-muted">
-                {fmtMoney(line.totalCost)} ← <strong className="text-text">{fmtMoney(line.totalSell)}</strong>
-              </span>
+              {hideMoney ? (
+                <span className="mr-auto" />
+              ) : (
+                <span className="mr-auto text-xs text-muted">
+                  {fmtMoney(line.totalCost)} ← <strong className="text-text">{fmtMoney(line.totalSell)}</strong>
+                </span>
+              )}
               {order.lines.length > 1 && (
                 <button type="button" disabled={busy} onClick={() => void act(() => onRemoveLine(order, line.id))} aria-label={`إزالة ${line.productName}`} title="إزالة المنتج من الأوردر" className="task-icon-btn task-icon-btn--danger !h-7 !w-7">
                   <Trash2 size={13} />
@@ -77,11 +82,13 @@ export function OrderEditModal({ open, onClose, order, products, items, busy, ac
           </div>
         )}
 
+        {!hideMoney && (
         <div className="grid grid-cols-3 rounded-xl border border-border bg-background/50 py-1.5 text-center text-xs">
           <div><span className="text-muted">التكلفة</span><div className="text-sm font-extrabold text-text">{fmtMoney(order.costTotal)}</div></div>
           <div className="border-s border-border"><span className="text-muted">سعر البيع</span><div className="text-sm font-extrabold text-[#1E8E5A]">{fmtMoney(order.sellTotal)}</div></div>
           <div className="border-s border-border"><span className="text-muted">الربح</span><div className={`text-sm font-extrabold ${order.profit < 0 ? "text-[#D64545]" : "text-[#1E8E5A]"}`}>{fmtMoney(order.profit)}</div></div>
         </div>
+        )}
       </div>
       <div className="mt-4 flex justify-end">
         <Button type="button" onClick={onClose}>

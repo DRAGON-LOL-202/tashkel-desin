@@ -17,6 +17,8 @@ interface ProductEditorModalProps {
   /** تصنيفات المخزون لفلترة المكوّنات (المجموعة الرئيسية ثم التصنيف) */
   categories: InventoryCategory[];
   onSubmit: (input: SalesProductInput) => Promise<boolean>;
+  /** صفحة الأوردرات: بدون أسعار أو تكلفة */
+  hideMoney?: boolean;
 }
 
 interface Row {
@@ -25,7 +27,7 @@ interface Row {
 }
 
 // تعريف منتج ثابت: الاسم + محتوياته من المخزون. التكلفة وسعر البيع تُحسبان تلقائياً من سعر الوحدة وسعر البيع في المخزون.
-export function ProductEditorModal({ open, onClose, editing, items, categories, onSubmit }: ProductEditorModalProps) {
+export function ProductEditorModal({ open, onClose, editing, items, categories, onSubmit, hideMoney }: ProductEditorModalProps) {
   const [name, setName] = useState(editing?.name ?? "");
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [rows, setRows] = useState<Row[]>(() => editing?.components.map((c) => ({ itemId: c.itemId, quantity: String(c.quantity) })) ?? []);
@@ -103,7 +105,7 @@ export function ProductEditorModal({ open, onClose, editing, items, categories, 
                 return (
                   <li key={r.itemId} className="flex flex-wrap items-center gap-2 rounded-control border border-border/60 px-3 py-2">
                     <span className="min-w-0 flex-1 truncate text-sm font-semibold text-text">{it?.name ?? "صنف غير متاح"}</span>
-                    <span className="text-[11px] text-muted">{it ? `${fmtMoney(it.unitPrice)} ← ${fmtMoney(it.sellPrice ?? 0)}` : ""}</span>
+                    {!hideMoney && <span className="text-[11px] text-muted">{it ? `${fmtMoney(it.unitPrice)} ← ${fmtMoney(it.sellPrice ?? 0)}` : ""}</span>}
                     <input
                       type="number"
                       inputMode="decimal"
@@ -178,7 +180,8 @@ export function ProductEditorModal({ open, onClose, editing, items, categories, 
                     <Plus size={14} className="shrink-0 text-primary-deep" />
                     <span className="min-w-0 flex-1 truncate text-sm text-text">{i.name}</span>
                     <span className="text-[11px] text-muted">
-                      المتاح {fmtQty(i.quantity)} {i.unit} · {fmtMoney(i.unitPrice)} ← {fmtMoney(i.sellPrice ?? 0)}
+                      المتاح {fmtQty(i.quantity)} {i.unit}
+                      {!hideMoney && ` · ${fmtMoney(i.unitPrice)} ← ${fmtMoney(i.sellPrice ?? 0)}`}
                     </span>
                   </button>
                 </li>
@@ -189,6 +192,7 @@ export function ProductEditorModal({ open, onClose, editing, items, categories, 
           )}
         </FieldWrap>
 
+        {!hideMoney && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-control border border-border px-4 py-2.5 text-sm">
           <span className="text-muted">
             التكلفة (من سعر الوحدة): <strong className="text-text">{fmtMoney(totals.cost)}</strong>
@@ -197,6 +201,7 @@ export function ProductEditorModal({ open, onClose, editing, items, categories, 
             سعر البيع (من المخزون): <strong className="text-primary-deep">{fmtMoney(totals.sell)}</strong>
           </span>
         </div>
+        )}
 
         <FieldWrap label="ملاحظات" htmlFor="sp-notes">
           <Textarea id="sp-notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={1000} />

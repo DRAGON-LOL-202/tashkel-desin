@@ -13,10 +13,12 @@ interface SalesProductsModalProps {
   onEdit: (product: SalesProduct) => void;
   onToggleActive: (product: SalesProduct) => void;
   onDelete: (product: SalesProduct) => void;
+  /** صفحة الأوردرات: بدون تكلفة وسعر بيع */
+  hideMoney?: boolean;
 }
 
 // إدارة المنتجات الثابتة (البوكسات): عرض محتوياتها وأسعارها، وتعديلها وإيقافها وحذفها.
-export function SalesProductsModal({ open, onClose, products, onCreate, onEdit, onToggleActive, onDelete }: SalesProductsModalProps) {
+export function SalesProductsModal({ open, onClose, products, onCreate, onEdit, onToggleActive, onDelete, hideMoney }: SalesProductsModalProps) {
   return (
     <Modal open={open} onClose={onClose} title="المنتجات الثابتة" description="بوكسات بمحتويات ثابتة من المخزون؛ اضغط على أي منها عند إضافة أوردر" size="xl">
       <div className="mb-3 flex justify-end">
@@ -33,9 +35,13 @@ export function SalesProductsModal({ open, onClose, products, onCreate, onEdit, 
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-bold text-text">{p.name}</span>
                 {!p.isActive && <Badge>موقوف</Badge>}
-                <span className="mr-auto text-xs text-muted">
-                  التكلفة <strong className="text-text">{fmtMoney(p.costPerUnit)}</strong> · البيع <strong className="text-primary-deep">{fmtMoney(p.sellPerUnit)}</strong>
-                </span>
+                {hideMoney ? (
+                  <span className="mr-auto" />
+                ) : (
+                  <span className="mr-auto text-xs text-muted">
+                    التكلفة <strong className="text-text">{fmtMoney(p.costPerUnit)}</strong> · البيع <strong className="text-primary-deep">{fmtMoney(p.sellPerUnit)}</strong>
+                  </span>
+                )}
                 <button type="button" onClick={() => onEdit(p)} aria-label={`تعديل ${p.name}`} title="تعديل" className="task-icon-btn">
                   <Pencil size={15} />
                 </button>

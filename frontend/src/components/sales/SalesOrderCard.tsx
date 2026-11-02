@@ -34,6 +34,8 @@ interface SalesOrderCardProps {
   onAddComponent: (order: SalesOrder, lineId: string, itemId: string) => Promise<void>;
   onSetComponentQty: (order: SalesOrder, lineId: string, componentId: string, quantity: number) => Promise<void>;
   onRemoveComponent: (order: SalesOrder, lineId: string, componentId: string) => Promise<void>;
+  /** صفحة الأوردرات: لا تكلفة ولا سعر بيع ولا ربح ولا تالف بالمبالغ */
+  hideMoney?: boolean;
 }
 
 // أيقونة كل حالة على زر الحالة
@@ -51,7 +53,7 @@ const GREEN_SHADOW = "0 10px 18px -10px rgba(10, 90, 51, 0.7)";
 const PREVIEW_CHIPS = 3;
 
 // كرت أوردر: رقم وحالة ومن أضافه، ثم رقم البوليصة والمقفل، شريط المنتجات، التكلفة وسعر البيع والربح، وأزرار الحالة.
-export function SalesOrderCard({ order, index, showDate, products, closers, onPatch, onStatus, onReturn, onMove, onDelete, onAddLine, onSetLineQty, onRemoveLine, items, onAddComponent, onSetComponentQty, onRemoveComponent }: SalesOrderCardProps) {
+export function SalesOrderCard({ order, index, showDate, products, closers, onPatch, onStatus, onReturn, onMove, onDelete, onAddLine, onSetLineQty, onRemoveLine, items, onAddComponent, onSetComponentQty, onRemoveComponent, hideMoney }: SalesOrderCardProps) {
   const meta = SALES_STATUS_META[order.status];
   const [waybill, setWaybill] = useState(order.waybill);
   const [closer, setCloser] = useState(order.closerName);
@@ -245,9 +247,13 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
                   ) : (
                     <span className="rounded-full border border-border px-2 py-0.5 text-xs font-bold text-text">× {line.quantity}</span>
                   )}
-                  <span className="mr-auto text-xs text-muted">
-                    {fmtMoney(line.totalCost)} ← <strong className="text-text">{fmtMoney(line.totalSell)}</strong>
-                  </span>
+                  {hideMoney ? (
+                    <span className="mr-auto" />
+                  ) : (
+                    <span className="mr-auto text-xs text-muted">
+                      {fmtMoney(line.totalCost)} ← <strong className="text-text">{fmtMoney(line.totalSell)}</strong>
+                    </span>
+                  )}
                   {editable && order.lines.length > 1 && (
                     <button type="button" disabled={busy} onClick={() => void act(() => onRemoveLine(order, line.id))} aria-label={`إزالة ${line.productName}`} title="إزالة المنتج من الأوردر" className="task-icon-btn task-icon-btn--danger !h-7 !w-7">
                       <Trash2 size={13} />
@@ -316,6 +322,7 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
       )}
 
       {/* التكلفة وسعر البيع والربح (تُحسب تلقائياً من المخزون) */}
+      {!hideMoney && (
       <div className="grid grid-cols-3 rounded-xl border border-border bg-background/50 py-1.5 text-center">
         <div className="flex flex-col items-center">
           <span className="flex items-center gap-1.5 text-xs font-medium text-muted">
@@ -336,6 +343,7 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
           <span className={`text-base font-extrabold ${profitNegative ? "text-[#D64545]" : "text-[#1E8E5A]"}`}>{fmtMoney(order.profit)}</span>
         </div>
       </div>
+      )}
 
       {/* الحالة + زر المزيد (ملاحظات / حذف) */}
       <div className="flex flex-wrap items-center gap-1" role="group" aria-label="حالة الأوردر">
@@ -378,7 +386,7 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
         })}
       </div>
 
-      {order.status === "RETURNED" && order.damagedTotal > 0 && (
+      {!hideMoney && order.status === "RETURNED" && order.damagedTotal > 0 && (
         <div className="flex items-center justify-between gap-2 rounded-xl border border-problem/40 bg-problem/10 px-3 py-1.5 text-xs text-problem" role="status">
           <span className="flex items-center gap-1.5 font-semibold">
             <AlertTriangle size={14} /> تالف في هذا المرتجع
@@ -397,6 +405,7 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
           products={products}
           items={items}
           busy={busy}
+          hideMoney={hideMoney}
           act={act}
           onAddLine={onAddLine}
           onSetLineQty={onSetLineQty}
@@ -407,7 +416,7 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
         />
       )}
 
-      {returning && <ReturnOrderModal open order={order} onClose={() => setReturning(false)} onConfirm={(ids) => onReturn(order, ids)} />}
+      {returning && <ReturnOrderModal open order={order} hideMoney={hideMoney} onClose={() => setReturning(false)} onConfirm={(ids) => onReturn(order, ids)} />}
 
       {more && (
         <div className="flex flex-wrap items-center gap-2">

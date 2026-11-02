@@ -11,11 +11,13 @@ interface ReturnOrderModalProps {
   order: SalesOrder;
   /** يُرسل معرّفات المكونات التالفة؛ يرجع true عند النجاح */
   onConfirm: (damagedComponentIds: string[]) => Promise<boolean>;
+  /** صفحة الأوردرات: بدون تكلفة التالف */
+  hideMoney?: boolean;
 }
 
 // مرتجع أوردر: تظهر محتويات الأوردر ويضغط المستخدم على أي مكوّن تالف.
 // التالف لا يعود للمخزون ويُحسب في إجمالي التالف لليوم؛ الباقي يعود للمخزون.
-export function ReturnOrderModal({ open, onClose, order, onConfirm }: ReturnOrderModalProps) {
+export function ReturnOrderModal({ open, onClose, order, onConfirm, hideMoney }: ReturnOrderModalProps) {
   const [damaged, setDamaged] = useState<Set<string>>(() => new Set());
   const [saving, setSaving] = useState(false);
 
@@ -90,9 +92,11 @@ export function ReturnOrderModal({ open, onClose, order, onConfirm }: ReturnOrde
           <PackageCheck size={16} className="text-primary-deep" />
           يعود للمخزون: <strong className="text-text">{totals.all - damaged.size}</strong> من {totals.all}
         </span>
-        <span className="text-muted">
-          تكلفة التالف: <strong className={damaged.size > 0 ? "text-problem" : "text-text"}>{fmtMoney(totals.cost)}</strong>
-        </span>
+        {!hideMoney && (
+          <span className="text-muted">
+            تكلفة التالف: <strong className={damaged.size > 0 ? "text-problem" : "text-text"}>{fmtMoney(totals.cost)}</strong>
+          </span>
+        )}
       </div>
 
       <div className="flex justify-end gap-2">

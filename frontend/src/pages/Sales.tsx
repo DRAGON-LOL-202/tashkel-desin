@@ -35,7 +35,9 @@ const NO_STRINGS: string[] = [];
 
 // المبيعات الإلكترونية: أوردرات يومية (بوليصة + مقفل + منتجات ثابتة بمحتوياتها من المخزون).
 // التنفيذ يخصم المكونات من المخزون تلقائياً، والمرتجع يعيدها. التكلفة وسعر البيع يُحسبان من بيانات المخزون.
-export default function SalesPage() {
+// ordersOnly = صفحة «أوردرات مبيعات إلكترونية»: نفس الأوردرات ونفس العمليات بدون أي حسابات أو مبالغ
+// (لا تكلفة ولا بيع ولا ربح ولا تالف ولا تصدير Excel). إدارة المنتجات الثابتة متاحة فيها لكن بلا أسعار.
+export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
   const [date, setDate] = useState(todayISO());
   const [searchInput, setSearchInput] = useState("");
   const [q, setQ] = useState("");
@@ -221,7 +223,7 @@ export default function SalesPage() {
     <AppLayout
       headerSlot={(openMobileNav) => (
         <Header
-          title="مبيعات إلكترونية"
+          title={ordersOnly ? "أوردرات مبيعات إلكترونية" : "مبيعات إلكترونية"}
           description="أوردرات يومية من منتجات ثابتة، ويُخصم المخزون تلقائياً عند التنفيذ"
           onOpenMobileNav={openMobileNav}
           action={
@@ -241,6 +243,7 @@ export default function SalesPage() {
           <DateNavigator value={date} onChange={(d) => { setDate(d); setSearchInput(""); setQ(""); }} />
 
           {/* تصدير Excel يومي وشهري */}
+          {!ordersOnly && (
           <div className="flex flex-wrap items-center gap-2" role="group" aria-label="تصدير Excel">
             <Button variant="secondary" size="sm" icon={<Download size={15} />} disabled={exporting !== null} onClick={() => void exportExcel("day")}>
               {exporting === "day" ? "جارٍ التصدير..." : "Excel يومي"}
@@ -249,6 +252,7 @@ export default function SalesPage() {
               {exporting === "month" ? "جارٍ التصدير..." : `Excel شهري — ${formatArabicDate(`${month}-01`, "MMMM yyyy")}`}
             </Button>
           </div>
+          )}
 
           {/* إضافة سريعة: اضغط على المنتج فيُضاف أوردر جديد بمحتوياته */}
           <section className="pp-panel flex flex-col gap-3 p-4" aria-label="إضافة أوردر">
@@ -292,11 +296,13 @@ export default function SalesPage() {
 
           {/* ملخص اليوم */}
           {!searching && (
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5" aria-label="ملخص اليوم">
+            <div className={`grid grid-cols-2 gap-3 ${ordersOnly ? "lg:grid-cols-1" : "lg:grid-cols-5"}`} aria-label="ملخص اليوم">
               <div className="pp-card p-3.5">
                 <p className="text-xs text-muted">عدد الأوردرات</p>
                 <p className="mt-1 text-lg font-bold text-text">{summary.count}</p>
               </div>
+              {!ordersOnly && (
+                <>
               <div className="pp-card p-3.5">
                 <p className="text-xs text-muted">إجمالي التكلفة</p>
                 <p className="mt-1 text-lg font-bold text-text">{fmtMoney(summary.cost)}</p>
@@ -313,6 +319,8 @@ export default function SalesPage() {
                 <p className="text-xs text-muted">تالف اليوم{damaged.orders > 0 ? ` (${damaged.orders} أوردر)` : ""}</p>
                 <p className={`mt-1 text-lg font-bold ${damaged.total > 0 ? "text-problem" : "text-text"}`}>{fmtMoney(damaged.total)}</p>
               </div>
+                </>
+              )}
             </div>
           )}
 
@@ -359,7 +367,7 @@ export default function SalesPage() {
               <EmptyState
                 icon={<Receipt size={24} />}
                 title={searching ? "لا توجد أوردرات مطابقة" : dayOrders.length === 0 ? "لا توجد أوردرات في هذا اليوم" : "لا توجد أوردرات بهذه الحالة"}
-                description={searching ? "جرّب رقم بوليصة أو اسم مقفل آخر." : dayOrders.length === 0 ? "اضغط على أحد المنتجات الثابتة أعلاه لإضافة أوردر." : undefined}
+                description={searching ? "جرّب رقم بوليصة أو اسم مقفل آخر." : dayOrders.length === 0 ? "اضغط على أحد المنتجات أعلاه لإضافة أوردر." : undefined}
               />
             </div>
           ) : (
@@ -384,6 +392,7 @@ export default function SalesPage() {
                   onAddComponent={addComponent}
                   onSetComponentQty={setComponentQty}
                   onRemoveComponent={removeComponent}
+                  hideMoney={ordersOnly}
                 />
               ))}
             </div>
@@ -391,9 +400,10 @@ export default function SalesPage() {
         </div>
       )}
 
-      {newOrderOpen && <NewOrderModal open onClose={() => setNewOrderOpen(false)} date={date} products={products.data} closers={closers.data} onSubmit={createOrder} />}
+      {newOrderOpen && <NewOrderModal open onClose={() => setNewOrderOpen(false)} date={date} products={products.data} closers={closers.data} onSubmit={createOrder} hideMoney={ordersOnly} />}
 
       <SalesProductsModal
+        hideMoney={ordersOnly}
         open={productsOpen}
         onClose={() => setProductsOpen(false)}
         products={products.data}
@@ -403,7 +413,7 @@ export default function SalesPage() {
         onDelete={setDeletingProduct}
       />
 
-      {editor && <ProductEditorModal key={editor.editing?.id ?? "new"} open onClose={() => setEditor(null)} editing={editor.editing} items={activeItems} categories={stock.data.categories} onSubmit={submitProduct} />}
+      {editor && <ProductEditorModal key={editor.editing?.id ?? "new"} open onClose={() => setEditor(null)} editing={editor.editing} items={activeItems} categories={stock.data.categories} onSubmit={submitProduct} hideMoney={ordersOnly} />}
 
       <ConfirmDialog
         open={!!deletingOrder}
@@ -423,4 +433,8 @@ export default function SalesPage() {
       />
     </AppLayout>
   );
+}
+
+export default function SalesPage() {
+  return <SalesView />;
 }

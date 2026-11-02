@@ -13,10 +13,12 @@ interface NewOrderModalProps {
   products: SalesProduct[];
   closers: string[];
   onSubmit: (input: SalesOrderCreateInput) => Promise<boolean>;
+  /** صفحة الأوردرات: بدون أي أسعار أو تكلفة */
+  hideMoney?: boolean;
 }
 
 // أوردر جديد: اضغط على المنتج الثابت فيُضاف بمحتوياته (الضغط مجدداً يزيد العدد)، ثم رقم البوليصة والمقفل.
-export function NewOrderModal({ open, onClose, date, products, closers, onSubmit }: NewOrderModalProps) {
+export function NewOrderModal({ open, onClose, date, products, closers, onSubmit, hideMoney }: NewOrderModalProps) {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [waybill, setWaybill] = useState("");
   const [closer, setCloser] = useState("");
@@ -76,9 +78,11 @@ export function NewOrderModal({ open, onClose, date, products, closers, onSubmit
                   <button type="button" onClick={() => bump(p.id, 1)} className="w-full text-right" aria-label={`إضافة ${p.name}`}>
                     <span className="block text-sm font-bold text-text">{p.name}</span>
                     <span className="mt-1 block text-[11px] leading-5 text-muted">{p.components.map((c) => `${c.itemName} × ${fmtQty(c.quantity)}`).join(" · ")}</span>
-                    <span className="mt-1 block text-xs text-muted">
-                      {fmtMoney(p.costPerUnit)} ← <strong className="text-text">{fmtMoney(p.sellPerUnit)}</strong>
-                    </span>
+                    {!hideMoney && (
+                      <span className="mt-1 block text-xs text-muted">
+                        {fmtMoney(p.costPerUnit)} ← <strong className="text-text">{fmtMoney(p.sellPerUnit)}</strong>
+                      </span>
+                    )}
                   </button>
                   {n > 0 && (
                     <div className="mt-2 flex items-center gap-2">
@@ -113,7 +117,7 @@ export function NewOrderModal({ open, onClose, date, products, closers, onSubmit
           </FieldWrap>
         </div>
 
-        {chosen.length > 0 && (
+        {chosen.length > 0 && !hideMoney && (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-control border border-border px-4 py-2.5 text-sm">
             <span className="text-muted">
               التكلفة: <strong className="text-text">{fmtMoney(totals.cost)}</strong>
