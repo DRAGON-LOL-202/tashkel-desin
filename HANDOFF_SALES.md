@@ -35,3 +35,4 @@
   - `DELETE .../components/:componentId` (لا يُحذف آخر مكوّن في البند)
 - واجهة: `OrderComponentsEditor.tsx` + خصائص `items/onAddComponent/onSetComponentQty/onRemoveComponent` في `SalesOrderCard`.
 - لا migration جديدة (المحتويات منسوخة أصلاً في `SalesOrderComponent`). اختبارات جديدة في `backend/tests/sales.test.ts`.
+- زر «تعديل» (قلم) في شريط منتجات الكارت بجوار «عرض الكل» (للأوردر المسجل فقط) يفتح `OrderEditModal.tsx`: عدد كل منتج وإزالته، مكوناته (كمية/حذف/إضافة)، إضافة منتج، وملخص التكلفة والربح الحي.

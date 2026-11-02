@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { AlertTriangle, Calendar, ChevronDown, CircleHelp, Coins, Eye, LayoutGrid, Minus, PackageCheck, Play, Plus, RefreshCw, ScanBarcode, Tag, Trash2, TrendingDown, TrendingUp, Undo2, User } from "lucide-react";
+import { AlertTriangle, Calendar, ChevronDown, CircleHelp, Coins, Eye, LayoutGrid, Minus, PackageCheck, Pencil, Play, Plus, RefreshCw, ScanBarcode, Tag, Trash2, TrendingDown, TrendingUp, Undo2, User } from "lucide-react";
 import type { ReactNode } from "react";
 import type { InventoryItem, SalesOrder, SalesOrderPatch, SalesOrderStatus, SalesProduct } from "../../types";
 import { fmtMoney, fmtQty } from "../inventory/format";
 import { formatArabicDate } from "../../lib/date";
 import { OrderComponentsEditor } from "./OrderComponentsEditor";
+import { OrderEditModal } from "./OrderEditModal";
 import { ReturnOrderModal } from "./ReturnOrderModal";
 import { SALES_STATUS_META, SALES_STATUS_ORDER } from "./status";
 
@@ -54,6 +55,7 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
   const [notes, setNotes] = useState(order.notes);
   const [busy, setBusy] = useState(false);
   const [returning, setReturning] = useState(false); // نافذة المرتجع وتحديد التالف
+  const [editing, setEditing] = useState(false); // قائمة تعديل الأوردر
   const [showAll, setShowAll] = useState(false); // تفاصيل كل المنتجات ومكوناتها
   const [more, setMore] = useState(order.notes !== ""); // الملاحظات والحذف
 
@@ -184,11 +186,22 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
             <span dir="ltr" className="shrink-0 font-bold text-text">× {fmtQty(c.qty)}</span>
           </span>
         ))}
+        {editable && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            title="تعديل المنتجات والمكونات"
+            className="me-auto inline-flex h-7 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs font-semibold text-text transition-colors hover:border-primary-deep"
+          >
+            <Pencil size={14} className="text-primary-deep" />
+            تعديل
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setShowAll((v) => !v)}
           aria-expanded={showAll}
-          className="me-auto inline-flex h-7 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs font-semibold text-text transition-colors hover:border-primary-deep"
+          className={`${editable ? "" : "me-auto "}inline-flex h-7 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs font-semibold text-text transition-colors hover:border-primary-deep`}
         >
           <LayoutGrid size={14} className="text-primary-deep" />
           {showAll ? "إخفاء" : "عرض الكل"}
@@ -359,6 +372,24 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
           </span>
           <strong>{fmtMoney(order.damagedTotal)}</strong>
         </div>
+      )}
+
+      {editing && editable && (
+        <OrderEditModal
+          open
+          onClose={() => setEditing(false)}
+          order={order}
+          products={products}
+          items={items}
+          busy={busy}
+          act={act}
+          onAddLine={onAddLine}
+          onSetLineQty={onSetLineQty}
+          onRemoveLine={onRemoveLine}
+          onAddComponent={onAddComponent}
+          onSetComponentQty={onSetComponentQty}
+          onRemoveComponent={onRemoveComponent}
+        />
       )}
 
       {returning && <ReturnOrderModal open order={order} onClose={() => setReturning(false)} onConfirm={(ids) => onReturn(order, ids)} />}
