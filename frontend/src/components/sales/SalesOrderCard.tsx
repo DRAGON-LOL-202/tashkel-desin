@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { AlertTriangle, Calendar, ChevronDown, CircleHelp, Coins, Eye, LayoutGrid, Minus, PackageCheck, Play, Plus, RefreshCw, ScanBarcode, Tag, Trash2, TrendingDown, TrendingUp, Undo2, User } from "lucide-react";
 import type { ReactNode } from "react";
-import type { SalesOrder, SalesOrderPatch, SalesOrderStatus, SalesProduct } from "../../types";
+import type { InventoryItem, SalesOrder, SalesOrderPatch, SalesOrderStatus, SalesProduct } from "../../types";
 import { fmtMoney, fmtQty } from "../inventory/format";
 import { formatArabicDate } from "../../lib/date";
+import { OrderComponentsEditor } from "./OrderComponentsEditor";
 import { ReturnOrderModal } from "./ReturnOrderModal";
 import { SALES_STATUS_META, SALES_STATUS_ORDER } from "./status";
 
@@ -23,6 +24,12 @@ interface SalesOrderCardProps {
   onAddLine: (order: SalesOrder, productId: string) => Promise<void>;
   onSetLineQty: (order: SalesOrder, lineId: string, quantity: number) => Promise<void>;
   onRemoveLine: (order: SalesOrder, lineId: string) => Promise<void>;
+  /** أصناف المخزون المفعّلة (لإضافة مكوّن لأوردر واحد) */
+  items: InventoryItem[];
+  /** تعديل مكوّنات هذا الأوردر فقط (قبل التنفيذ) */
+  onAddComponent: (order: SalesOrder, lineId: string, itemId: string) => Promise<void>;
+  onSetComponentQty: (order: SalesOrder, lineId: string, componentId: string, quantity: number) => Promise<void>;
+  onRemoveComponent: (order: SalesOrder, lineId: string, componentId: string) => Promise<void>;
 }
 
 // أيقونة كل حالة على زر الحالة
@@ -40,7 +47,7 @@ const GREEN_SHADOW = "0 10px 18px -10px rgba(10, 90, 51, 0.7)";
 const PREVIEW_CHIPS = 3;
 
 // كرت أوردر: رقم وحالة ومن أضافه، ثم رقم البوليصة والمقفل، شريط المنتجات، التكلفة وسعر البيع والربح، وأزرار الحالة.
-export function SalesOrderCard({ order, index, showDate, products, closers, onPatch, onStatus, onReturn, onDelete, onAddLine, onSetLineQty, onRemoveLine }: SalesOrderCardProps) {
+export function SalesOrderCard({ order, index, showDate, products, closers, onPatch, onStatus, onReturn, onDelete, onAddLine, onSetLineQty, onRemoveLine, items, onAddComponent, onSetComponentQty, onRemoveComponent }: SalesOrderCardProps) {
   const meta = SALES_STATUS_META[order.status];
   const [waybill, setWaybill] = useState(order.waybill);
   const [closer, setCloser] = useState(order.closerName);
@@ -221,21 +228,33 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
                     </button>
                   )}
                 </div>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {line.components.map((c) => {
-                    const short = !order.stockDeducted && shortItems.has(c.itemId);
-                    return (
-                      <span
-                        key={c.id}
-                        className={`rounded-full border px-2 py-0.5 text-[11px] ${short || c.damaged ? "border-problem/50 text-problem" : "border-border text-muted"}`}
-                        title={order.stockDeducted ? undefined : `المتاح في المخزون: ${fmtQty(c.available)} ${c.unit}`}
-                      >
-                        {c.itemName} × {fmtQty(c.quantity * line.quantity)}
-                        {c.damaged && " (تالف)"}
-                      </span>
-                    );
-                  })}
-                </div>
+                {editable ? (
+                  <OrderComponentsEditor
+                    line={line}
+                    items={items}
+                    busy={busy}
+                    shortItems={shortItems}
+                    onSetQty={(componentId, q) => act(() => onSetComponentQty(order, line.id, componentId, q))}
+                    onRemove={(componentId) => act(() => onRemoveComponent(order, line.id, componentId))}
+                    onAdd={(itemId) => act(() => onAddComponent(order, line.id, itemId))}
+                  />
+                ) : (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {line.components.map((c) => {
+                      const short = !order.stockDeducted && shortItems.has(c.itemId);
+                      return (
+                        <span
+                          key={c.id}
+                          className={`rounded-full border px-2 py-0.5 text-[11px] ${short || c.damaged ? "border-problem/50 text-problem" : "border-border text-muted"}`}
+                          title={order.stockDeducted ? undefined : `المتاح في المخزون: ${fmtQty(c.available)} ${c.unit}`}
+                        >
+                          {c.itemName} × {fmtQty(c.quantity * line.quantity)}
+                          {c.damaged && " (تالف)"}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
               </li>
             ))}
           </ul>

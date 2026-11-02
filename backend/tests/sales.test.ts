@@ -309,3 +309,61 @@ describe("sales: الأوردرات والخصم من المخزون", () => {
     expect((await setStatus(o.id, "WHATEVER")).status).toBe(400);
   });
 });
+
+describe("sales: تعديل مكوّنات أوردر واحد", () => {
+  const base = (o: any) => `/api/sales/orders/${o.id}/lines/${o.lines[0].id}/components`;
+
+  it("تعديل كمية/حذف/إضافة مكوّن يخص هذا الأوردر فقط ولا يغيّر المنتج الثابت ولا أوردراً آخر", async () => {
+    const a = await mkOrder({ waybill: "CMP-A" });
+    const b = await mkOrder({ waybill: "CMP-B" });
+    const rosePerUnit = a.lines[0].components.find((c: any) => c.itemId === rose.id);
+
+    // تعديل الكمية: وردة 2 ← 3 فتتغير التكلفة 160 ← 165
+    const upd = await api(manager).patch(`${base(a)}/${rosePerUnit.id}`).send({ quantity: 3 });
+    expect(upd.status).toBe(200);
+    expect(upd.body.order.costTotal).toBe(165);
+
+    // حذف مكوّن: العطر
+    const perfumeComp = a.lines[0].components.find((c: any) => c.itemId === perfume.id);
+    const del = await api(manager).delete(`${base(a)}/${perfumeComp.id}`);
+    expect(del.status).toBe(200);
+    expect(del.body.order.lines[0].components.map((c: any) => c.itemId)).not.toContain(perfume.id);
+
+    // إضافة صنف جديد، ثم إضافة نفس الصنف تجمع الكمية
+    const extra = await mkItem({ name: "شريط", initialQuantity: 50, unitPrice: 2, sellPrice: 4 });
+    expect((await api(manager).post(base(a)).send({ itemId: extra.id, quantity: 2 })).status).toBe(201);
+    const again = await api(manager).post(base(a)).send({ itemId: extra.id, quantity: 1 });
+    expect(again.body.order.lines[0].components.find((c: any) => c.itemId === extra.id).quantity).toBe(3);
+
+    // الأوردر الآخر والمنتج الثابت لم يتغيرا
+    const other = await api(manager).get("/api/sales/orders?q=CMP-B");
+    expect(other.body.orders[0].costTotal).toBe(160);
+    const prods = await api(manager).get("/api/sales/products");
+    expect(prods.body.products.find((p: any) => p.id === bigBox.id).costPerUnit).toBe(160);
+    expect(b.lines[0].components).toHaveLength(3);
+  });
+
+  it("التنفيذ بعد التعديل يخصم الكميات المعدّلة، ولا تعديل بعد التنفيذ (409)", async () => {
+    const o = await mkOrder({ waybill: "CMP-EXEC" });
+    const roseComp = o.lines[0].components.find((c: any) => c.itemId === rose.id);
+    await api(manager).patch(`${base(o)}/${roseComp.id}`).send({ quantity: 5 });
+    const before = await qty(rose.id);
+    expect((await setStatus(o.id, "EXECUTED")).status).toBe(200);
+    expect(await qty(rose.id)).toBe(before - 5);
+    expect((await api(manager).patch(`${base(o)}/${roseComp.id}`).send({ quantity: 1 })).status).toBe(409);
+    expect((await api(manager).delete(`${base(o)}/${roseComp.id}`)).status).toBe(409);
+    expect((await api(manager).post(base(o)).send({ itemId: watch.id, quantity: 1 })).status).toBe(409);
+  });
+
+  it("تحقق المدخلات: كمية صفر ← 400، آخر مكوّن لا يُحذف ← 400، مكوّن/صنف غير موجود ← 404/400، والمصمم ← 403", async () => {
+    const o = await mkOrder({ waybill: "CMP-VAL" });
+    const [c1, c2, c3] = o.lines[0].components;
+    expect((await api(manager).patch(`${base(o)}/${c1.id}`).send({ quantity: 0 })).status).toBe(400);
+    expect((await api(manager).patch(`${base(o)}/nope`).send({ quantity: 1 })).status).toBe(404);
+    expect((await api(manager).post(base(o)).send({ itemId: "nope", quantity: 1 })).status).toBe(400);
+    expect((await api(designer).patch(`${base(o)}/${c1.id}`).send({ quantity: 1 })).status).toBe(403);
+    expect((await api(manager).delete(`${base(o)}/${c1.id}`)).status).toBe(200);
+    expect((await api(manager).delete(`${base(o)}/${c2.id}`)).status).toBe(200);
+    expect((await api(manager).delete(`${base(o)}/${c3.id}`)).status).toBe(400);
+  });
+});

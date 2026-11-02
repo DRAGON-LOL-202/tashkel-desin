@@ -73,4 +73,21 @@ export const salesService = {
     const { order } = await api<{ order: SalesOrder }>(`/sales/orders/${orderId}/lines/${lineId}`, { method: "DELETE" });
     return order;
   },
+
+  /** إضافة مكوّن من المخزون إلى بند داخل هذا الأوردر فقط (قبل التنفيذ) */
+  async addComponent(orderId: string, lineId: string, itemId: string, quantity = 1): Promise<SalesOrder> {
+    const { order } = await api<{ order: SalesOrder }>(`/sales/orders/${orderId}/lines/${lineId}/components`, { method: "POST", body: { itemId, quantity } });
+    return order;
+  },
+
+  /** تعديل كمية مكوّن (للوحدة الواحدة من المنتج) داخل هذا الأوردر فقط */
+  async setComponentQuantity(orderId: string, lineId: string, componentId: string, quantity: number): Promise<SalesOrder> {
+    const { order } = await api<{ order: SalesOrder }>(`/sales/orders/${orderId}/lines/${lineId}/components/${componentId}`, { method: "PATCH", body: { quantity } });
+    return order;
+  },
+
+  async removeComponent(orderId: string, lineId: string, componentId: string): Promise<SalesOrder> {
+    const { order } = await api<{ order: SalesOrder }>(`/sales/orders/${orderId}/lines/${lineId}/components/${componentId}`, { method: "DELETE" });
+    return order;
+  },
 };

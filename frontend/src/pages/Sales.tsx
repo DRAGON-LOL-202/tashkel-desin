@@ -177,6 +177,10 @@ export default function SalesPage() {
   const addLine = (o: SalesOrder, productId: string) => lineAction((x) => salesService.addLine(x.id, productId, 1))(o);
   const setLineQty = (o: SalesOrder, lineId: string, quantity: number) => lineAction((x) => salesService.setLineQuantity(x.id, lineId, quantity))(o);
   const removeLine = (o: SalesOrder, lineId: string) => lineAction((x) => salesService.removeLine(x.id, lineId))(o);
+  // تعديل مكوّنات أوردر واحد (لا يغيّر المنتج الثابت ولا الأوردرات الأخرى)
+  const addComponent = (o: SalesOrder, lineId: string, itemId: string) => lineAction((x) => salesService.addComponent(x.id, lineId, itemId, 1))(o);
+  const setComponentQty = (o: SalesOrder, lineId: string, componentId: string, quantity: number) => lineAction((x) => salesService.setComponentQuantity(x.id, lineId, componentId, quantity))(o);
+  const removeComponent = (o: SalesOrder, lineId: string, componentId: string) => lineAction((x) => salesService.removeComponent(x.id, lineId, componentId))(o);
 
   // ===== المنتجات الثابتة =====
   const submitProduct = async (input: SalesProductInput) => {
@@ -367,6 +371,10 @@ export default function SalesPage() {
                   onAddLine={addLine}
                   onSetLineQty={setLineQty}
                   onRemoveLine={removeLine}
+                  items={activeItems}
+                  onAddComponent={addComponent}
+                  onSetComponentQty={setComponentQty}
+                  onRemoveComponent={removeComponent}
                 />
               ))}
             </div>

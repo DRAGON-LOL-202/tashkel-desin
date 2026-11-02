@@ -83,3 +83,7 @@ export const updateOrderSchema = z
 
 export const addLineSchema = z.object({ productId: id, quantity: lineQty.default(1) });
 export const updateLineSchema = z.object({ quantity: lineQty });
+
+// تعديل مكوّنات بند داخل أوردر واحد (لا يمس المنتج الثابت)
+export const addOrderComponentSchema = z.object({ itemId: id, quantity: componentQty });
+export const updateOrderComponentSchema = z.object({ quantity: componentQty });

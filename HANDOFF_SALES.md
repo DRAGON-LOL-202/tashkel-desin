@@ -26,3 +26,12 @@
 - `PATCH /api/sales/orders/:id` يقبل `status: RETURNED` مع `damagedComponentIds`؛ التالف **لا يعود للمخزون** والباقي يعود بحركات RETURN.
 - `SalesOrderComponent.damaged` (يُمسح عند الخروج من «مرتجع»)، و`damagedTotal` لكل أوردر = تكلفة التالف بسعر التنفيذ المثبّت.
 - صفحة المبيعات: بطاقة «تالف اليوم» = مجموع `damagedTotal` لأوردرات اليوم المرتجعة. الاختبارات الجديدة في `backend/tests/sales.test.ts`.
+
+## تعديل كل أوردر على حدة (مكوّنات الأوردر)
+- من «عرض الكل» في كارت الأوردر (قبل التنفيذ فقط): تعديل كمية أي مكوّن (للوحدة الواحدة)، حذفه، أو إضافة صنف من المخزون — لهذا الأوردر وحده. المنتج الثابت والأوردرات الأخرى لا تتغير.
+- مسارات جديدة (نفس قيود `withEditableOrder`: مسجل وغير مخصوم وإلا 409):
+  - `POST /api/sales/orders/:id/lines/:lineId/components` `{ itemId, quantity }` (نفس الصنف يجمع الكمية)
+  - `PATCH .../components/:componentId` `{ quantity }`
+  - `DELETE .../components/:componentId` (لا يُحذف آخر مكوّن في البند)
+- واجهة: `OrderComponentsEditor.tsx` + خصائص `items/onAddComponent/onSetComponentQty/onRemoveComponent` في `SalesOrderCard`.
+- لا migration جديدة (المحتويات منسوخة أصلاً في `SalesOrderComponent`). اختبارات جديدة في `backend/tests/sales.test.ts`.

@@ -9,9 +9,11 @@ import { handleLowStockTransition, type LowStockTransition } from "../utils/inve
 import { salesOrderInclude, salesProductInclude, serializeSalesOrder, serializeSalesProduct } from "../utils/salesSerialize.js";
 import {
   addLineSchema,
+  addOrderComponentSchema,
   createOrderSchema,
   createProductSchema,
   updateLineSchema,
+  updateOrderComponentSchema,
   updateOrderSchema,
   updateProductSchema,
 } from "../validators/sales.js";
@@ -478,6 +480,63 @@ salesRouter.delete(
       if (!lines.some((l) => l.id === lineId)) throw notFound("البند غير موجود");
       if (lines.length === 1) throw badRequest("يجب أن يحتوي الأوردر على منتج واحد على الأقل. احذف الأوردر نفسه بدلاً من ذلك.");
       await tx.salesOrderLine.delete({ where: { id: lineId } });
+    });
+    res.json({ order: serializeSalesOrder(order) });
+  })
+);
+
+// ===== مكوّنات بند داخل أوردر واحد (قبل التنفيذ فقط) =====
+// المكوّنات منسوخة من المنتج الثابت، فتعديلها هنا يخص هذا الأوردر وحده ولا يغيّر المنتج ولا الأوردرات الأخرى.
+// الكمية = كمية الوحدة الواحدة من المنتج (تُضرب في عدد المنتج في البند).
+salesRouter.post(
+  "/orders/:id/lines/:lineId/components",
+  asyncHandler(async (req, res) => {
+    const body = addOrderComponentSchema.parse(req.body);
+    const lineId = idOf(req.params.lineId);
+    await assertItemsUsable([{ itemId: body.itemId }]);
+    const order = await withEditableOrder(req.params.id, async (tx, orderId) => {
+      const line = await tx.salesOrderLine.findFirst({ where: { id: lineId, orderId }, select: { id: true } });
+      if (!line) throw notFound("البند غير موجود");
+      const same = await tx.salesOrderComponent.findFirst({ where: { lineId: line.id, itemId: body.itemId } });
+      if (same) {
+        const merged = round3(num3(same.quantity) + body.quantity);
+        if (merged > 1_000_000) throw badRequest("الكمية كبيرة جداً");
+        await tx.salesOrderComponent.update({ where: { id: same.id }, data: { quantity: merged } });
+      } else {
+        const count = await tx.salesOrderComponent.count({ where: { lineId: line.id } });
+        if (count >= 50) throw badRequest("عدد المكونات كبير جداً");
+        await tx.salesOrderComponent.create({ data: { lineId: line.id, itemId: body.itemId, quantity: body.quantity } });
+      }
+    });
+    res.status(201).json({ order: serializeSalesOrder(order) });
+  })
+);
+
+salesRouter.patch(
+  "/orders/:id/lines/:lineId/components/:componentId",
+  asyncHandler(async (req, res) => {
+    const body = updateOrderComponentSchema.parse(req.body);
+    const lineId = idOf(req.params.lineId);
+    const componentId = idOf(req.params.componentId);
+    const order = await withEditableOrder(req.params.id, async (tx, orderId) => {
+      const comp = await tx.salesOrderComponent.findFirst({ where: { id: componentId, lineId, line: { orderId } }, select: { id: true } });
+      if (!comp) throw notFound("المكوّن غير موجود");
+      await tx.salesOrderComponent.update({ where: { id: comp.id }, data: { quantity: body.quantity } });
+    });
+    res.json({ order: serializeSalesOrder(order) });
+  })
+);
+
+salesRouter.delete(
+  "/orders/:id/lines/:lineId/components/:componentId",
+  asyncHandler(async (req, res) => {
+    const lineId = idOf(req.params.lineId);
+    const componentId = idOf(req.params.componentId);
+    const order = await withEditableOrder(req.params.id, async (tx, orderId) => {
+      const comps = await tx.salesOrderComponent.findMany({ where: { lineId, line: { orderId } }, select: { id: true } });
+      if (!comps.some((c) => c.id === componentId)) throw notFound("المكوّن غير موجود");
+      if (comps.length === 1) throw badRequest("يجب أن يحتوي المنتج على مكوّن واحد على الأقل. أزل المنتج من الأوردر بدلاً من ذلك.");
+      await tx.salesOrderComponent.delete({ where: { id: componentId } });
     });
     res.json({ order: serializeSalesOrder(order) });
   })
