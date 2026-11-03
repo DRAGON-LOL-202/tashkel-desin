@@ -188,3 +188,8 @@ export function serializeInventoryMovement(m: MovementRow) {
     createdAt: m.createdAt.toISOString(),
   };
 }
+
+export function stripInventoryStatsPrices(stats: InventoryStats): Omit<InventoryStats, "totalValue"> {
+  const { totalValue: _t, ...rest } = stats;
+  return rest;
+}

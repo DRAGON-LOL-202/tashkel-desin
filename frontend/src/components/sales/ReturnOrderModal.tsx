@@ -36,7 +36,7 @@ export function ReturnOrderModal({ open, onClose, order, onConfirm, hideMoney }:
     for (const line of order.lines) {
       for (const c of line.components) {
         all += 1;
-        if (damaged.has(c.id)) cents += Math.round(calcTotalValue(c.quantity * line.quantity, c.unitCost) * 100);
+        if (damaged.has(c.id)) cents += Math.round(calcTotalValue(c.quantity * line.quantity, c.unitCost ?? 0) * 100);
       }
     }
     return { cost: cents / 100, all };

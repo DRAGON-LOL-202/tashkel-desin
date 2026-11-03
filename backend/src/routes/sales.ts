@@ -1,9 +1,10 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import type { Prisma, SalesOrderStatus } from "../generated/prisma/client.ts";
 import { prisma } from "../db.js";
-import { requireAuth, requireStaff } from "../middleware/auth.js";
+import { isStaff, requireAuth, requireRole, requireStaff } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
-import { badRequest, conflict, notFound } from "../utils/httpError.js";
+import { badRequest, conflict, forbidden, notFound } from "../utils/httpError.js";
+import { isSalesRole, isSalesRouteAllowed } from "../utils/inventoryAccess.js";
 import { num2, num3 } from "../utils/inventorySerialize.js";
 import { handleLowStockTransition, type LowStockTransition } from "../utils/inventoryLowStock.js";
 import { salesOrderInclude, salesProductInclude, serializeSalesOrder, serializeSalesProduct } from "../utils/salesSerialize.js";
@@ -25,8 +26,22 @@ import { round3 } from "../validators/inventory.js";
 // - «تم التنفيذ/شحن/تم التسليم» تخصم مكونات الأوردر من المخزون مرة واحدة فقط (stockDeducted)؛
 //   والرجوع إلى «مسجل» أو «مرتجع» أو حذف الأوردر بعد الخصم يعيد الكميات للمخزون بحركة RETURN.
 // - الخصم كله أو لا شيء داخل معاملة واحدة مع قفل صفوف الأصناف مرتبة بالمعرّف (يمنع الجمود وتجاوز الرصيد).
+const requireSalesRead = requireRole("ADMIN", "MANAGER", "SALES_FLAGGER", "SALES_EDITOR", "SALES_SUPERVISOR");
+const requireSalesEdit = requireRole("ADMIN", "MANAGER", "SALES_EDITOR", "SALES_SUPERVISOR");
+
 export const salesRouter = Router();
-salesRouter.use(requireAuth, requireStaff);
+salesRouter.use(requireAuth, requireSalesRead, (req, _res, next) => {
+  if (isSalesRole(req.user!) && !isSalesRouteAllowed(req.user!.role, req.method, req.path, req.body)) {
+    return next(forbidden());
+  }
+  next();
+});
+
+const serializeOrderForUser = (req: Request, o: Parameters<typeof serializeSalesOrder>[0]) =>
+  serializeSalesOrder(o, { hideMoney: !isStaff(req.user!) });
+
+const serializeProductForUser = (req: Request, p: Parameters<typeof serializeSalesProduct>[0]) =>
+  serializeSalesProduct(p, { hideMoney: !isStaff(req.user!) });
 
 const DEDUCTING = new Set<SalesOrderStatus>(["EXECUTED", "SHIPPED", "DELIVERED"]);
 
@@ -254,14 +269,16 @@ async function assertProductNameFree(name: string, exceptId?: string) {
 // ===== المنتجات الثابتة =====
 salesRouter.get(
   "/products",
-  asyncHandler(async (_req, res) => {
+  requireSalesEdit,
+  asyncHandler(async (req, res) => {
     const rows = await prisma().salesProduct.findMany({ include: salesProductInclude, orderBy: [{ name: "asc" }, { id: "asc" }] });
-    res.json({ products: rows.map(serializeSalesProduct) });
+    res.json({ products: rows.map((p) => serializeProductForUser(req, p)) });
   })
 );
 
 salesRouter.post(
   "/products",
+  requireSalesEdit,
   asyncHandler(async (req, res) => {
     const body = createProductSchema.parse(req.body);
     await assertProductNameFree(body.name);
@@ -270,12 +287,13 @@ salesRouter.post(
       data: { name: body.name, notes: body.notes, components: { create: body.components } },
       include: salesProductInclude,
     });
-    res.status(201).json({ product: serializeSalesProduct(created) });
+    res.status(201).json({ product: serializeProductForUser(req, created) });
   })
 );
 
 salesRouter.patch(
   "/products/:id",
+  requireStaff,
   asyncHandler(async (req, res) => {
     const id = idOf(req.params.id);
     const existing = await prisma().salesProduct.findUnique({ where: { id }, select: { id: true } });
@@ -298,13 +316,14 @@ salesRouter.patch(
         include: salesProductInclude,
       });
     });
-    res.json({ product: serializeSalesProduct(updated) });
+    res.json({ product: serializeProductForUser(req, updated) });
   })
 );
 
 // حذف المنتج الثابت لا يمس الأوردرات السابقة (محتوياتها منسوخة واسمه محفوظ في البند)
 salesRouter.delete(
   "/products/:id",
+  requireStaff,
   asyncHandler(async (req, res) => {
     const id = idOf(req.params.id);
     const existing = await prisma().salesProduct.findUnique({ where: { id }, select: { id: true } });
@@ -341,13 +360,14 @@ salesRouter.get(
       orderBy: q ? [{ date: "desc" }, { createdAt: "desc" }] : ranged ? [{ date: "asc" }, { createdAt: "asc" }, { id: "asc" }] : [{ createdAt: "asc" }, { id: "asc" }],
       take: q ? 100 : ranged ? 5000 : 500,
     });
-    res.json({ orders: rows.map(serializeSalesOrder) });
+    res.json({ orders: rows.map((o) => serializeOrderForUser(req, o)) });
   })
 );
 
 // أسماء المقفلين السابقة (لاقتراحها عند الكتابة)
 salesRouter.get(
   "/closers",
+  requireSalesEdit,
   asyncHandler(async (_req, res) => {
     const rows = await prisma().salesOrder.findMany({
       where: { closerName: { not: "" } },
@@ -362,6 +382,7 @@ salesRouter.get(
 
 salesRouter.post(
   "/orders",
+  requireSalesEdit,
   asyncHandler(async (req, res) => {
     const body = createOrderSchema.parse(req.body);
     await assertWaybillFree(body.waybill);
@@ -377,15 +398,28 @@ salesRouter.post(
       },
       include: salesOrderInclude,
     });
-    res.status(201).json({ order: serializeSalesOrder(created) });
+    res.status(201).json({ order: serializeOrderForUser(req, created) });
   })
 );
 
 salesRouter.patch(
   "/orders/:id",
   asyncHandler(async (req, res) => {
+    const role = req.user!.role;
+    if (role === "SALES_FLAGGER") {
+      if (typeof req.body !== "object" || req.body === null || Array.isArray(req.body)) throw forbidden();
+      const keys = Object.keys(req.body as Record<string, unknown>);
+      if (keys.length !== 1 || keys[0] !== "returnFlagged") throw forbidden();
+    } else if (role === "SALES_EDITOR" || role === "SALES_SUPERVISOR") {
+      if (typeof req.body === "object" && req.body !== null && ("status" in req.body || "damagedComponentIds" in req.body)) {
+        throw forbidden();
+      }
+    }
     const existing = await getOrder(req.params.id);
     const body = updateOrderSchema.parse(req.body);
+    if (!isStaff(req.user!) && (body.status !== undefined || body.damagedComponentIds !== undefined)) {
+      throw forbidden();
+    }
     if (body.waybill !== undefined && body.waybill !== existing.waybill) await assertWaybillFree(body.waybill, existing.id);
     if (body.returnFlagged === true && (existing.status === "RETURNED" || body.status === "RETURNED")) throw badRequest("الأوردر مسجل كمرتجع بالفعل");
 
@@ -412,12 +446,13 @@ salesRouter.patch(
       return { order: fresh, transitions: moved };
     });
     await handleLowStockTransition(transitions);
-    res.json({ order: serializeSalesOrder(order) });
+    res.json({ order: serializeOrderForUser(req, order) });
   })
 );
 
 salesRouter.delete(
   "/orders/:id",
+  requireSalesEdit,
   asyncHandler(async (req, res) => {
     const existing = await getOrder(req.params.id);
     const transitions = await prisma().$transaction(async (tx) => {
@@ -448,6 +483,7 @@ async function withEditableOrder<T>(rawId: unknown, fn: (tx: Tx, orderId: string
 
 salesRouter.post(
   "/orders/:id/lines",
+  requireSalesEdit,
   asyncHandler(async (req, res) => {
     const body = addLineSchema.parse(req.body);
     const products = await loadActiveProducts([body.productId]);
@@ -460,12 +496,13 @@ salesRouter.post(
         await tx.salesOrderLine.create({ data: { orderId, ...lineCreateData(product, body.quantity) } });
       }
     });
-    res.status(201).json({ order: serializeSalesOrder(order) });
+    res.status(201).json({ order: serializeOrderForUser(req, order) });
   })
 );
 
 salesRouter.patch(
   "/orders/:id/lines/:lineId",
+  requireSalesEdit,
   asyncHandler(async (req, res) => {
     const body = updateLineSchema.parse(req.body);
     const lineId = idOf(req.params.lineId);
@@ -474,12 +511,13 @@ salesRouter.patch(
       if (!line) throw notFound("البند غير موجود");
       await tx.salesOrderLine.update({ where: { id: line.id }, data: { quantity: body.quantity } });
     });
-    res.json({ order: serializeSalesOrder(order) });
+    res.json({ order: serializeOrderForUser(req, order) });
   })
 );
 
 salesRouter.delete(
   "/orders/:id/lines/:lineId",
+  requireSalesEdit,
   asyncHandler(async (req, res) => {
     const lineId = idOf(req.params.lineId);
     const order = await withEditableOrder(req.params.id, async (tx, orderId) => {
@@ -488,7 +526,7 @@ salesRouter.delete(
       if (lines.length === 1) throw badRequest("يجب أن يحتوي الأوردر على منتج واحد على الأقل. احذف الأوردر نفسه بدلاً من ذلك.");
       await tx.salesOrderLine.delete({ where: { id: lineId } });
     });
-    res.json({ order: serializeSalesOrder(order) });
+    res.json({ order: serializeOrderForUser(req, order) });
   })
 );
 
@@ -497,6 +535,7 @@ salesRouter.delete(
 // الكمية = كمية الوحدة الواحدة من المنتج (تُضرب في عدد المنتج في البند).
 salesRouter.post(
   "/orders/:id/lines/:lineId/components",
+  requireSalesEdit,
   asyncHandler(async (req, res) => {
     const body = addOrderComponentSchema.parse(req.body);
     const lineId = idOf(req.params.lineId);
@@ -515,12 +554,13 @@ salesRouter.post(
         await tx.salesOrderComponent.create({ data: { lineId: line.id, itemId: body.itemId, quantity: body.quantity } });
       }
     });
-    res.status(201).json({ order: serializeSalesOrder(order) });
+    res.status(201).json({ order: serializeOrderForUser(req, order) });
   })
 );
 
 salesRouter.patch(
   "/orders/:id/lines/:lineId/components/:componentId",
+  requireSalesEdit,
   asyncHandler(async (req, res) => {
     const body = updateOrderComponentSchema.parse(req.body);
     const lineId = idOf(req.params.lineId);
@@ -530,12 +570,13 @@ salesRouter.patch(
       if (!comp) throw notFound("المكوّن غير موجود");
       await tx.salesOrderComponent.update({ where: { id: comp.id }, data: { quantity: body.quantity } });
     });
-    res.json({ order: serializeSalesOrder(order) });
+    res.json({ order: serializeOrderForUser(req, order) });
   })
 );
 
 salesRouter.delete(
   "/orders/:id/lines/:lineId/components/:componentId",
+  requireSalesEdit,
   asyncHandler(async (req, res) => {
     const lineId = idOf(req.params.lineId);
     const componentId = idOf(req.params.componentId);
@@ -545,6 +586,6 @@ salesRouter.delete(
       if (comps.length === 1) throw badRequest("يجب أن يحتوي المنتج على مكوّن واحد على الأقل. أزل المنتج من الأوردر بدلاً من ذلك.");
       await tx.salesOrderComponent.delete({ where: { id: componentId } });
     });
-    res.json({ order: serializeSalesOrder(order) });
+    res.json({ order: serializeOrderForUser(req, order) });
   })
 );

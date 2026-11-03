@@ -84,8 +84,9 @@ export default function InventoryPage() {
   const { show } = useToast();
   const run = useSafeAction();
   const { user } = useAuth();
-  const { canManageInventory, canDeleteInventory } = usePermissions();
-  const { data, loading, error, reload, retry } = useResource<InventoryData>(inventoryService.list, EMPTY_INVENTORY_DATA);
+  const { canManageInventory, canDeleteInventory, canAddStock, hideInventoryPrices } = usePermissions();
+  const loadInventory = useMemo(() => () => inventoryService.list({ includeGroups: canManageInventory }), [canManageInventory]);
+  const { data, loading, error, reload, retry } = useResource<InventoryData>(loadInventory, EMPTY_INVENTORY_DATA);
   const { items, categories, groups, stats, units } = data;
 
   const activeCategory = categoryFilter === "all" || categories.some((c) => c.id === categoryFilter) ? categoryFilter : "all";
@@ -212,36 +213,41 @@ export default function InventoryPage() {
               <div>
                 <h2 className="text-xl font-bold text-text">المخزون الرئيسي</h2>
                 <p className="mt-0.5 text-xs text-muted">
-                  {stats.totalItems} منتج نشط · إجمالي القيمة {fmtMoney(stats.totalValue)}
+                  {stats.totalItems} منتج نشط
+                  {!hideInventoryPrices ? ` · إجمالي القيمة ${fmtMoney(stats.totalValue)}` : ""}
                   {stats.shortageCount > 0 ? ` · ${stats.shortageCount} منتج يحتاج إعادة طلب` : ""}
                 </p>
               </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Link
-                to="/inventory/shortages"
-                className="task-btn task-btn--ghost relative text-xs sm:text-sm"
-                title="عرض صفحة نواقص المخزون"
-              >
-                <AlertTriangle size={16} className={stats.shortageCount > 0 ? "text-problem" : "text-muted"} />
-                <span>نواقص المخزون</span>
-                {stats.shortageCount > 0 && (
-                  <span className="rounded-full bg-problem px-1.5 py-0.5 text-[11px] font-bold leading-none text-white">
-                    {stats.shortageCount}
-                  </span>
-                )}
-              </Link>
+              {!hideInventoryPrices && (
+                <>
+                  <Link
+                    to="/inventory/shortages"
+                    className="task-btn task-btn--ghost relative text-xs sm:text-sm"
+                    title="عرض صفحة نواقص المخزون"
+                  >
+                    <AlertTriangle size={16} className={stats.shortageCount > 0 ? "text-problem" : "text-muted"} />
+                    <span>نواقص المخزون</span>
+                    {stats.shortageCount > 0 && (
+                      <span className="rounded-full bg-problem px-1.5 py-0.5 text-[11px] font-bold leading-none text-white">
+                        {stats.shortageCount}
+                      </span>
+                    )}
+                  </Link>
 
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => setCategoriesOpen(true)}
-                icon={<FolderTree size={15} />}
-              >
-                التصنيفات ({categories.length})
-              </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setCategoriesOpen(true)}
+                    icon={<FolderTree size={15} />}
+                  >
+                    التصنيفات ({categories.length})
+                  </Button>
+                </>
+              )}
 
               {canManageInventory && (
                 <>
@@ -266,17 +272,19 @@ export default function InventoryPage() {
                 </>
               )}
 
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => setReportsOpen(true)}
-                icon={<FileSpreadsheet size={15} />}
-              >
-                تصدير Excel
-              </Button>
+              {!hideInventoryPrices && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setReportsOpen(true)}
+                  icon={<FileSpreadsheet size={15} />}
+                >
+                  تصدير Excel
+                </Button>
+              )}
 
-              {canManageInventory && (
+              {canAddStock && (
                 <button
                   type="button"
                   onClick={() => setItemModal({ editing: null })}
@@ -288,8 +296,8 @@ export default function InventoryPage() {
             </div>
           </div>
 
-          {/* بطاقات الإحصائيات السبع المحسوبة من قاعدة البيانات */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
+          {/* بطاقات الإحصائيات المحسوبة من قاعدة البيانات */}
+          <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${hideInventoryPrices ? "lg:grid-cols-6" : "lg:grid-cols-7"}`}>
             <div className="pp-panel flex flex-col justify-between p-3.5">
               <div className="flex items-center justify-between text-xs text-muted">
                 <span>إجمالي المنتجات</span>
@@ -306,13 +314,15 @@ export default function InventoryPage() {
               <p className="mt-2 text-xl font-bold text-text">{fmtQty(stats.totalQuantity)}</p>
             </div>
 
-            <div className="pp-panel flex flex-col justify-between p-3.5">
-              <div className="flex items-center justify-between text-xs text-muted">
-                <span>قيمة المخزون</span>
-                <Coins size={15} className="text-primary-deep" />
+            {!hideInventoryPrices && (
+              <div className="pp-panel flex flex-col justify-between p-3.5">
+                <div className="flex items-center justify-between text-xs text-muted">
+                  <span>قيمة المخزون</span>
+                  <Coins size={15} className="text-primary-deep" />
+                </div>
+                <p className="mt-2 text-lg font-bold text-primary-deep">{fmtMoney(stats.totalValue)}</p>
               </div>
-              <p className="mt-2 text-lg font-bold text-primary-deep">{fmtMoney(stats.totalValue)}</p>
-            </div>
+            )}
 
             <div className="pp-panel flex flex-col justify-between p-3.5">
               <div className="flex items-center justify-between text-xs text-muted">
@@ -396,7 +406,7 @@ export default function InventoryPage() {
               >
                 <option value="name">الترتيب: الاسم</option>
                 <option value="quantity">الترتيب: الكمية</option>
-                <option value="value">الترتيب: القيمة</option>
+                {!hideInventoryPrices && <option value="value">الترتيب: القيمة</option>}
               </select>
               <button
                 type="button"
@@ -409,10 +419,12 @@ export default function InventoryPage() {
               </button>
             </div>
 
-            <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-text sm:text-sm">
-              <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
-              عرض المؤرشف
-            </label>
+            {canManageInventory && (
+              <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-text sm:text-sm">
+                <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
+                عرض المؤرشف
+              </label>
+            )}
           </div>
 
           {/* جدول المنتجات */}
@@ -420,9 +432,9 @@ export default function InventoryPage() {
             <EmptyState
               icon={<Warehouse size={24} />}
               title="لا توجد منتجات في المخزون"
-              description={canManageInventory ? "أضف أول منتج مع تصنيفه وسعره ورصيده الافتتاحي." : "لم تُضف أي منتجات بعد."}
+              description={canAddStock ? "أضف أول منتج مع تصنيفه وسعره ورصيده الافتتاحي." : "لم تُضف أي منتجات بعد."}
               action={
-                canManageInventory ? (
+                canAddStock ? (
                   <button type="button" onClick={() => setItemModal({ editing: null })} className="task-btn task-btn--primary">
                     <Plus size={18} /> إضافة منتج
                   </button>
@@ -442,9 +454,13 @@ export default function InventoryPage() {
                     <th className="px-3 py-3 font-medium">التصنيف</th>
                     <th className="px-3 py-3 font-medium">الكمية الحالية</th>
                     <th className="px-3 py-3 font-medium">الوحدة</th>
-                    <th className="px-3 py-3 font-medium">سعر الوحدة</th>
-                    <th className="px-3 py-3 font-medium">سعر البيع</th>
-                    <th className="px-3 py-3 font-medium">إجمالي القيمة</th>
+                    {!hideInventoryPrices && (
+                      <>
+                        <th className="px-3 py-3 font-medium">سعر الوحدة</th>
+                        <th className="px-3 py-3 font-medium">سعر البيع</th>
+                        <th className="px-3 py-3 font-medium">إجمالي القيمة</th>
+                      </>
+                    )}
                     <th className="px-3 py-3 font-medium">الحد الأدنى</th>
                     <th className="px-3 py-3 font-medium">حالة المخزون</th>
                     <th className="px-3 py-3 font-medium">الإجراءات</th>
@@ -492,11 +508,15 @@ export default function InventoryPage() {
 
                         <td className="px-3 py-2.5 text-xs text-muted">{i.unit}</td>
 
-                        <td className="px-3 py-2.5 text-text">{fmtMoney(i.unitPrice ?? 0)}</td>
+                        {!hideInventoryPrices && (
+                          <>
+                            <td className="px-3 py-2.5 text-text">{fmtMoney(i.unitPrice ?? 0)}</td>
 
-                        <td className="px-3 py-2.5 text-text">{fmtMoney(i.sellPrice ?? 0)}</td>
+                            <td className="px-3 py-2.5 text-text">{fmtMoney(i.sellPrice ?? 0)}</td>
 
-                        <td className="px-3 py-2.5 font-bold text-primary-deep">{fmtMoney(itemTotalValue)}</td>
+                            <td className="px-3 py-2.5 font-bold text-primary-deep">{fmtMoney(itemTotalValue)}</td>
+                          </>
+                        )}
 
                         <td className="px-3 py-2.5 text-muted">{i.minQuantity > 0 ? fmtQty(i.minQuantity) : "0"}</td>
 
@@ -532,19 +552,21 @@ export default function InventoryPage() {
                               <History size={15} />
                             </button>
 
+                            {canAddStock && (
+                              <button
+                                type="button"
+                                onClick={() => setMoving({ item: i, type: "IN" })}
+                                disabled={!i.isActive}
+                                aria-label={`إضافة وارد لـ ${i.name}`}
+                                title="إضافة وارد"
+                                className="rounded-full p-1.5 text-primary-deep pp-hover-row disabled:opacity-40"
+                              >
+                                <ArrowDownToLine size={15} />
+                              </button>
+                            )}
+
                             {canManageInventory && (
                               <>
-                                <button
-                                  type="button"
-                                  onClick={() => setMoving({ item: i, type: "IN" })}
-                                  disabled={!i.isActive}
-                                  aria-label={`إضافة وارد لـ ${i.name}`}
-                                  title="إضافة وارد"
-                                  className="rounded-full p-1.5 text-primary-deep pp-hover-row disabled:opacity-40"
-                                >
-                                  <ArrowDownToLine size={15} />
-                                </button>
-
                                 <button
                                   type="button"
                                   onClick={() => setMoving({ item: i, type: "OUT" })}
@@ -621,6 +643,8 @@ export default function InventoryPage() {
           categories={categories}
           groups={groups}
           units={units}
+          canCreateCategory={canManageInventory}
+          hidePricePreview={hideInventoryPrices}
           onCreateCategory={handleCreateCategory}
           onSubmit={handleItemSubmit}
         />
@@ -632,6 +656,8 @@ export default function InventoryPage() {
           onClose={() => setDetailsItem(null)}
           item={live(detailsItem)!}
           canManage={canManageInventory}
+          canAddStock={canAddStock}
+          hidePrices={hideInventoryPrices}
           onEdit={(it) => setItemModal({ editing: it })}
           onIn={(it) => setMoving({ item: it, type: "IN" })}
           onOut={(it) => setMoving({ item: it, type: "OUT" })}
@@ -649,6 +675,8 @@ export default function InventoryPage() {
           onClose={() => setMoving(null)}
           item={live(moving.item)!}
           initialType={moving.type}
+          inOnly={!canManageInventory}
+          hidePrices={hideInventoryPrices}
           onSubmit={(input) => handleMove(moving.item.id, input)}
         />
       )}
@@ -693,7 +721,7 @@ export default function InventoryPage() {
         />
       )}
 
-      {history && <MovementsModal open onClose={() => setHistory(null)} item={live(history)!} />}
+      {history && <MovementsModal open onClose={() => setHistory(null)} item={live(history)!} hidePrices={hideInventoryPrices} />}
 
       <ConfirmDialog
         open={!!archiving}

@@ -7,10 +7,10 @@ export interface SalesComponent {
   itemName: string;
   unit: string;
   quantity: number;
-  /** تكلفة وحدة المكوّن: حيّة من المخزون قبل التنفيذ، ومثبّتة بعده */
-  unitCost: number;
+  /** تكلفة وحدة المكوّن: حيّة من المخزون قبل التنفيذ، ومثبّتة بعده (تُحجب عن أدوار المبيعات المقيدة) */
+  unitCost?: number;
   /** سعر بيع وحدة المكوّن (نفس القاعدة) */
-  unitSell: number;
+  unitSell?: number;
   /** الرصيد المتاح الآن في المخزون */
   available: number;
   itemActive: boolean;
@@ -25,8 +25,8 @@ export interface SalesProduct {
   notes: string;
   isActive: boolean;
   components: SalesComponent[];
-  costPerUnit: number;
-  sellPerUnit: number;
+  costPerUnit?: number;
+  sellPerUnit?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -38,10 +38,10 @@ export interface SalesOrderLine {
   productName: string;
   quantity: number;
   components: SalesComponent[];
-  costPerUnit: number;
-  sellPerUnit: number;
-  totalCost: number;
-  totalSell: number;
+  costPerUnit?: number;
+  sellPerUnit?: number;
+  totalCost?: number;
+  totalSell?: number;
 }
 
 export interface SalesShortage {
@@ -69,11 +69,11 @@ export interface SalesOrder {
   createdAt: string;
   updatedAt: string;
   lines: SalesOrderLine[];
-  costTotal: number;
-  sellTotal: number;
-  profit: number;
+  costTotal?: number;
+  sellTotal?: number;
+  profit?: number;
   /** تكلفة المكونات التالفة عند المرتجع (تدخل في تالف اليوم) */
-  damagedTotal: number;
+  damagedTotal?: number;
   /** الشركة علّمت الأوردر «مرتجع» ليراجعه الموظف ويسجله (لا أثر على المخزون) */
   returnFlagged: boolean;
   returnFlaggedAt: string | null;

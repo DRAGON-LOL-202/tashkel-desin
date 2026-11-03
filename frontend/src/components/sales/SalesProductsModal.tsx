@@ -15,10 +15,12 @@ interface SalesProductsModalProps {
   onDelete: (product: SalesProduct) => void;
   /** صفحة الأوردرات: بدون تكلفة وسعر بيع */
   hideMoney?: boolean;
+  /** صلاحية تعديل/إيقاف/حذف المنتجات الثابتة الموجودة (الإدارة فقط) */
+  canManageProducts?: boolean;
 }
 
 // إدارة المنتجات الثابتة (البوكسات): عرض محتوياتها وأسعارها، وتعديلها وإيقافها وحذفها.
-export function SalesProductsModal({ open, onClose, products, onCreate, onEdit, onToggleActive, onDelete, hideMoney }: SalesProductsModalProps) {
+export function SalesProductsModal({ open, onClose, products, onCreate, onEdit, onToggleActive, onDelete, hideMoney, canManageProducts = true }: SalesProductsModalProps) {
   return (
     <Modal open={open} onClose={onClose} title="المنتجات الثابتة" description="بوكسات بمحتويات ثابتة من المخزون؛ اضغط على أي منها عند إضافة أوردر" size="xl">
       <div className="mb-3 flex justify-end">
@@ -39,18 +41,22 @@ export function SalesProductsModal({ open, onClose, products, onCreate, onEdit, 
                   <span className="mr-auto" />
                 ) : (
                   <span className="mr-auto text-xs text-muted">
-                    التكلفة <strong className="text-text">{fmtMoney(p.costPerUnit)}</strong> · البيع <strong className="text-primary-deep">{fmtMoney(p.sellPerUnit)}</strong>
+                    التكلفة <strong className="text-text">{fmtMoney(p.costPerUnit ?? 0)}</strong> · البيع <strong className="text-primary-deep">{fmtMoney(p.sellPerUnit ?? 0)}</strong>
                   </span>
                 )}
-                <button type="button" onClick={() => onEdit(p)} aria-label={`تعديل ${p.name}`} title="تعديل" className="task-icon-btn">
-                  <Pencil size={15} />
-                </button>
-                <button type="button" onClick={() => onToggleActive(p)} aria-label={p.isActive ? `إيقاف ${p.name}` : `تفعيل ${p.name}`} title={p.isActive ? "إيقاف (يختفي من الإضافة السريعة)" : "تفعيل"} className="task-icon-btn">
-                  {p.isActive ? <Archive size={15} /> : <ArchiveRestore size={15} />}
-                </button>
-                <button type="button" onClick={() => onDelete(p)} aria-label={`حذف ${p.name}`} title="حذف" className="task-icon-btn task-icon-btn--danger">
-                  <Trash2 size={15} />
-                </button>
+                {canManageProducts && (
+                  <>
+                    <button type="button" onClick={() => onEdit(p)} aria-label={`تعديل ${p.name}`} title="تعديل" className="task-icon-btn">
+                      <Pencil size={15} />
+                    </button>
+                    <button type="button" onClick={() => onToggleActive(p)} aria-label={p.isActive ? `إيقاف ${p.name}` : `تفعيل ${p.name}`} title={p.isActive ? "إيقاف (يختفي من الإضافة السريعة)" : "تفعيل"} className="task-icon-btn">
+                      {p.isActive ? <Archive size={15} /> : <ArchiveRestore size={15} />}
+                    </button>
+                    <button type="button" onClick={() => onDelete(p)} aria-label={`حذف ${p.name}`} title="حذف" className="task-icon-btn task-icon-btn--danger">
+                      <Trash2 size={15} />
+                    </button>
+                  </>
+                )}
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {p.components.map((c) => (

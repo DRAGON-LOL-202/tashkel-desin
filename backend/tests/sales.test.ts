@@ -413,3 +413,363 @@ describe("sales: علامة «مرتجع» للمراجعة", () => {
   });
 });
 
+const FORBIDDEN_MONEY_KEYS = new Set([
+  "costTotal",
+  "sellTotal",
+  "profit",
+  "damagedTotal",
+  "unitCost",
+  "unitSell",
+  "costPerUnit",
+  "sellPerUnit",
+  "totalCost",
+  "totalSell",
+  "unitPrice",
+  "sellPrice",
+  "totalValue",
+  "unitPriceSnapshot",
+  "movementValue",
+]);
+
+function collectMoneyKeys(value: unknown, path = "$"): string[] {
+  if (value === null || typeof value !== "object") return [];
+  if (Array.isArray(value)) {
+    return value.flatMap((item, idx) => collectMoneyKeys(item, `${path}[${idx}]`));
+  }
+  const hits: string[] = [];
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (FORBIDDEN_MONEY_KEYS.has(k)) hits.push(`${path}.${k}`);
+    hits.push(...collectMoneyKeys(v, `${path}.${k}`));
+  }
+  return hits;
+}
+
+function assertNoMoneyLeak(body: unknown, label = "") {
+  expect(collectMoneyKeys(body), `تسريب مالي في ${label}`).toEqual([]);
+}
+
+describe("sales roles: الأدوار الثلاثة المحصورة في المبيعات الإلكترونية", () => {
+  let flagger: string;
+  let editor: string;
+  let supervisor: string;
+
+  beforeAll(async () => {
+    await makeUser("s_flagger", "SALES_FLAGGER");
+    await makeUser("s_editor", "SALES_EDITOR");
+    await makeUser("s_supervisor", "SALES_SUPERVISOR");
+    flagger = await login("s_flagger");
+    editor = await login("s_editor");
+    supervisor = await login("s_supervisor");
+  });
+
+  it("إنشاء المستخدمين بالأدوار الثلاثة عبر /api/users يضبط المسمى الافتراضي ويخفي كرت المهام", async () => {
+    const r1 = await api(admin).post("/api/users").send({
+      name: "مراجع 1",
+      username: "u_flagger",
+      email: "u_flagger@e.test",
+      password: process.env.ADMIN_PASSWORD!,
+      role: "sales_flagger",
+    });
+    expect(r1.status).toBe(201);
+    expect(r1.body.user.role).toBe("sales_flagger");
+    expect(r1.body.user.jobTitle).toBe("مراجع مرتجعات");
+    expect(r1.body.user.showTaskCard).toBe(false);
+
+    const r2 = await api(admin).post("/api/users").send({
+      name: "منفذ 1",
+      username: "u_editor",
+      email: "u_editor@e.test",
+      password: process.env.ADMIN_PASSWORD!,
+      role: "sales_editor",
+    });
+    expect(r2.status).toBe(201);
+    expect(r2.body.user.role).toBe("sales_editor");
+    expect(r2.body.user.jobTitle).toBe("منفّذ أوردرات");
+    expect(r2.body.user.showTaskCard).toBe(false);
+
+    const r3 = await api(admin).post("/api/users").send({
+      name: "مشرف 1",
+      username: "u_supervisor",
+      email: "u_supervisor@e.test",
+      password: process.env.ADMIN_PASSWORD!,
+      role: "sales_supervisor",
+    });
+    expect(r3.status).toBe(201);
+    expect(r3.body.user.role).toBe("sales_supervisor");
+    expect(r3.body.user.jobTitle).toBe("مشرف مبيعات");
+    expect(r3.body.user.showTaskCard).toBe(false);
+  });
+
+  it("المسارات المشتركة المسموحة (auth/me, sync, users/me, logout) تعمل، وأي مسار خارج القائمة أو مستقبلي ← 403 (fail-closed)", async () => {
+    const commonBlocked: [string, string][] = [
+      ["get", "/api/tasks"],
+      ["get", "/api/feedback"],
+      ["get", "/api/goals"],
+      ["get", "/api/products"],
+      ["get", "/api/calendar-events"],
+      ["get", "/api/attendance/me"],
+      ["get", "/api/notifications"],
+      ["get", "/api/notifications/counts"],
+      ["get", "/api/users"],
+      ["post", "/api/files/presign"],
+      ["post", "/api/push/subscribe"],
+      ["get", "/api/this-route-does-not-exist-yet"],
+      ["post", "/api/future-endpoint"],
+    ];
+
+    for (const [label, token] of [
+      ["SALES_FLAGGER", flagger],
+      ["SALES_EDITOR", editor],
+      ["SALES_SUPERVISOR", supervisor],
+    ] as const) {
+      expect((await api(token).get("/api/auth/me")).status, `${label} auth/me`).toBe(200);
+      expect((await api(token).get("/api/sync")).status, `${label} sync`).toBe(200);
+      expect((await api(token).patch("/api/users/me").send({ name: `اسم ${label}` })).status, `${label} users/me`).toBe(200);
+      expect((await api(token).post("/api/auth/logout")).status, `${label} logout`).toBe(200);
+
+      for (const [method, url] of commonBlocked) {
+        const res = await (api(token) as any)[method](url).send({});
+        expect(res.status, `${label}: ${method.toUpperCase()} ${url}`).toBe(403);
+      }
+    }
+  });
+
+  it("الدور 1 (SALES_FLAGGER): يقرأ الأوردرات بلا مبالغ ويعدّل returnFlagged فقط؛ أي حقل أو مسار آخر ← 403", async () => {
+    const o = await mkOrder({ date: "2026-06-15", waybill: "FLG-ONLY-1" });
+
+    // قراءة الأوردرات مسموحة وخالية تماماً من أي حقل مالي
+    const list = await api(flagger).get("/api/sales/orders?date=2026-06-15");
+    expect(list.status).toBe(200);
+    expect(list.body.orders.length).toBeGreaterThan(0);
+    assertNoMoneyLeak(list.body, "SALES_FLAGGER GET /orders");
+
+    // تعليم وإلغاء علامة المرتجع مسموح وخالٍ من المبالغ
+    const flagOn = await api(flagger).patch(`/api/sales/orders/${o.id}`).send({ returnFlagged: true });
+    expect(flagOn.status).toBe(200);
+    expect(flagOn.body.order.returnFlagged).toBe(true);
+    assertNoMoneyLeak(flagOn.body, "SALES_FLAGGER PATCH returnFlagged=true");
+
+    const flagOff = await api(flagger).patch(`/api/sales/orders/${o.id}`).send({ returnFlagged: false });
+    expect(flagOff.status).toBe(200);
+    expect(flagOff.body.order.returnFlagged).toBe(false);
+    assertNoMoneyLeak(flagOff.body, "SALES_FLAGGER PATCH returnFlagged=false");
+
+    // أي حقل آخر في PATCH /orders/:id (حتى لو معه returnFlagged) ← 403
+    for (const badBody of [
+      {},
+      { waybill: "NEW-WB" },
+      { closerName: "أحمد" },
+      { notes: "ملاحظة" },
+      { date: "2026-06-16" },
+      { status: "EXECUTED" },
+      { status: "RETURNED" },
+      { returnFlagged: true, notes: "تهريب حقل" },
+      { returnFlagged: true, status: "RETURNED" },
+    ]) {
+      const r = await api(flagger).patch(`/api/sales/orders/${o.id}`).send(badBody);
+      expect(r.status, `SALES_FLAGGER body=${JSON.stringify(badBody)}`).toBe(403);
+    }
+
+    // منع الإضافة والحذف وتعديل البنود والمكوّنات والمنتجات الثابتة والمخزون
+    const lineId = o.lines[0].id;
+    const compId = o.lines[0].components[0].id;
+    expect((await api(flagger).post("/api/sales/orders").send({ date: "2026-06-15", lines: [{ productId: bigBox.id, quantity: 1 }] })).status).toBe(403);
+    expect((await api(flagger).delete(`/api/sales/orders/${o.id}`)).status).toBe(403);
+    expect((await api(flagger).post(`/api/sales/orders/${o.id}/lines`).send({ productId: bigBox.id, quantity: 1 })).status).toBe(403);
+    expect((await api(flagger).patch(`/api/sales/orders/${o.id}/lines/${lineId}`).send({ quantity: 2 })).status).toBe(403);
+    expect((await api(flagger).delete(`/api/sales/orders/${o.id}/lines/${lineId}`)).status).toBe(403);
+    expect((await api(flagger).post(`/api/sales/orders/${o.id}/lines/${lineId}/components`).send({ itemId: watch.id, quantity: 1 })).status).toBe(403);
+    expect((await api(flagger).patch(`/api/sales/orders/${o.id}/lines/${lineId}/components/${compId}`).send({ quantity: 2 })).status).toBe(403);
+    expect((await api(flagger).delete(`/api/sales/orders/${o.id}/lines/${lineId}/components/${compId}`)).status).toBe(403);
+    expect((await api(flagger).get("/api/sales/products")).status).toBe(403);
+    expect((await api(flagger).post("/api/sales/products").send({ name: "بوكس", components: [{ itemId: watch.id, quantity: 1 }] })).status).toBe(403);
+    expect((await api(flagger).patch(`/api/sales/products/${bigBox.id}`).send({ name: "تعديل" })).status).toBe(403);
+    expect((await api(flagger).delete(`/api/sales/products/${bigBox.id}`)).status).toBe(403);
+    expect((await api(flagger).get("/api/sales/closers")).status).toBe(403);
+    expect((await api(flagger).get("/api/inventory")).status).toBe(403);
+    expect((await api(flagger).post("/api/inventory").send({})).status).toBe(403);
+  });
+
+  it("الدور 2 (SALES_EDITOR): يدير الأوردرات وبنودها ومكوّناتها وينشئ منتجاً ثابتاً بلا أي مبالغ، ويُمنع من تغيير الحالة أو تعديل/حذف منتج ثابت أو إضافة مخزون", async () => {
+    // إنشاء منتج ثابت جديد مسموح وبلا أسعار في الاستجابة
+    const newProd = await api(editor).post("/api/sales/products").send({
+      name: "بوكس منفذ الأوردرات",
+      notes: "تجربة",
+      components: [
+        { itemId: watch.id, quantity: 1 },
+        { itemId: rose.id, quantity: 2 },
+      ],
+    });
+    expect(newProd.status).toBe(201);
+    assertNoMoneyLeak(newProd.body, "SALES_EDITOR POST /products");
+    const prodId = newProd.body.product.id as string;
+
+    const prodList = await api(editor).get("/api/sales/products");
+    expect(prodList.status).toBe(200);
+    assertNoMoneyLeak(prodList.body, "SALES_EDITOR GET /products");
+
+    // ممنوع تعديل أو إيقاف أو حذف منتج ثابت موجود
+    expect((await api(editor).patch(`/api/sales/products/${prodId}`).send({ name: "اسم آخر" })).status).toBe(403);
+    expect((await api(editor).patch(`/api/sales/products/${prodId}`).send({ isActive: false })).status).toBe(403);
+    expect((await api(editor).delete(`/api/sales/products/${prodId}`)).status).toBe(403);
+
+    // إضافة أوردر جديد وتعديل بياناته ونقله ليوم آخر وتعليم المرتجع
+    const created = await api(editor).post("/api/sales/orders").send({
+      date: "2026-06-20",
+      waybill: "EDT-100",
+      closerName: "سارة",
+      notes: "ملاحظة أولى",
+      lines: [{ productId: bigBox.id, quantity: 1 }],
+    });
+    expect(created.status).toBe(201);
+    assertNoMoneyLeak(created.body, "SALES_EDITOR POST /orders");
+    const orderId = created.body.order.id as string;
+
+    const patched = await api(editor).patch(`/api/sales/orders/${orderId}`).send({
+      waybill: "EDT-101",
+      closerName: "منى",
+      notes: "ملاحظة معدلة",
+      date: "2026-06-21",
+      returnFlagged: true,
+    });
+    expect(patched.status).toBe(200);
+    expect(patched.body.order.waybill).toBe("EDT-101");
+    expect(patched.body.order.date).toBe("2026-06-21");
+    expect(patched.body.order.returnFlagged).toBe(true);
+    assertNoMoneyLeak(patched.body, "SALES_EDITOR PATCH /orders/:id");
+
+    // ممنوع إرسال status أو damagedComponentIds نهائياً
+    for (const st of ["REGISTERED", "EXECUTED", "SHIPPED", "DELIVERED", "RETURNED"]) {
+      expect((await api(editor).patch(`/api/sales/orders/${orderId}`).send({ status: st })).status, `status=${st}`).toBe(403);
+      expect((await api(editor).patch(`/api/sales/orders/${orderId}`).send({ waybill: "EDT-102", status: st })).status).toBe(403);
+    }
+    expect((await api(editor).patch(`/api/sales/orders/${orderId}`).send({ damagedComponentIds: [] })).status).toBe(403);
+
+    // إضافة وتعديل وحذف البنود والمكوّنات بلا تسريب مبالغ
+    const addL = await api(editor).post(`/api/sales/orders/${orderId}/lines`).send({ productId: prodId, quantity: 2 });
+    expect(addL.status).toBe(201);
+    assertNoMoneyLeak(addL.body, "SALES_EDITOR POST line");
+    const addedLine = addL.body.order.lines.find((l: any) => l.productId === prodId);
+
+    const updL = await api(editor).patch(`/api/sales/orders/${orderId}/lines/${addedLine.id}`).send({ quantity: 3 });
+    expect(updL.status).toBe(200);
+    assertNoMoneyLeak(updL.body, "SALES_EDITOR PATCH line");
+
+    const addC = await api(editor).post(`/api/sales/orders/${orderId}/lines/${addedLine.id}/components`).send({ itemId: perfume.id, quantity: 1 });
+    expect(addC.status).toBe(201);
+    assertNoMoneyLeak(addC.body, "SALES_EDITOR POST component");
+    const addedComp = addC.body.order.lines.find((l: any) => l.id === addedLine.id).components.find((c: any) => c.itemId === perfume.id);
+
+    const updC = await api(editor).patch(`/api/sales/orders/${orderId}/lines/${addedLine.id}/components/${addedComp.id}`).send({ quantity: 4 });
+    expect(updC.status).toBe(200);
+    assertNoMoneyLeak(updC.body, "SALES_EDITOR PATCH component");
+
+    const delC = await api(editor).delete(`/api/sales/orders/${orderId}/lines/${addedLine.id}/components/${addedComp.id}`);
+    expect(delC.status).toBe(200);
+    assertNoMoneyLeak(delC.body, "SALES_EDITOR DELETE component");
+
+    const delL = await api(editor).delete(`/api/sales/orders/${orderId}/lines/${addedLine.id}`);
+    expect(delL.status).toBe(200);
+    assertNoMoneyLeak(delL.body, "SALES_EDITOR DELETE line");
+
+    // حذف الأوردر مسموح
+    expect((await api(editor).delete(`/api/sales/orders/${orderId}`)).status).toBe(200);
+
+    // قراءة الأصناف والتصنيفات لاختيار المكونات مسموحة وبلا أي سعر أو إحصاءات مالية، وكل عمليات المخزون الأخرى ← 403
+    const invForPicker = await api(editor).get("/api/inventory");
+    expect(invForPicker.status).toBe(200);
+    expect(invForPicker.body.stats).toBeUndefined();
+    assertNoMoneyLeak(invForPicker.body, "SALES_EDITOR GET /inventory");
+
+    expect((await api(editor).post("/api/inventory").send({ name: "صنف", categoryId: catId, unitPrice: 10, sellPrice: 20 })).status).toBe(403);
+    expect((await api(editor).post(`/api/inventory/${watch.id}/movements`).send({ type: "IN", quantity: 5 })).status).toBe(403);
+    expect((await api(editor).get(`/api/inventory/${watch.id}`)).status).toBe(403);
+    expect((await api(editor).get(`/api/inventory/${watch.id}/movements`)).status).toBe(403);
+    expect((await api(editor).get("/api/inventory/movements")).status).toBe(403);
+  });
+
+  it("الدور 3 (SALES_SUPERVISOR): يضيف صنفاً بسعر وسعر بيع فيُحفظان في القاعدة ويظهران للمدير ولا يظهران في أي استجابة له، ويضيف وارد IN فقط", async () => {
+    // 1. إنشاء صنف جديد مع unitPrice و sellPrice (كتابة فقط)
+    const createRes = await api(supervisor).post("/api/inventory").send({
+      name: "عطر مشرف المبيعات",
+      categoryId: catId,
+      unit: "قطعة",
+      initialQuantity: 10,
+      minQuantity: 2,
+      unitPrice: 85.5,
+      sellPrice: 140.75,
+      notes: "أضيف بواسطة مشرف المبيعات",
+    });
+    expect(createRes.status).toBe(201);
+    assertNoMoneyLeak(createRes.body, "SALES_SUPERVISOR POST /inventory");
+    const newItemId = createRes.body.item.id as string;
+
+    // التحقق من الحفظ الفعلي في قاعدة البيانات
+    const dbRow = await prisma().inventoryItem.findUniqueOrThrow({ where: { id: newItemId } });
+    expect(Number(dbRow.unitPrice)).toBe(85.5);
+    expect(Number(dbRow.sellPrice)).toBe(140.75);
+    expect(Number(dbRow.quantity)).toBe(10);
+
+    // 2. يظهران للمدير في قائمة المخزون وتفاصيل الصنف والحركات
+    const mgrDetail = await api(manager).get(`/api/inventory/${newItemId}`);
+    expect(mgrDetail.status).toBe(200);
+    expect(mgrDetail.body.item.unitPrice).toBe(85.5);
+    expect(mgrDetail.body.item.sellPrice).toBe(140.75);
+    expect(mgrDetail.body.item.totalValue).toBe(855);
+
+    // 3. لا يظهران للمشرف في أي استجابة (GET /inventory, GET /inventory/:id, POST movement IN, GET /inventory/:id/movements)
+    const supList = await api(supervisor).get("/api/inventory");
+    expect(supList.status).toBe(200);
+    assertNoMoneyLeak(supList.body, "SALES_SUPERVISOR GET /inventory");
+
+    const supDetail = await api(supervisor).get(`/api/inventory/${newItemId}`);
+    expect(supDetail.status).toBe(200);
+    assertNoMoneyLeak(supDetail.body, "SALES_SUPERVISOR GET /inventory/:id");
+
+    // 4. إضافة كمية (حركة IN) مسموحة وبلا أسعار في الاستجابة
+    const inMove = await api(supervisor).post(`/api/inventory/${newItemId}/movements`).send({
+      type: "IN",
+      quantity: 5,
+      note: "توريد إضافي",
+    });
+    expect(inMove.status).toBe(201);
+    expect(inMove.body.item.quantity).toBe(15);
+    assertNoMoneyLeak(inMove.body, "SALES_SUPERVISOR POST /inventory/:id/movements IN");
+
+    const supMoves = await api(supervisor).get(`/api/inventory/${newItemId}/movements`);
+    expect(supMoves.status).toBe(200);
+    expect(supMoves.body.movements.length).toBe(2);
+    assertNoMoneyLeak(supMoves.body, "SALES_SUPERVISOR GET /inventory/:id/movements");
+
+    // 5. منع باقي أنواع الحركات والتعديل والحذف والتقارير والسحب والتصنيفات
+    for (const badType of ["OUT", "ADJUST", "RETURN"]) {
+      const r = await api(supervisor).post(`/api/inventory/${newItemId}/movements`).send({
+        type: badType,
+        quantity: 1,
+        reason: "تجربة",
+        note: "ممنوع",
+      });
+      expect(r.status, `movement type=${badType}`).toBe(403);
+    }
+    expect((await api(supervisor).patch(`/api/inventory/${newItemId}`).send({ name: "تعديل ممنوع" })).status).toBe(403);
+    expect((await api(supervisor).patch(`/api/inventory/${newItemId}`).send({ isActive: false })).status).toBe(403);
+    expect((await api(supervisor).delete(`/api/inventory/${newItemId}`)).status).toBe(403);
+    expect((await api(supervisor).get("/api/inventory/movements")).status).toBe(403);
+    expect((await api(supervisor).get("/api/inventory/groups")).status).toBe(403);
+    expect((await api(supervisor).post("/api/inventory/categories").send({ name: "تصنيف", groupId: "invgrp_materials" })).status).toBe(403);
+    expect((await api(supervisor).patch(`/api/inventory/categories/${catId}`).send({ name: "تعديل" })).status).toBe(403);
+    expect((await api(supervisor).delete(`/api/inventory/categories/${catId}`)).status).toBe(403);
+    expect((await api(supervisor).get("/api/inventory/withdrawals")).status).toBe(403);
+    expect((await api(supervisor).post("/api/inventory/withdrawals").send({ lines: [{ itemId: newItemId, quantity: 1 }], note: "x" })).status).toBe(403);
+
+    // 6. وفي المبيعات: يتمتع بصلاحيات الدور 2 مع منع تغيير الحالة أو تعديل/حذف المنتجات الثابتة وعدم تسريب أي مبالغ
+    const supOrders = await api(supervisor).get("/api/sales/orders?date=2026-06-15");
+    expect(supOrders.status).toBe(200);
+    assertNoMoneyLeak(supOrders.body, "SALES_SUPERVISOR GET /sales/orders");
+    const someOrderId = supOrders.body.orders[0].id;
+    expect((await api(supervisor).patch(`/api/sales/orders/${someOrderId}`).send({ status: "EXECUTED" })).status).toBe(403);
+    expect((await api(supervisor).patch(`/api/sales/products/${bigBox.id}`).send({ name: "x" })).status).toBe(403);
+    expect((await api(supervisor).delete(`/api/sales/products/${bigBox.id}`)).status).toBe(403);
+  });
+});
+

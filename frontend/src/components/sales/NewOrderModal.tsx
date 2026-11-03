@@ -32,8 +32,8 @@ export function NewOrderModal({ open, onClose, date, products, closers, onSubmit
     let sell = 0;
     for (const p of chosen) {
       const n = counts[p.id] ?? 0;
-      cost += Math.round(p.costPerUnit * 100) * n;
-      sell += Math.round(p.sellPerUnit * 100) * n;
+      cost += Math.round((p.costPerUnit ?? 0) * 100) * n;
+      sell += Math.round((p.sellPerUnit ?? 0) * 100) * n;
     }
     return { cost: cost / 100, sell: sell / 100 };
   }, [chosen, counts]);
@@ -80,7 +80,7 @@ export function NewOrderModal({ open, onClose, date, products, closers, onSubmit
                     <span className="mt-1 block text-[11px] leading-5 text-muted">{p.components.map((c) => `${c.itemName} × ${fmtQty(c.quantity)}`).join(" · ")}</span>
                     {!hideMoney && (
                       <span className="mt-1 block text-xs text-muted">
-                        {fmtMoney(p.costPerUnit)} ← <strong className="text-text">{fmtMoney(p.sellPerUnit)}</strong>
+                        {fmtMoney(p.costPerUnit ?? 0)} ← <strong className="text-text">{fmtMoney(p.sellPerUnit ?? 0)}</strong>
                       </span>
                     )}
                   </button>

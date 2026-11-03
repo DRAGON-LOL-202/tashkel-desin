@@ -2,10 +2,17 @@ import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import type { Prisma } from "../generated/prisma/client.ts";
 import { prisma } from "../db.js";
-import { isStaff, requireAuth, requireStaff } from "../middleware/auth.js";
+import { isStaff, requireAuth, requireRole, requireStaff } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { badRequest, conflict, forbidden, notFound } from "../utils/httpError.js";
-import { allowedCategoryIds, effectiveInventoryAccess, isRestrictedRole, isWithdrawOnlyAllowed } from "../utils/inventoryAccess.js";
+import {
+  allowedCategoryIds,
+  effectiveInventoryAccess,
+  isRestrictedRole,
+  isSalesInventoryAllowed,
+  isSalesRole,
+  isWithdrawOnlyAllowed,
+} from "../utils/inventoryAccess.js";
 import {
   computeInventoryStats,
   inventoryItemInclude,
@@ -15,6 +22,7 @@ import {
   serializeInventoryCategory,
   serializeInventoryItem,
   serializeInventoryMovement,
+  stripInventoryStatsPrices,
 } from "../utils/inventorySerialize.js";
 import { assertAttachmentsAllowed, deleteStoredObjects } from "../utils/attachments.js";
 import { keysOf, removedKeys } from "../utils/attachmentKeys.ts";
@@ -43,13 +51,21 @@ inventoryRouter.use(requireAuth);
 
 // بوابة مستوى الوصول: بلا وصول ← 403 على كل شيء؛ السحب فقط ← القائمة البيضاء (GET / و/categories و/withdrawals وPOST /withdrawals).
 inventoryRouter.use((req, _res, next) => {
+  if (isSalesRole(req.user!)) {
+    if (!isSalesInventoryAllowed(req.user!.role, req.method, req.path, req.body)) {
+      return next(forbidden("ليس لديك صلاحية الوصول للمخزون"));
+    }
+    return next();
+  }
   const level = effectiveInventoryAccess(req.user!);
   if (level === "NONE") return next(forbidden("ليس لديك صلاحية الوصول للمخزون"));
   if (level === "WITHDRAW" && !isWithdrawOnlyAllowed(req.method, req.path)) return next(forbidden());
   next();
 });
 
+const requireStaffOrSupervisor = requireRole("ADMIN", "MANAGER", "SALES_SUPERVISOR");
 const isWithdrawOnly = (u: Parameters<typeof effectiveInventoryAccess>[0]) => effectiveInventoryAccess(u) === "WITHDRAW";
+const shouldHideInventoryPrices = (u: Parameters<typeof isSalesRole>[0]) => isSalesRole(u);
 /** التصنيفات المسموحة لتعبئة/مشغل؛ null = بلا قيد تصنيفات (إدارة أو مصمم) */
 const categoryScope = (u: Parameters<typeof isRestrictedRole>[0] & { id: string }) => (isRestrictedRole(u) ? allowedCategoryIds(u.id) : Promise.resolve(null));
 
@@ -103,9 +119,17 @@ async function generateNextSku(tx: Pick<Prisma.TransactionClient, "inventoryItem
   }
 }
 
-/** حركة بلا لقطة سعر ولا قيمة (لمن يملك «السحب فقط») */
+/** حركة بلا لقطة سعر ولا قيمة (لمن يملك «السحب فقط» أو أدوار المبيعات) */
 function stripMovementPrices<T extends { unitPriceSnapshot: number; movementValue: number }>(m: T): Omit<T, "unitPriceSnapshot" | "movementValue"> {
   const { unitPriceSnapshot: _p, movementValue: _v, ...rest } = m;
+  return rest;
+}
+
+/** صنف بلا أسعار ولا إجمالي قيمة (لأدوار المبيعات) */
+function stripItemPrices<T extends { unitPrice: number; sellPrice: number; totalValue: number }>(
+  item: T
+): Omit<T, "unitPrice" | "sellPrice" | "totalValue"> {
+  const { unitPrice: _p, sellPrice: _s, totalValue: _v, ...rest } = item;
   return rest;
 }
 
@@ -138,15 +162,17 @@ inventoryRouter.get(
     const sortDir = req.query.sortDir === "desc" ? -1 : 1;
 
     const withdrawOnly = isWithdrawOnly(req.user!);
+    const hidePrices = shouldHideInventoryPrices(req.user!);
+    const editorPickerOnly = req.user!.role === "SALES_EDITOR";
     const scope = await categoryScope(req.user!);
     const [allItems, todayMovementsCount] = await Promise.all([
       prisma().inventoryItem.findMany({
-        // «السحب فقط»: المفعّلة فقط، ولتعبئة/مشغل تصنيفاتهما فقط (بلا تصنيفات ← لا أصناف)
-        where: withdrawOnly ? { isActive: true, ...(scope ? { categoryId: { in: scope } } : {}) } : undefined,
+        // «السحب فقط» أو منفّذ الأوردرات: المفعّلة فقط، ولتعبئة/مشغل تصنيفاتهما فقط (بلا تصنيفات ← لا أصناف)
+        where: withdrawOnly || editorPickerOnly ? { isActive: true, ...(scope ? { categoryId: { in: scope } } : {}) } : undefined,
         include: inventoryItemInclude,
         orderBy: [{ name: "asc" }, { id: "asc" }],
       }),
-      withdrawOnly
+      withdrawOnly || editorPickerOnly
         ? Promise.resolve(0)
         : prisma().inventoryMovement.count({
             where: { createdAt: { gte: startOfTodayUtc() } },
@@ -154,10 +180,10 @@ inventoryRouter.get(
     ]);
 
     const allSerialized = allItems.map(serializeInventoryItem);
-    // إحصاءات القيمة والإجمالي لا تُحسب ولا تُرسل لمن يملك «السحب فقط»
-    const stats = withdrawOnly ? undefined : computeInventoryStats(allSerialized, todayMovementsCount);
+    // إحصاءات القيمة والإجمالي لا تُحسب ولا تُرسل لمن يملك «السحب فقط» أو منفّذ الأوردرات
+    const rawStats = withdrawOnly || editorPickerOnly ? undefined : computeInventoryStats(allSerialized, todayMovementsCount);
 
-    let rows = allSerialized.filter((i) => (includeInactive && !withdrawOnly ? true : i.isActive));
+    let rows = allSerialized.filter((i) => (includeInactive && !withdrawOnly && ! hidePrices ? true : i.isActive));
     if (categoryId) rows = rows.filter((i) => i.categoryId === categoryId);
     if (q) {
       const ql = q.toLowerCase();
@@ -172,7 +198,7 @@ inventoryRouter.get(
 
     if (sortBy === "quantity") {
       rows.sort((a, b) => (a.quantity - b.quantity) * sortDir || a.name.localeCompare(b.name, "ar"));
-    } else if (sortBy === "value" && !withdrawOnly) {
+    } else if (sortBy === "value" && !withdrawOnly && !hidePrices) {
       rows.sort((a, b) => (a.totalValue - b.totalValue) * sortDir || a.name.localeCompare(b.name, "ar"));
     } else if (sortBy === "name" && sortDir === -1) {
       rows.reverse();
@@ -183,14 +209,21 @@ inventoryRouter.get(
       res.json({ items: rows.map(({ unitPrice: _p, sellPrice: _s, totalValue: _v, suggestedReorderQty: _r, ...rest }) => rest) });
       return;
     }
-    res.json({ items: rows, stats });
+    if (hidePrices) {
+      res.json({
+        items: rows.map(stripItemPrices),
+        ...(rawStats ? { stats: stripInventoryStatsPrices(rawStats) } : {}),
+      });
+      return;
+    }
+    res.json({ items: rows, stats: rawStats });
   })
 );
 
 // ===== توليد كود منتج تلقائي =====
 inventoryRouter.get(
   "/next-sku",
-  requireStaff,
+  requireStaffOrSupervisor,
   asyncHandler(async (_req, res) => {
     const sku = await generateNextSku();
     res.json({ sku });
@@ -490,7 +523,8 @@ inventoryRouter.get(
   "/:id",
   asyncHandler(async (req, res) => {
     const item = await getItem(req.params.id);
-    res.json({ item: serializeInventoryItem(item) });
+    const serialized = serializeInventoryItem(item);
+    res.json({ item: shouldHideInventoryPrices(req.user!) ? stripItemPrices(serialized) : serialized });
   })
 );
 
@@ -507,14 +541,15 @@ inventoryRouter.get(
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: limit,
     });
-    res.json({ movements: rows.map(serializeInventoryMovement) });
+    const out = rows.map(serializeInventoryMovement);
+    res.json({ movements: shouldHideInventoryPrices(req.user!) ? out.map(stripMovementPrices) : out });
   })
 );
 
 // ===== إنشاء عنصر =====
 inventoryRouter.post(
   "/",
-  requireStaff,
+  requireStaffOrSupervisor,
   asyncHandler(async (req, res) => {
     const body = createItemSchema.parse(req.body);
     await assertCategoryExists(body.categoryId);
@@ -570,7 +605,8 @@ inventoryRouter.post(
         ]);
       }
 
-      res.status(201).json({ item: serializeInventoryItem(created) });
+      const serialized = serializeInventoryItem(created);
+      res.status(201).json({ item: shouldHideInventoryPrices(req.user!) ? stripItemPrices(serialized) : serialized });
     } catch (e) {
       if (isUniqueViolation(e)) throw conflict("كود المنتج مستخدم مسبقاً");
       throw e;
@@ -635,10 +671,16 @@ inventoryRouter.patch(
 // فلا يضيع تحديث ولا يهبط الرصيد تحت الصفر (يمنعه فحص هنا + قيد CHECK في قاعدة البيانات).
 inventoryRouter.post(
   "/:id/movements",
-  requireStaff,
+  requireStaffOrSupervisor,
   asyncHandler(async (req, res) => {
+    if (req.user!.role === "SALES_SUPERVISOR") {
+      if (typeof req.body !== "object" || req.body === null || (req.body as Record<string, unknown>).type !== "IN") {
+        throw forbidden();
+      }
+    }
     const itemId = idOf(req.params.id);
     const body = createMovementSchema.parse(req.body);
+    if (req.user!.role === "SALES_SUPERVISOR" && body.type !== "IN") throw forbidden();
     const userId = req.user!.id;
 
     const result = await prisma().$transaction(async (tx) => {
@@ -693,7 +735,13 @@ inventoryRouter.post(
     });
 
     await handleLowStockTransition([result.transition]);
-    res.status(201).json({ item: serializeInventoryItem(result.item), movement: serializeInventoryMovement(result.movement) });
+    const hideMoney = shouldHideInventoryPrices(req.user!);
+    const serializedItem = serializeInventoryItem(result.item);
+    const serializedMovement = serializeInventoryMovement(result.movement);
+    res.status(201).json({
+      item: hideMoney ? stripItemPrices(serializedItem) : serializedItem,
+      movement: hideMoney ? stripMovementPrices(serializedMovement) : serializedMovement,
+    });
   })
 );
 

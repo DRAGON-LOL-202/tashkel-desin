@@ -14,6 +14,7 @@ import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { EmptyState } from "../components/ui/EmptyState";
 import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { useToast } from "../components/ui/ToastProvider";
+import { usePermissions } from "../hooks/usePermissions";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
 import { downloadSalesDaily, downloadSalesMonthly } from "../lib/exportSales";
@@ -32,6 +33,9 @@ const NO_ORDERS: SalesOrder[] = [];
 const NO_PAYLOAD: OrdersPayload = { key: "", orders: NO_ORDERS };
 const NO_PRODUCTS: SalesProduct[] = [];
 const NO_STRINGS: string[] = [];
+const loadNoProducts = async () => NO_PRODUCTS;
+const loadNoClosers = async () => NO_STRINGS;
+const loadNoStock = async () => EMPTY_INVENTORY_DATA;
 
 // المبيعات الإلكترونية: أوردرات يومية (بوليصة + مقفل + منتجات ثابتة بمحتوياتها من المخزون).
 // التنفيذ يخصم المكونات من المخزون تلقائياً، والمرتجع يعيدها. التكلفة وسعر البيع يُحسبان من بيانات المخزون.
@@ -51,6 +55,7 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
 
   const { show } = useToast();
   const run = useSafeAction();
+  const { isStaff, canFlagReturn, canEditSalesOrders, canChangeSalesOrderStatus, canManageSalesProducts } = usePermissions();
 
   useEffect(() => {
     const t = setTimeout(() => setQ(searchInput.trim()), 300);
@@ -60,13 +65,21 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
   const key = q ? `q:${q}` : `d:${date}`;
   const ordersLoader = useCallback(async (): Promise<OrdersPayload> => ({ key, orders: q ? await salesService.searchOrders(q) : await salesService.listOrders(date) }), [key, q, date]);
   const orders = useResource<OrdersPayload>(ordersLoader, NO_PAYLOAD);
-  const products = useResource<SalesProduct[]>(salesService.listProducts, NO_PRODUCTS);
-  const closers = useResource<string[]>(salesService.closers, NO_STRINGS);
-  const stock = useResource<InventoryData>(inventoryService.list, EMPTY_INVENTORY_DATA);
+  const products = useResource<SalesProduct[]>(canEditSalesOrders ? salesService.listProducts : loadNoProducts, NO_PRODUCTS);
+  const closers = useResource<string[]>(canEditSalesOrders ? salesService.closers : loadNoClosers, NO_STRINGS);
+  const stockLoader = useMemo(
+    () => (!canEditSalesOrders ? loadNoStock : isStaff ? () => inventoryService.list() : inventoryService.listForSalesPicker),
+    [canEditSalesOrders, isStaff]
+  );
+  const stock = useResource<InventoryData>(stockLoader, EMPTY_INVENTORY_DATA);
 
   const refresh = useCallback(async () => {
+    if (!canEditSalesOrders) {
+      await orders.reload();
+      return;
+    }
     await Promise.all([orders.reload(), products.reload(), closers.reload(), stock.reload()]);
-  }, [orders, products, closers, stock]);
+  }, [canEditSalesOrders, orders, products, closers, stock]);
 
   const stale = orders.data.key !== key;
   const dayOrders = useMemo(() => (stale ? NO_ORDERS : orders.data.orders), [stale, orders.data.orders]);
@@ -82,8 +95,8 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
     for (const o of dayOrders) {
       if (o.status === "RETURNED") continue;
       count += 1;
-      cost += Math.round(o.costTotal * 100);
-      sell += Math.round(o.sellTotal * 100);
+      cost += Math.round((o.costTotal ?? 0) * 100);
+      sell += Math.round((o.sellTotal ?? 0) * 100);
     }
     return { count, cost: cost / 100, sell: sell / 100, profit: (sell - cost) / 100 };
   }, [dayOrders]);
@@ -93,9 +106,10 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
     let cents = 0;
     let orders = 0;
     for (const o of dayOrders) {
-      if (o.status !== "RETURNED" || o.damagedTotal <= 0) continue;
+      const dmg = o.damagedTotal ?? 0;
+      if (o.status !== "RETURNED" || dmg <= 0) continue;
       orders += 1;
-      cents += Math.round(o.damagedTotal * 100);
+      cents += Math.round(dmg * 100);
     }
     return { total: cents / 100, orders };
   }, [dayOrders]);
@@ -229,9 +243,11 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
           description="أوردرات يومية من منتجات ثابتة، ويُخصم المخزون تلقائياً عند التنفيذ"
           onOpenMobileNav={openMobileNav}
           action={
-            <Button size="sm" variant="secondary" icon={<Boxes size={15} />} onClick={() => setProductsOpen(true)}>
-              <span className="hidden sm:inline">المنتجات الثابتة</span>
-            </Button>
+            canEditSalesOrders ? (
+              <Button size="sm" variant="secondary" icon={<Boxes size={15} />} onClick={() => setProductsOpen(true)}>
+                <span className="hidden sm:inline">المنتجات الثابتة</span>
+              </Button>
+            ) : undefined
           }
         />
       )}
@@ -257,6 +273,7 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
           )}
 
           {/* إضافة سريعة: اضغط على المنتج فيُضاف أوردر جديد بمحتوياته */}
+          {canEditSalesOrders && (
           <section className="pp-panel flex flex-col gap-3 p-4" aria-label="إضافة أوردر">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="flex items-center gap-2 text-base font-bold text-text">
@@ -281,12 +298,16 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
                     <button type="button" onClick={() => quickAdd(p)} className="task-btn task-btn--secondary" title={p.components.map((c) => c.itemName).join("، ")}>
                       <Plus size={14} /> {p.name}
                     </button>
-                    <button type="button" onClick={() => setEditor({ editing: p })} aria-label={`تعديل ${p.name}`} title="تعديل المنتج الثابت" className="task-icon-btn !h-8 !w-8">
-                      <Pencil size={14} />
-                    </button>
-                    <button type="button" onClick={() => setDeletingProduct(p)} aria-label={`حذف ${p.name}`} title="حذف المنتج الثابت" className="task-icon-btn task-icon-btn--danger !h-8 !w-8">
-                      <Trash2 size={14} />
-                    </button>
+                    {canManageSalesProducts && (
+                      <>
+                        <button type="button" onClick={() => setEditor({ editing: p })} aria-label={`تعديل ${p.name}`} title="تعديل المنتج الثابت" className="task-icon-btn !h-8 !w-8">
+                          <Pencil size={14} />
+                        </button>
+                        <button type="button" onClick={() => setDeletingProduct(p)} aria-label={`حذف ${p.name}`} title="حذف المنتج الثابت" className="task-icon-btn task-icon-btn--danger !h-8 !w-8">
+                          <Trash2 size={14} />
+                        </button>
+                      </>
+                    )}
                   </div>
                 ))}
                 <button type="button" onClick={() => setEditor({ editing: null })} className="task-btn task-btn--ghost">
@@ -295,6 +316,7 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
               </div>
             )}
           </section>
+          )}
 
           {/* ملخص اليوم */}
           {!searching && (
@@ -404,6 +426,9 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
                   onSetComponentQty={setComponentQty}
                   onRemoveComponent={removeComponent}
                   hideMoney={ordersOnly}
+                  canFlagReturn={canFlagReturn}
+                  canEditOrder={canEditSalesOrders}
+                  canChangeStatus={canChangeSalesOrderStatus}
                 />
               ))}
             </div>
@@ -411,18 +436,21 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
         </div>
       )}
 
-      {newOrderOpen && <NewOrderModal open onClose={() => setNewOrderOpen(false)} date={date} products={products.data} closers={closers.data} onSubmit={createOrder} hideMoney={ordersOnly} />}
+      {newOrderOpen && canEditSalesOrders && <NewOrderModal open onClose={() => setNewOrderOpen(false)} date={date} products={products.data} closers={closers.data} onSubmit={createOrder} hideMoney={ordersOnly} />}
 
-      <SalesProductsModal
-        hideMoney={ordersOnly}
-        open={productsOpen}
-        onClose={() => setProductsOpen(false)}
-        products={products.data}
-        onCreate={() => setEditor({ editing: null })}
-        onEdit={(p) => setEditor({ editing: p })}
-        onToggleActive={(p) => void toggleProduct(p)}
-        onDelete={setDeletingProduct}
-      />
+      {canEditSalesOrders && (
+        <SalesProductsModal
+          hideMoney={ordersOnly}
+          canManageProducts={canManageSalesProducts}
+          open={productsOpen}
+          onClose={() => setProductsOpen(false)}
+          products={products.data}
+          onCreate={() => setEditor({ editing: null })}
+          onEdit={(p) => setEditor({ editing: p })}
+          onToggleActive={(p) => void toggleProduct(p)}
+          onDelete={setDeletingProduct}
+        />
+      )}
 
       {editor && <ProductEditorModal key={editor.editing?.id ?? "new"} open onClose={() => setEditor(null)} editing={editor.editing} items={activeItems} categories={stock.data.categories} onSubmit={submitProduct} hideMoney={ordersOnly} />}
 

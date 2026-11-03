@@ -36,6 +36,12 @@ interface SalesOrderCardProps {
   onRemoveComponent: (order: SalesOrder, lineId: string, componentId: string) => Promise<void>;
   /** صفحة الأوردرات: لا تكلفة ولا سعر بيع ولا ربح ولا تالف بالمبالغ */
   hideMoney?: boolean;
+  /** صلاحية زر علامة «مرتجع» */
+  canFlagReturn?: boolean;
+  /** صلاحية تعديل بيانات الأوردر ومحتوياته ونقله وحذفه */
+  canEditOrder?: boolean;
+  /** صلاحية تغيير حالة الأوردر (تنفيذ/شحن/تسليم/مرتجع فعلي) */
+  canChangeStatus?: boolean;
 }
 
 // أيقونة كل حالة على زر الحالة
@@ -53,7 +59,7 @@ const GREEN_SHADOW = "0 10px 18px -10px rgba(10, 90, 51, 0.7)";
 const PREVIEW_CHIPS = 3;
 
 // كرت أوردر: رقم وحالة ومن أضافه، ثم رقم البوليصة والمقفل، شريط المنتجات، التكلفة وسعر البيع والربح، وأزرار الحالة.
-export function SalesOrderCard({ order, index, showDate, products, closers, onPatch, onStatus, onReturn, onMove, onDelete, onAddLine, onSetLineQty, onRemoveLine, items, onAddComponent, onSetComponentQty, onRemoveComponent, hideMoney }: SalesOrderCardProps) {
+export function SalesOrderCard({ order, index, showDate, products, closers, onPatch, onStatus, onReturn, onMove, onDelete, onAddLine, onSetLineQty, onRemoveLine, items, onAddComponent, onSetComponentQty, onRemoveComponent, hideMoney, canFlagReturn = true, canEditOrder = true, canChangeStatus = true }: SalesOrderCardProps) {
   const meta = SALES_STATUS_META[order.status];
   const [waybill, setWaybill] = useState(order.waybill);
   const [closer, setCloser] = useState(order.closerName);
@@ -96,10 +102,11 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
     });
   };
 
-  const editable = order.status === "REGISTERED" && !order.stockDeducted;
+  const editable = canEditOrder && order.status === "REGISTERED" && !order.stockDeducted;
   const activeProducts = products.filter((p) => p.isActive && p.components.length > 0);
   const shortItems = new Set(order.shortages.map((s) => s.itemId));
-  const profitNegative = order.profit < 0;
+  const profitVal = order.profit ?? 0;
+  const profitNegative = profitVal < 0;
 
   // شرائح المكونات المجمّعة من كل البنود (للشريط المختصر)
   const allChips = order.lines.flatMap((line) => line.components.map((c) => ({ key: `${line.id}-${c.id}`, name: c.itemName, qty: c.quantity * line.quantity, damaged: c.damaged })));
@@ -134,7 +141,7 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
             {formatArabicDate(order.date, "d MMMM yyyy")}
           </span>
         )}
-        {order.status !== "RETURNED" && (
+        {canFlagReturn && order.status !== "RETURNED" && (
           <button
             type="button"
             disabled={busy}
@@ -149,15 +156,17 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
             {order.returnFlagged ? "إلغاء المرتجع" : "مرتجع"}
           </button>
         )}
-        <button
-          type="button"
-          onClick={() => setMoving(true)}
-          title="نقل الأوردر إلى يوم آخر"
-          className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background/60 px-3 text-xs font-semibold text-text transition-colors hover:border-primary-deep"
-        >
-          <CalendarDays size={16} className="text-primary-deep" />
-          نقل ليوم
-        </button>
+        {canEditOrder && (
+          <button
+            type="button"
+            onClick={() => setMoving(true)}
+            title="نقل الأوردر إلى يوم آخر"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background/60 px-3 text-xs font-semibold text-text transition-colors hover:border-primary-deep"
+          >
+            <CalendarDays size={16} className="text-primary-deep" />
+            نقل ليوم
+          </button>
+        )}
         <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background/60 px-3 text-xs font-medium text-text">
           <User size={16} className="text-[#2a3f7a]" />
           أضافه: {order.createdByName}
@@ -167,7 +176,11 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
       {order.returnFlagged && order.status !== "RETURNED" && (
         <div className="flex items-center gap-2 rounded-xl border border-problem/40 bg-problem/10 px-3 py-1.5 text-xs text-problem" role="status">
           <Flag size={14} className="shrink-0 fill-current" />
-          <span className="font-semibold">أوردر مرتجع بانتظار المراجعة — راجعه ثم اضغط «مرتجع» في الحالات أسفل الكارت لتسجيله (لم يُعَد شيء للمخزون).</span>
+          <span className="font-semibold">
+            {canChangeStatus
+              ? "أوردر مرتجع بانتظار المراجعة — راجعه ثم اضغط «مرتجع» في الحالات أسفل الكارت لتسجيله (لم يُعَد شيء للمخزون)."
+              : "أوردر مرتجع بانتظار المراجعة (لم يُعَد شيء للمخزون)."}
+          </span>
         </div>
       )}
 
@@ -179,10 +192,11 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
           </span>
           <input
             value={waybill}
-            onChange={(e) => setWaybill(e.target.value)}
-            onBlur={() => saveField("waybill", waybill, order.waybill, setWaybill)}
+            readOnly={!canEditOrder}
+            onChange={(e) => canEditOrder && setWaybill(e.target.value)}
+            onBlur={() => canEditOrder && saveField("waybill", waybill, order.waybill, setWaybill)}
             onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-            placeholder="أدخل رقم البوليصة"
+            placeholder={canEditOrder ? "أدخل رقم البوليصة" : "—"}
             maxLength={60}
             className="w-full min-w-0 bg-transparent text-sm font-bold text-text outline-none placeholder:text-text/70"
           />
@@ -193,19 +207,22 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
           </span>
           <input
             value={closer}
-            onChange={(e) => setCloser(e.target.value)}
-            onBlur={() => saveField("closerName", closer, order.closerName, setCloser)}
+            readOnly={!canEditOrder}
+            onChange={(e) => canEditOrder && setCloser(e.target.value)}
+            onBlur={() => canEditOrder && saveField("closerName", closer, order.closerName, setCloser)}
             onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-            placeholder="من أغلق الأوردر؟"
+            placeholder={canEditOrder ? "من أغلق الأوردر؟" : "—"}
             maxLength={80}
-            list={`closers-${order.id}`}
+            list={canEditOrder ? `closers-${order.id}` : undefined}
             className="w-full min-w-0 bg-transparent text-sm font-bold text-text outline-none placeholder:text-text/70"
           />
-          <datalist id={`closers-${order.id}`}>
-            {closers.map((c) => (
-              <option key={c} value={c} />
-            ))}
-          </datalist>
+          {canEditOrder && (
+            <datalist id={`closers-${order.id}`}>
+              {closers.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
+          )}
         </label>
       </div>
 
@@ -273,7 +290,7 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
                     <span className="mr-auto" />
                   ) : (
                     <span className="mr-auto text-xs text-muted">
-                      {fmtMoney(line.totalCost)} ← <strong className="text-text">{fmtMoney(line.totalSell)}</strong>
+                      {fmtMoney(line.totalCost ?? 0)} ← <strong className="text-text">{fmtMoney(line.totalSell ?? 0)}</strong>
                     </span>
                   )}
                   {editable && order.lines.length > 1 && (
@@ -350,74 +367,79 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
           <span className="flex items-center gap-1.5 text-xs font-medium text-muted">
             <Coins size={14} className="text-amber-500" /> سعر التكلفة
           </span>
-          <span className="text-base font-extrabold text-text">{fmtMoney(order.costTotal)}</span>
+          <span className="text-base font-extrabold text-text">{fmtMoney(order.costTotal ?? 0)}</span>
         </div>
         <div className="flex flex-col items-center border-s border-border">
           <span className="flex items-center gap-1.5 text-xs font-medium text-muted">
             <Tag size={14} className="fill-[#1E8E5A] text-[#1E8E5A]" /> سعر البيع
           </span>
-          <span className="text-base font-extrabold text-[#1E8E5A]">{fmtMoney(order.sellTotal)}</span>
+          <span className="text-base font-extrabold text-[#1E8E5A]">{fmtMoney(order.sellTotal ?? 0)}</span>
         </div>
         <div className="flex flex-col items-center border-s border-border">
           <span className="flex items-center gap-1.5 text-xs font-medium text-muted">
             {profitNegative ? <TrendingDown size={14} className="text-[#D64545]" /> : <TrendingUp size={14} className="text-[#1E8E5A]" />} الربح
           </span>
-          <span className={`text-base font-extrabold ${profitNegative ? "text-[#D64545]" : "text-[#1E8E5A]"}`}>{fmtMoney(order.profit)}</span>
+          <span className={`text-base font-extrabold ${profitNegative ? "text-[#D64545]" : "text-[#1E8E5A]"}`}>{fmtMoney(profitVal)}</span>
         </div>
       </div>
       )}
 
       {/* الحالة + زر المزيد (ملاحظات / حذف) */}
-      <div className="flex flex-wrap items-center gap-1" role="group" aria-label="حالة الأوردر">
-        <button
-          type="button"
-          onClick={() => setMore((v) => !v)}
-          aria-expanded={more}
-          aria-label="المزيد"
-          title="ملاحظات وحذف"
-          className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background/60 text-text transition-colors hover:border-primary-deep"
-        >
-          <ChevronDown size={16} className={`transition-transform ${more ? "rotate-180" : ""}`} />
-        </button>
-        {SALES_STATUS_ORDER.map((s) => {
-          const m = SALES_STATUS_META[s];
-          const active = s === order.status;
-          return (
+      {(canChangeStatus || canEditOrder) && (
+        <div className="flex flex-wrap items-center gap-1" role="group" aria-label="حالة الأوردر">
+          {canEditOrder && (
             <button
-              key={s}
               type="button"
-              disabled={busy}
-              aria-pressed={active}
-              title={m.hint}
-              onClick={() => {
-                if (active) return;
-                // مرتجع لأوردر خُصمت مكوناته: تُفتح نافذة المحتويات لتحديد التالف
-                if (s === "RETURNED" && order.stockDeducted) setReturning(true);
-                else void act(() => onStatus(order, s));
-              }}
-              className={`inline-flex items-center gap-1.5 rounded-full font-semibold transition-colors disabled:opacity-60 ${
-                active ? "me-auto h-8 px-3.5 text-sm font-bold text-white" : "h-8 border border-border bg-background/60 px-2.5 text-xs text-text hover:border-primary-deep"
-              }`}
-              style={active ? { background: GREEN_FILL, boxShadow: GREEN_SHADOW } : undefined}
+              onClick={() => setMore((v) => !v)}
+              aria-expanded={more}
+              aria-label="المزيد"
+              title="ملاحظات وحذف"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background/60 text-text transition-colors hover:border-primary-deep"
             >
-              {!active && STATUS_ICON[s]}
-              {m.label}
-              {active && STATUS_ICON[s]}
+              <ChevronDown size={16} className={`transition-transform ${more ? "rotate-180" : ""}`} />
             </button>
-          );
-        })}
-      </div>
+          )}
+          {canChangeStatus &&
+            SALES_STATUS_ORDER.map((s) => {
+              const m = SALES_STATUS_META[s];
+              const active = s === order.status;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  disabled={busy}
+                  aria-pressed={active}
+                  title={m.hint}
+                  onClick={() => {
+                    if (active) return;
+                    // مرتجع لأوردر خُصمت مكوناته: تُفتح نافذة المحتويات لتحديد التالف
+                    if (s === "RETURNED" && order.stockDeducted) setReturning(true);
+                    else void act(() => onStatus(order, s));
+                  }}
+                  className={`inline-flex items-center gap-1.5 rounded-full font-semibold transition-colors disabled:opacity-60 ${
+                    active ? "me-auto h-8 px-3.5 text-sm font-bold text-white" : "h-8 border border-border bg-background/60 px-2.5 text-xs text-text hover:border-primary-deep"
+                  }`}
+                  style={active ? { background: GREEN_FILL, boxShadow: GREEN_SHADOW } : undefined}
+                >
+                  {!active && STATUS_ICON[s]}
+                  {m.label}
+                  {active && STATUS_ICON[s]}
+                </button>
+              );
+            })}
+        </div>
+      )}
 
-      {!hideMoney && order.status === "RETURNED" && order.damagedTotal > 0 && (
+      {!hideMoney && order.status === "RETURNED" && (order.damagedTotal ?? 0) > 0 && (
         <div className="flex items-center justify-between gap-2 rounded-xl border border-problem/40 bg-problem/10 px-3 py-1.5 text-xs text-problem" role="status">
           <span className="flex items-center gap-1.5 font-semibold">
             <AlertTriangle size={14} /> تالف في هذا المرتجع
           </span>
-          <strong>{fmtMoney(order.damagedTotal)}</strong>
+          <strong>{fmtMoney(order.damagedTotal ?? 0)}</strong>
         </div>
       )}
 
-      {moving && <MoveOrderModal open order={order} onClose={() => setMoving(false)} onConfirm={(d) => onMove(order, d)} />}
+      {moving && canEditOrder && <MoveOrderModal open order={order} onClose={() => setMoving(false)} onConfirm={(d) => onMove(order, d)} />}
 
       {editing && editable && (
         <OrderEditModal
@@ -438,9 +460,13 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
         />
       )}
 
-      {returning && <ReturnOrderModal open order={order} hideMoney={hideMoney} onClose={() => setReturning(false)} onConfirm={(ids) => onReturn(order, ids)} />}
+      {returning && canChangeStatus && <ReturnOrderModal open order={order} hideMoney={hideMoney} onClose={() => setReturning(false)} onConfirm={(ids) => onReturn(order, ids)} />}
 
-      {more && (
+      {!canEditOrder && order.notes && (
+        <p className="rounded-control border border-border/60 bg-background/40 px-3 py-1.5 text-xs text-muted">{order.notes}</p>
+      )}
+
+      {more && canEditOrder && (
         <div className="flex flex-wrap items-center gap-2">
           <input
             value={notes}

@@ -37,14 +37,14 @@ function totalsOf(orders: SalesOrder[]): Totals {
   let count = 0;
   let returned = 0;
   for (const o of orders) {
-    damaged += cents(o.damagedTotal);
+    damaged += cents(o.damagedTotal ?? 0);
     if (o.status === "RETURNED") {
       returned += 1;
       continue;
     }
     count += 1;
-    cost += cents(o.costTotal);
-    sell += cents(o.sellTotal);
+    cost += cents(o.costTotal ?? 0);
+    sell += cents(o.sellTotal ?? 0);
   }
   return { count, returned, cost: cost / 100, sell: sell / 100, damaged: damaged / 100 };
 }
@@ -68,10 +68,10 @@ function ordersSheet(title: string, subtitle: string, orders: SalesOrder[]): Xls
       { v: o.createdByName, s: "center" },
       { v: SALES_STATUS_META[o.status].label, s: "center" },
       { v: productsText(o), s: "boldText" },
-      { v: o.costTotal, s: "number" },
-      { v: o.sellTotal, s: "number" },
-      { v: o.profit, s: "number" },
-      { v: returned ? o.damagedTotal : 0, s: "number" },
+      { v: o.costTotal ?? 0, s: "number" },
+      { v: o.sellTotal ?? 0, s: "number" },
+      { v: o.profit ?? 0, s: "number" },
+      { v: returned ? (o.damagedTotal ?? 0) : 0, s: "number" },
       { v: o.notes || "—", s: "text" },
     ];
   });
@@ -110,7 +110,8 @@ function componentsSheet(orders: SalesOrder[]): XlsxSheet {
     for (const l of o.lines) {
       for (const c of l.components) {
         const qty = Math.round(c.quantity * l.quantity * 1000) / 1000;
-        const cost = calcTotalValue(qty, c.unitCost);
+        const unitCost = c.unitCost ?? 0;
+        const cost = calcTotalValue(qty, unitCost);
         if (o.status !== "RETURNED") sumCents += cents(cost);
         if (c.damaged) damagedCents += cents(cost);
         rows.push([
@@ -122,7 +123,7 @@ function componentsSheet(orders: SalesOrder[]): XlsxSheet {
           { v: c.itemName, s: "boldText" },
           { v: qty, s: "number" },
           { v: c.unit, s: "center" },
-          { v: c.unitCost, s: "number" },
+          { v: unitCost, s: "number" },
           { v: cost, s: "number" },
           { v: c.damaged ? "تالف" : "—", s: "center" },
         ]);

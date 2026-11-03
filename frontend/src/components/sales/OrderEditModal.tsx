@@ -50,7 +50,7 @@ export function OrderEditModal({ open, onClose, order, products, items, busy, hi
                 <span className="mr-auto" />
               ) : (
                 <span className="mr-auto text-xs text-muted">
-                  {fmtMoney(line.totalCost)} ← <strong className="text-text">{fmtMoney(line.totalSell)}</strong>
+                  {fmtMoney(line.totalCost ?? 0)} ← <strong className="text-text">{fmtMoney(line.totalSell ?? 0)}</strong>
                 </span>
               )}
               {order.lines.length > 1 && (
@@ -84,9 +84,9 @@ export function OrderEditModal({ open, onClose, order, products, items, busy, hi
 
         {!hideMoney && (
         <div className="grid grid-cols-3 rounded-xl border border-border bg-background/50 py-1.5 text-center text-xs">
-          <div><span className="text-muted">التكلفة</span><div className="text-sm font-extrabold text-text">{fmtMoney(order.costTotal)}</div></div>
-          <div className="border-s border-border"><span className="text-muted">سعر البيع</span><div className="text-sm font-extrabold text-[#1E8E5A]">{fmtMoney(order.sellTotal)}</div></div>
-          <div className="border-s border-border"><span className="text-muted">الربح</span><div className={`text-sm font-extrabold ${order.profit < 0 ? "text-[#D64545]" : "text-[#1E8E5A]"}`}>{fmtMoney(order.profit)}</div></div>
+          <div><span className="text-muted">التكلفة</span><div className="text-sm font-extrabold text-text">{fmtMoney(order.costTotal ?? 0)}</div></div>
+          <div className="border-s border-border"><span className="text-muted">سعر البيع</span><div className="text-sm font-extrabold text-[#1E8E5A]">{fmtMoney(order.sellTotal ?? 0)}</div></div>
+          <div className="border-s border-border"><span className="text-muted">الربح</span><div className={`text-sm font-extrabold ${(order.profit ?? 0) < 0 ? "text-[#D64545]" : "text-[#1E8E5A]"}`}>{fmtMoney(order.profit ?? 0)}</div></div>
         </div>
         )}
       </div>

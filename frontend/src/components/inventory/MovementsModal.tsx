@@ -11,6 +11,7 @@ interface MovementsModalProps {
   open: boolean;
   onClose: () => void;
   item: InventoryItem;
+  hidePrices?: boolean;
 }
 
 const TYPE_COLOR: Record<InventoryMovementType, string> = {
@@ -21,7 +22,7 @@ const TYPE_COLOR: Record<InventoryMovementType, string> = {
 };
 
 /** سجل حركات عنصر (الأحدث أولاً). يُحمَّل عند الفتح، ويُعاد تحميله إذا تغيّر رصيد العنصر. */
-export function MovementsModal({ open, onClose, item }: MovementsModalProps) {
+export function MovementsModal({ open, onClose, item, hidePrices = false }: MovementsModalProps) {
   const [rows, setRows] = useState<InventoryMovement[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -68,7 +69,7 @@ export function MovementsModal({ open, onClose, item }: MovementsModalProps) {
                 <th className="px-2.5 py-2 font-medium">الرصيد السابق</th>
                 <th className="px-2.5 py-2 font-medium">الفرق</th>
                 <th className="px-2.5 py-2 font-medium">الرصيد الجديد</th>
-                <th className="px-2.5 py-2 font-medium">سعر الوحدة وقتها</th>
+                {!hidePrices && <th className="px-2.5 py-2 font-medium">سعر الوحدة وقتها</th>}
                 <th className="px-2.5 py-2 font-medium">السبب / التفاصيل</th>
                 <th className="px-2.5 py-2 font-medium">المسؤول</th>
                 <th className="px-2.5 py-2 font-medium">التاريخ</th>
@@ -90,7 +91,7 @@ export function MovementsModal({ open, onClose, item }: MovementsModalProps) {
                     {fmtQty(m.delta)}
                   </td>
                   <td className="px-2.5 py-2 font-semibold text-text">{fmtQty(m.balanceAfter)}</td>
-                  <td className="px-2.5 py-2 text-muted">{fmtMoney(m.unitPriceSnapshot)}</td>
+                  {!hidePrices && <td className="px-2.5 py-2 text-muted">{fmtMoney(m.unitPriceSnapshot ?? 0)}</td>}
                   <td className="px-2.5 py-2 text-xs text-muted">
                     {m.reason && <div className="font-medium text-text">السبب: {m.reason}</div>}
                     {m.referenceId && <div>مرجع: {m.referenceId}</div>}

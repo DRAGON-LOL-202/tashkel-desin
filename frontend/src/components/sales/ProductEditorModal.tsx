@@ -67,7 +67,7 @@ export function ProductEditorModal({ open, onClose, editing, items, categories, 
       const it = byId.get(r.itemId);
       const q = Number(r.quantity);
       if (!it || !Number.isFinite(q) || q <= 0) continue;
-      cost += Math.round(calcTotalValue(q, it.unitPrice) * 100);
+      cost += Math.round(calcTotalValue(q, it.unitPrice ?? 0) * 100);
       sell += Math.round(calcTotalValue(q, it.sellPrice ?? 0) * 100);
     }
     return { cost: cost / 100, sell: sell / 100 };
@@ -105,7 +105,7 @@ export function ProductEditorModal({ open, onClose, editing, items, categories, 
                 return (
                   <li key={r.itemId} className="flex flex-wrap items-center gap-2 rounded-control border border-border/60 px-3 py-2">
                     <span className="min-w-0 flex-1 truncate text-sm font-semibold text-text">{it?.name ?? "صنف غير متاح"}</span>
-                    {!hideMoney && <span className="text-[11px] text-muted">{it ? `${fmtMoney(it.unitPrice)} ← ${fmtMoney(it.sellPrice ?? 0)}` : ""}</span>}
+                    {!hideMoney && <span className="text-[11px] text-muted">{it ? `${fmtMoney(it.unitPrice ?? 0)} ← ${fmtMoney(it.sellPrice ?? 0)}` : ""}</span>}
                     <input
                       type="number"
                       inputMode="decimal"
@@ -181,7 +181,7 @@ export function ProductEditorModal({ open, onClose, editing, items, categories, 
                     <span className="min-w-0 flex-1 truncate text-sm text-text">{i.name}</span>
                     <span className="text-[11px] text-muted">
                       المتاح {fmtQty(i.quantity)} {i.unit}
-                      {!hideMoney && ` · ${fmtMoney(i.unitPrice)} ← ${fmtMoney(i.sellPrice ?? 0)}`}
+                      {!hideMoney && ` · ${fmtMoney(i.unitPrice ?? 0)} ← ${fmtMoney(i.sellPrice ?? 0)}`}
                     </span>
                   </button>
                 </li>

@@ -18,6 +18,10 @@ interface ItemModalProps {
   /** المجموعتان الرئيسيتان؛ تُلزم عند إضافة تصنيف جديد */
   groups: InventoryGroup[];
   units?: string[];
+  /** صلاحية إنشاء تصنيف جديد (الإدارة فقط) */
+  canCreateCategory?: boolean;
+  /** إخفاء معاينة إجمالي قيمة المنتج (لمشرف المبيعات) */
+  hidePricePreview?: boolean;
   /** يعيد التصنيف الجديد (أو الموجود مسبقاً) أو null عند الفشل */
   onCreateCategory: (name: string, groupId: string, description?: string) => Promise<InventoryCategory | null>;
   /** يعيد true عند النجاح لإغلاق النافذة */
@@ -26,7 +30,18 @@ interface ItemModalProps {
 
 const toNum = (s: string) => (s.trim() === "" ? NaN : Number(s));
 
-export function ItemModal({ open, onClose, editing, categories, groups, units = [], onCreateCategory, onSubmit }: ItemModalProps) {
+export function ItemModal({
+  open,
+  onClose,
+  editing,
+  categories,
+  groups,
+  units = [],
+  canCreateCategory = true,
+  hidePricePreview = false,
+  onCreateCategory,
+  onSubmit,
+}: ItemModalProps) {
   const [name, setName] = useState(editing?.name ?? "");
   const [categoryId, setCategoryId] = useState(editing?.categoryId ?? "");
   const [images, setImages] = useState<ImageAttachment[]>(editing?.attachments ?? []);
@@ -46,7 +61,7 @@ export function ItemModal({ open, onClose, editing, categories, groups, units = 
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [isActive, setIsActive] = useState(editing?.isActive ?? true);
 
-  const [addingCategory, setAddingCategory] = useState(categories.length === 0);
+  const [addingCategory, setAddingCategory] = useState(canCreateCategory && categories.length === 0);
   const [newCategory, setNewCategory] = useState("");
   const [newCategoryDesc, setNewCategoryDesc] = useState("");
   const [newCategoryGroup, setNewCategoryGroup] = useState("");
@@ -170,9 +185,11 @@ export function ItemModal({ open, onClose, editing, categories, groups, units = 
       size="lg"
     >
       <form onSubmit={(e) => void submit(e)} noValidate>
-        <FieldWrap label="1. صورة المنتج (معاينة قبل الحفظ وإمكانية التغيير أو الحذف)">
-          <ImageAttachmentsField value={images} onChange={setImages} scope="inventory" sessionKeys={sessionKeys} />
-        </FieldWrap>
+        {canCreateCategory && (
+          <FieldWrap label="1. صورة المنتج (معاينة قبل الحفظ وإمكانية التغيير أو الحذف)">
+            <ImageAttachmentsField value={images} onChange={setImages} scope="inventory" sessionKeys={sessionKeys} />
+          </FieldWrap>
+        )}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <FieldWrap label="2. اسم المنتج" htmlFor="inv-name" error={errors.name}>
@@ -239,18 +256,20 @@ export function ItemModal({ open, onClose, editing, categories, groups, units = 
               </select>
               <ChevronDown size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
             </div>
-            <button
-              type="button"
-              onClick={() => setAddingCategory((v) => !v)}
-              aria-label="إضافة تصنيف جديد"
-              aria-expanded={addingCategory}
-              title="إضافة تصنيف جديد دون مغادرة النموذج"
-              className="task-icon-btn !h-auto !w-11 shrink-0"
-            >
-              {addingCategory ? <X size={16} /> : <Plus size={16} />}
-            </button>
+            {canCreateCategory && (
+              <button
+                type="button"
+                onClick={() => setAddingCategory((v) => !v)}
+                aria-label="إضافة تصنيف جديد"
+                aria-expanded={addingCategory}
+                title="إضافة تصنيف جديد دون مغادرة النموذج"
+                className="task-icon-btn !h-auto !w-11 shrink-0"
+              >
+                {addingCategory ? <X size={16} /> : <Plus size={16} />}
+              </button>
+            )}
           </div>
-          {addingCategory && (
+          {canCreateCategory && addingCategory && (
             <div className="mt-2 rounded-control border border-border bg-background/60 p-3">
               <p className="mb-2 text-xs font-semibold text-text">إضافة تصنيف مخزون جديد</p>
               <select
@@ -423,12 +442,14 @@ export function ItemModal({ open, onClose, editing, categories, groups, units = 
         </div>
 
         {/* معاينة الحساب التلقائي للقيمة */}
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-control border border-primary/25 bg-primary/10 px-4 py-2.5 text-sm">
-          <span className="text-muted">
-            إجمالي قيمة المنتج ({fmtQty(effectiveQty)} {unit} × {fmtMoney(effectivePrice)}):
-          </span>
-          <span className="text-base font-bold text-primary-deep">{fmtMoney(previewTotalValue)}</span>
-        </div>
+        {!hidePricePreview && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-control border border-primary/25 bg-primary/10 px-4 py-2.5 text-sm">
+            <span className="text-muted">
+              إجمالي قيمة المنتج ({fmtQty(effectiveQty)} {unit} × {fmtMoney(effectivePrice)}):
+            </span>
+            <span className="text-base font-bold text-primary-deep">{fmtMoney(previewTotalValue)}</span>
+          </div>
+        )}
 
         <FieldWrap label="10. ملاحظات" htmlFor="inv-notes">
           <Textarea id="inv-notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={1000} placeholder="أي تفاصيل أو مواصفات إضافية للمنتج..." />

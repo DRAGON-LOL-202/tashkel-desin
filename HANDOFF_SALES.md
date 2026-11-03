@@ -49,3 +49,53 @@
 - زر «مرتجع» (علم) في الصف العلوي من كارت الأوردر (أي حالة عدا مرتجع): الشركة تعلّم الأوردر فيظهر للموظف شريط «بانتظار المراجعة»، **بلا أي أثر على الحالة أو المخزون**. الموظف يراجع ثم يضغط حالة «مرتجع» الفعلية (مع تحديد التالف) فتعود المكونات وتُمسح العلامة تلقائياً. زر «إلغاء المرتجع» يزيل العلامة.
 - `SalesOrder.returnFlagged` + `returnFlaggedAt`؛ `PATCH /api/sales/orders/:id` يقبل `returnFlagged`. فلتر جديد في الصفحة: «بانتظار مراجعة المرتجع (n)» في الصفحتين.
 - للتشغيل: `prisma migrate deploy` ثم `prisma generate`.
+
+## الأدوار الثلاثة المحصورة في المبيعات الإلكترونية (migration `0019_sales_roles`)
+أُضيفت 3 قيم جديدة إلى `enum Role` مع بوابة قائمة بيضاء fail-closed على مستوى `/api` (`restrictedRoleGate` + `isSalesRoleAllowed`) وحذف كامل لحقول الأسعار والإجماليات من استجابات الـ API لهذه الأدوار:
+
+1. **`SALES_FLAGGER` («مراجع مرتجعات»)**:
+   - الصفحات المتاحة: `/sales-orders` و`/profile` فقط (المسار الافتراضي `/sales-orders`).
+   - الصلاحية الوحيدة: قراءة الأوردرات وتعليم/إلغاء علامة المراجعة `PATCH /api/sales/orders/:id` بحقل `{ returnFlagged: boolean }` وحده (أي حقل آخر في الجسم يُرفض بـ `403`).
+2. **`SALES_EDITOR` («منفّذ أوردرات»)**:
+   - الصفحات المتاحة: `/sales-orders` و`/profile` فقط (المسار الافتراضي `/sales-orders`).
+   - مسموح: إضافة أوردر، حذف أوردر، تعديل بيانات الأوردر (`waybill`, `closerName`, `notes`, `date`, `returnFlagged`)، تعديل محتويات الأوردر قبل التنفيذ (`withEditableOrder`: بنود ومكوّنات)، إنشاء منتج ثابت جديد (`POST /api/sales/products`)، وقراءة المنتجات الثابتة والمقفلين والأصناف/التصنيفات لاختيار المكونات.
+   - ممنوع: تغيير حالة الأوردر (`status` أو `damagedComponentIds` ← `403`)، وتعديل أو إيقاف أو حذف منتج ثابت موجود (`PATCH/DELETE /api/sales/products/:id` ← `403`).
+3. **`SALES_SUPERVISOR` («مشرف مبيعات»)**:
+   - كل صلاحيات `SALES_EDITOR`، بالإضافة إلى صفحة المخزون `/inventory` لإضافة مخزون فقط:
+     - إنشاء صنف جديد (`POST /api/inventory`) مع قبول `unitPrice` و`sellPrice` كحقول كتابة فقط (تُحفظ في قاعدة البيانات ولا تُعاد في الاستجابة).
+     - إضافة كمية (`POST /api/inventory/:id/movements` بحركة `type: "IN"` فقط؛ أي نوع آخر مثل `OUT` أو `ADJUST` أو `RETURN` ← `403`).
+     - قراءة الأصناف والتصنيفات والوحدات وتوليد الكود (`GET /api/inventory/next-sku`) وسجل حركات الصنف بدون أي أسعار أو قيم مالية.
+     - ممنوع: تعديل أو أرشفة أو حذف الأصناف، السحب، إدارة التصنيفات/المجموعات، والتقارير أو التصدير المالي (`GET /api/inventory/movements` ← `403`).
+
+### مصفوفة الصلاحيات (`isSalesRoleAllowed` + فحوص الراوتر)
+| المسار / العملية | `SALES_FLAGGER` | `SALES_EDITOR` | `SALES_SUPERVISOR` | `ADMIN` / `MANAGER` |
+| --- | :---: | :---: | :---: | :---: |
+| مشترك: `GET /auth/me`, `/sync`, `/sync/stream`, `POST /auth/logout`, `PATCH /users/me` | 200 | 200 | 200 | 200 |
+| `GET /api/sales/orders` | 200 (بلا مبالغ) | 200 (بلا مبالغ) | 200 (بلا مبالغ) | 200 (كامل) |
+| `GET /api/sales/products`, `GET /api/sales/closers` | 403 | 200 (بلا مبالغ) | 200 (بلا مبالغ) | 200 (كامل) |
+| `POST /api/sales/orders`, `DELETE /api/sales/orders/:id` | 403 | 201 / 200 | 201 / 200 | 201 / 200 |
+| `PATCH /api/sales/orders/:id` (`{ returnFlagged }` فقط) | 200 | 200 | 200 | 200 |
+| `PATCH /api/sales/orders/:id` (`waybill`, `closerName`, `notes`, `date`) | 403 | 200 | 200 | 200 |
+| `PATCH /api/sales/orders/:id` (`status`, `damagedComponentIds`) | 403 | 403 | 403 | 200 |
+| `POST/PATCH/DELETE /api/sales/orders/:id/lines...` | 403 | 200 / 201 | 200 / 201 | 200 / 201 |
+| `POST /api/sales/products` | 403 | 201 (بلا مبالغ) | 201 (بلا مبالغ) | 201 (كامل) |
+| `PATCH /api/sales/products/:id`, `DELETE /api/sales/products/:id` | 403 | 403 | 403 | 200 |
+| `GET /api/inventory`, `GET /api/inventory/categories` | 403 | 200 (بلا أسعار/إحصاءات) | 200 (بلا أسعار) | 200 (كامل) |
+| `GET /api/inventory/:id`, `GET /api/inventory/:id/movements`, `/units`, `/next-sku` | 403 | 403 | 200 (بلا أسعار) | 200 (كامل) |
+| `POST /api/inventory` (قبول `unitPrice` و`sellPrice` كتابةً فقط) | 403 | 403 | 201 (بلا أسعار في الرد) | 201 (كامل) |
+| `POST /api/inventory/:id/movements` (`type: "IN"`) | 403 | 403 | 201 (بلا أسعار في الرد) | 201 (كامل) |
+| `POST /api/inventory/:id/movements` (`OUT` / `ADJUST` / `RETURN`) | 403 | 403 | 403 | 201 |
+| `PATCH/DELETE /api/inventory/:id`, `/withdrawals`, `/movements`, `/groups`, إدارة التصنيفات | 403 | 403 | 403 | 200 / 201 |
+| أي مسار آخر في `/api/*` (بما فيه المسارات المستقبلية غير المدرجة) | 403 | 403 | 403 | حسب الدور |
+
+### عدم تسريب المبالغ (No Price Leakage)
+- في المبيعات (`serializeSalesOrder` و`serializeSalesProduct` عند `hideMoney: true`): تُحذف الحقول `costTotal`, `sellTotal`, `profit`, `damagedTotal`, `unitCost`, `unitSell`, `costPerUnit`, `sellPerUnit`, `totalCost`, `totalSell` من كائن الاستجابة نفسه قبل الإرسال.
+- في المخزون (`stripItemPrices`, `stripInventoryStatsPrices`, `stripMovementPrices`): تُحذف `unitPrice`, `sellPrice`, `totalValue` (من الصنف ومن `stats`), و`unitPriceSnapshot`, `movementValue` (من الحركات).
+
+### ملاحظة Migration والتشغيل
+- تحتوي `backend/prisma/migrations/0019_sales_roles/migration.sql` على أوامر `ALTER TYPE "Role" ADD VALUE IF NOT EXISTS` فقط دون استخدام القيم الجديدة داخل نفس المعاملة (لأن PostgreSQL لا يسمح باستخدام قيمة enum مضافة حديثاً داخل نفس الـ transaction قبل `COMMIT`).
+- للتشغيل:
+  ```bash
+  npx prisma migrate deploy
+  npx prisma generate
+  ```

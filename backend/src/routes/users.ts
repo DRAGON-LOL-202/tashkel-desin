@@ -6,7 +6,7 @@ import { requireAuth, requireStaff } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { badRequest, conflict, forbidden, HttpError, notFound } from "../utils/httpError.js";
 import { publicUser } from "../utils/serialize.js";
-import { isRestrictedRole } from "../utils/inventoryAccess.js";
+import { isRestrictedRole, isSalesRole } from "../utils/inventoryAccess.js";
 import { deleteUnreferencedObjects } from "../utils/attachments.js";
 import { notify, staffIds } from "../utils/notify.js";
 import { keysOf } from "../utils/attachmentKeys.ts";
@@ -17,14 +17,31 @@ usersRouter.use(requireAuth);
 
 type UserPatch = Partial<Pick<User, "name" | "username" | "email" | "role" | "jobTitle" | "passwordHash" | "inventoryAccess" | "showTaskCard">>;
 
-const ROLE_LABEL: Record<Role, string> = { ADMIN: "مدير النظام", MANAGER: "مدير", DESIGNER: "مصمم", PACKER: "تعبئة", OPERATOR: "مشغل" };
-// المسمى الوظيفي الافتراضي لدوري تعبئة/مشغل (المصمم يأخذ افتراضي الـ schema)
-const DEFAULT_TITLE: Partial<Record<Role, string>> = { PACKER: "تعبئة", OPERATOR: "مشغل", DESIGNER: "مصمم" };
+const ROLE_LABEL: Record<Role, string> = {
+  ADMIN: "مدير النظام",
+  MANAGER: "مدير",
+  DESIGNER: "مصمم",
+  PACKER: "تعبئة",
+  OPERATOR: "مشغل",
+  SALES_FLAGGER: "مراجع مرتجعات",
+  SALES_EDITOR: "منفّذ أوردرات",
+  SALES_SUPERVISOR: "مشرف مبيعات",
+};
+// المسمى الوظيفي الافتراضي لدوري تعبئة/مشغل وأدوار المبيعات (المصمم يأخذ افتراضي الـ schema)
+const DEFAULT_TITLE: Partial<Record<Role, string>> = {
+  PACKER: "تعبئة",
+  OPERATOR: "مشغل",
+  DESIGNER: "مصمم",
+  SALES_FLAGGER: "مراجع مرتجعات",
+  SALES_EDITOR: "منفّذ أوردرات",
+  SALES_SUPERVISOR: "مشرف مبيعات",
+};
 
-/** مستوى وصول المخزون المخزَّن: تعبئة/مشغل = سحب فقط، الإدارة = كامل، والمصمم حسب اختيار المدير (الافتراضي بلا وصول). */
+/** مستوى وصول المخزون المخزَّن: تعبئة/مشغل = سحب فقط، الإدارة = كامل، أدوار المبيعات = تحكّم خاص بالدور، والمصمم حسب اختيار المدير (الافتراضي بلا وصول). */
 function storedAccess(role: Role, requested: InventoryAccess | undefined, fallback: InventoryAccess): InventoryAccess {
   if (role === "ADMIN" || role === "MANAGER") return "FULL";
   if (role === "PACKER" || role === "OPERATOR") return "WITHDRAW";
+  if (isSalesRole({ role })) return "NONE";
   return requested ?? fallback;
 }
 
@@ -114,8 +131,8 @@ usersRouter.post(
           passwordHash: await bcrypt.hash(body.password, 12),
           role: body.role,
           inventoryAccess: storedAccess(body.role, body.inventoryAccess, "NONE"),
-          // الافتراضي: كرت المهام لغير تعبئة/مشغل (حتى لا تتكاثر الكروت)؛ والمدير يغيّره صراحة
-          showTaskCard: body.showTaskCard ?? !isRestrictedRole(body),
+          // الافتراضي: كرت المهام لغير تعبئة/مشغل/مبيعات (حتى لا تتكاثر الكروت)؛ والمدير يغيّره صراحة
+          showTaskCard: body.showTaskCard ?? (!isRestrictedRole(body) && !isSalesRole(body)),
           ...(jobTitle ? { jobTitle } : {}),
           isSystemUser: false,
           ...(groupIds.length > 0 ? { inventoryGroups: { create: groupIds.map((groupId) => ({ groupId })) } } : {}),
@@ -256,7 +273,7 @@ usersRouter.delete(
 
     if (!purge) {
       // بيانات تاريخية مرتبطة ← التعطيل بدل الحذف (الواجهة تعرض خيار حذف الكل أو التعطيل)
-      const [tasks, logs, comments, feedback, goals, events, attendance, products, stockMoves] = await Promise.all([
+      const [tasks, logs, comments, feedback, goals, events, attendance, products, stockMoves, salesOrders] = await Promise.all([
         db.task.count({ where: { OR: [{ createdById: target.id }, { assignedToId: target.id }] } }),
         db.taskTimeLog.count({ where: { userId: target.id } }),
         db.taskComment.count({ where: { userId: target.id } }),
@@ -266,8 +283,9 @@ usersRouter.delete(
         db.attendanceSession.count({ where: { userId: target.id } }),
         db.product.count({ where: { createdById: target.id } }),
         db.inventoryMovement.count({ where: { createdById: target.id } }),
+        db.salesOrder.count({ where: { createdById: target.id } }),
       ]);
-      if (tasks + logs + comments + feedback + goals + events + attendance + products + stockMoves > 0) {
+      if (tasks + logs + comments + feedback + goals + events + attendance + products + stockMoves + salesOrders > 0) {
         throw new HttpError(409, "لهذا المستخدم بيانات مرتبطة (مهام/ملاحظات/...). عطّل الحساب بدلاً من حذفه", "HAS_DATA");
       }
       await db.user.delete({ where: { id: target.id } });
@@ -310,6 +328,8 @@ usersRouter.delete(
       db.product.updateMany({ where: { createdById: target.id }, data: { createdById: actor.id } }),
       // حركات المخزون سجل تدقيق مشترك: لا تُحذف، تُنقل نسبتها لمن يجري الحذف
       db.inventoryMovement.updateMany({ where: { createdById: target.id }, data: { createdById: actor.id } }),
+      // أوردرات المبيعات سجل مشترك: لا تُحذف، تُنقل نسبتها لمن يجري الحذف
+      db.salesOrder.updateMany({ where: { createdById: target.id }, data: { createdById: actor.id } }),
       db.user.delete({ where: { id: target.id } }),
     ]);
     await deleteUnreferencedObjects(keys);

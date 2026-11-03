@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { AlertTriangle, Bell, CalendarRange, ClipboardList, Home, LogOut, MessageSquare, PanelRightClose, PanelRightOpen, Tag, Warehouse, PackageMinus, ShoppingBag, Target, UserCog, UserRound, Users } from "lucide-react";
 import { useAuth } from "../auth/AuthProvider";
-import { pagesFor, type AppPage } from "../../lib/permissions";
+import { isSalesRole, pagesFor, type AppPage } from "../../lib/permissions";
 import { useResource } from "../../hooks/useResource";
 import { notificationsService } from "../../services/notificationsService";
 
@@ -21,11 +21,12 @@ const navItems = [
   { to: "/manage-users", label: "إدارة المستخدمين", icon: UserCog, page: "manageUsers" as AppPage },
 ];
 
-// المصمم وتعبئة/مشغل: قائمة مختصرة تُرشَّح بحسب صلاحياته (pagesFor)
+// المصمم وتعبئة/مشغل وأدوار المبيعات: قائمة مختصرة تُرشَّح بحسب صلاحياته (pagesFor)
 const memberItems = [
   { to: "/daily-tasks", label: "المهام اليومية", icon: Home, page: "dailyTasks" as AppPage },
   { to: "/notifications", label: "الإشعارات", icon: Bell, page: "notifications" as AppPage },
   { to: "/feedback", label: "Feedback", icon: MessageSquare, page: "feedback" as AppPage },
+  { to: "/sales-orders", label: "أوردرات مبيعات إلكترونية", icon: ClipboardList, page: "salesOrders" as AppPage },
   { to: "/inventory", label: "المخزون", icon: Warehouse, end: true, page: "inventory" as AppPage },
   { to: "/inventory/shortages", label: "نواقص المخزون", icon: AlertTriangle, page: "inventory" as AppPage },
   { to: "/withdrawals", label: "السحب", icon: PackageMinus, page: "withdrawals" as AppPage },
@@ -48,7 +49,11 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
   const isStaffUser = user?.accessRole === "admin" || user?.accessRole === "manager";
   // عدّاد غير المقروء: يتحدث تلقائياً مع كل تغيير في النظام (useResource مشترك مع المزامنة اللحظية)
   const { data: counts } = useResource(allowedPages.includes("notifications") ? notificationsService.counts : noCounts, { total: 0, unread: 0 });
-  const visibleItems = isStaffUser ? navItems : memberItems.filter((item) => allowedPages.includes(item.page));
+  const visibleItems = isStaffUser
+    ? navItems
+    : memberItems.filter(
+        (item) => allowedPages.includes(item.page) && !(user && isSalesRole(user.accessRole) && item.to === "/inventory/shortages")
+      );
 
   return (
     <aside

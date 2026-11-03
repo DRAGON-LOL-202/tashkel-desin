@@ -8,7 +8,15 @@ export function publicUser(u: User, allowedGroupIds?: string[]) {
     name: u.name,
     username: u.username,
     email: u.email,
-    role: u.role.toLowerCase() as "admin" | "manager" | "designer" | "packer" | "operator",
+    role: u.role.toLowerCase() as
+      | "admin"
+      | "manager"
+      | "designer"
+      | "packer"
+      | "operator"
+      | "sales_flagger"
+      | "sales_editor"
+      | "sales_supervisor",
     inventoryAccess: effectiveInventoryAccess(u).toLowerCase() as "none" | "withdraw" | "full",
     jobTitle: u.jobTitle,
     showTaskCard: u.showTaskCard,

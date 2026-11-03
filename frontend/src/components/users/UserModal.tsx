@@ -4,7 +4,7 @@ import { FieldWrap, Input, Select } from "../ui/Field";
 import { Button } from "../ui/Button";
 import { inventoryAccessLabel, roleLabel } from "../../services/usersService";
 import { inventoryService } from "../../services/inventoryService";
-import { isRestrictedRole } from "../../lib/permissions";
+import { isRestrictedRole, isSalesRole } from "../../lib/permissions";
 import type { CreateUserInput, InventoryAccessLevel, InventoryGroup, TeamMember, UpdateUserInput, UserRole } from "../../types";
 
 interface UserModalProps {
@@ -58,7 +58,9 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
   const isAdminActor = actor.accessRole === "admin";
   // دور ADMIN لا يُمنح إلا من ADMIN؛ ولا يُغيَّر دور الذات ولا دور مستخدم النظام (يرفضه الـ backend أيضاً)
   const roleLocked = !!editing && (editing.id === actor.id || editing.isSystemUser);
-  const roleOptions: UserRole[] = isAdminActor ? ["designer", "packer", "operator", "manager", "admin"] : ["designer", "packer", "operator", "manager"];
+  const roleOptions: UserRole[] = isAdminActor
+    ? ["designer", "packer", "operator", "sales_flagger", "sales_editor", "sales_supervisor", "manager", "admin"]
+    : ["designer", "packer", "operator", "sales_flagger", "sales_editor", "sales_supervisor", "manager"];
   const restricted = isRestrictedRole(role);
 
   // المجموعتان وتصنيفاتهما تُجلبان عند الحاجة فقط (اختيار تعبئة/مشغل)
@@ -185,7 +187,18 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
           />
         </FieldWrap>
         <FieldWrap label="الدور" htmlFor="user-role">
-          <Select id="user-role" value={role} onChange={(event) => setRole(event.target.value as UserRole)} disabled={roleLocked}>
+          <Select
+            id="user-role"
+            value={role}
+            onChange={(event) => {
+              const nextRole = event.target.value as UserRole;
+              setRole(nextRole);
+              if (!editing) {
+                setShowTaskCard(!isRestrictedRole(nextRole) && !isSalesRole(nextRole));
+              }
+            }}
+            disabled={roleLocked}
+          >
             {roleOptions.map((value) => (
               <option key={value} value={value}>
                 {roleLabel[value]}

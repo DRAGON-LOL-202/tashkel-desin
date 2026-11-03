@@ -13,6 +13,9 @@ enum Role {
   DESIGNER
   PACKER
   OPERATOR
+  SALES_FLAGGER
+  SALES_EDITOR
+  SALES_SUPERVISOR
 }
 
 // وصول المستخدم للمخزون (يخص المصمم؛ الإدارة كاملة دائماً، وتعبئة/مشغل سحب فقط بتصنيفات محددة)

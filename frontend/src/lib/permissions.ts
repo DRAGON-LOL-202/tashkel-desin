@@ -9,8 +9,13 @@ const STAFF_PAGES: AppPage[] = ["dailyTasks", "notifications", "feedback", "goal
 const DESIGNER_BASE: AppPage[] = ["dailyTasks", "notifications", "feedback", "profile"];
 // تعبئة ومشغل: السحب وصفحتهما فقط (الباكند يفرض ذلك بقائمة بيضاء؛ هذا للعرض فقط)
 const RESTRICTED_PAGES: AppPage[] = ["withdrawals", "profile"];
+// أدوار المبيعات الإلكترونية المحصورة
+const SALES_ORDERS_PAGES: AppPage[] = ["salesOrders", "profile"];
+const SALES_SUPERVISOR_PAGES: AppPage[] = ["salesOrders", "inventory", "profile"];
 
 export const isRestrictedRole = (role: UserRole) => role === "packer" || role === "operator";
+export const isSalesRole = (role: UserRole) =>
+  role === "sales_flagger" || role === "sales_editor" || role === "sales_supervisor";
 
 export function pagesFor(user: AccessSubject): AppPage[] {
   switch (user.accessRole) {
@@ -20,6 +25,11 @@ export function pagesFor(user: AccessSubject): AppPage[] {
     case "packer":
     case "operator":
       return RESTRICTED_PAGES;
+    case "sales_flagger":
+    case "sales_editor":
+      return SALES_ORDERS_PAGES;
+    case "sales_supervisor":
+      return SALES_SUPERVISOR_PAGES;
     default:
       if (user.inventoryAccess === "full") return [...DESIGNER_BASE, "inventory", "withdrawals"];
       if (user.inventoryAccess === "withdraw") return [...DESIGNER_BASE, "withdrawals"];
@@ -33,5 +43,6 @@ export function canAccessPage(user: AccessSubject, page: AppPage): boolean {
 
 export function defaultPathForRole(user: AccessSubject): string {
   if (isRestrictedRole(user.accessRole)) return "/withdrawals";
+  if (isSalesRole(user.accessRole)) return "/sales-orders";
   return user.accessRole === "designer" ? "/daily-tasks" : "/";
 }

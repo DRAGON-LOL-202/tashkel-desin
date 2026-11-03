@@ -2,7 +2,15 @@ export type TaskPriority = "low" | "medium" | "high";
 // معرّفات المستخدمين تأتي من قاعدة البيانات (نصوص عشوائية)
 export type TeamMemberId = string;
 export type TaskStatus = "not_started" | "running" | "paused" | "completed";
-export type UserRole = "admin" | "manager" | "designer" | "packer" | "operator";
+export type UserRole =
+  | "admin"
+  | "manager"
+  | "designer"
+  | "packer"
+  | "operator"
+  | "sales_flagger"
+  | "sales_editor"
+  | "sales_supervisor";
 /** وصول المستخدم للمخزون: بلا وصول / السحب فقط / كامل (الإدارة كامل دائماً، وتعبئة/مشغل سحب فقط) */
 export type InventoryAccessLevel = "none" | "withdraw" | "full";
 

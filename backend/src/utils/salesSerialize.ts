@@ -60,15 +60,31 @@ function sumUnits(components: ReturnType<typeof serializeComponent>[]) {
   return { costCents: cost, sellCents: sell };
 }
 
-export function serializeSalesProduct(p: SalesProductRow) {
-  const components = p.components.map(serializeComponent);
-  const { costCents, sellCents } = sumUnits(components);
+function stripComponentMoney<T extends { unitCost: number; unitSell: number }>(c: T): Omit<T, "unitCost" | "unitSell"> {
+  const { unitCost: _uc, unitSell: _us, ...rest } = c;
+  return rest;
+}
+
+export function serializeSalesProduct(p: SalesProductRow, opts?: { hideMoney?: boolean }) {
+  const rawComponents = p.components.map(serializeComponent);
+  if (opts?.hideMoney) {
+    return {
+      id: p.id,
+      name: p.name,
+      notes: p.notes,
+      isActive: p.isActive,
+      components: rawComponents.map(stripComponentMoney),
+      createdAt: p.createdAt.toISOString(),
+      updatedAt: p.updatedAt.toISOString(),
+    };
+  }
+  const { costCents, sellCents } = sumUnits(rawComponents);
   return {
     id: p.id,
     name: p.name,
     notes: p.notes,
     isActive: p.isActive,
-    components,
+    components: rawComponents,
     costPerUnit: fromCents(costCents),
     sellPerUnit: fromCents(sellCents),
     createdAt: p.createdAt.toISOString(),
@@ -76,29 +92,39 @@ export function serializeSalesProduct(p: SalesProductRow) {
   };
 }
 
-export function serializeSalesOrder(o: SalesOrderRow) {
+export function serializeSalesOrder(o: SalesOrderRow, opts?: { hideMoney?: boolean }) {
+  const hideMoney = opts?.hideMoney === true;
   let costCents = 0;
   let sellCents = 0;
   let damagedCents = 0; // تكلفة المكونات التالفة (بسعر التكلفة المثبّت وقت التنفيذ)
   const needsMilli = new Map<string, { name: string; unit: string; available: number; active: boolean; milli: number }>();
 
   const lines = o.lines.map((l) => {
-    const components = l.components.map(serializeComponent);
-    const unit = sumUnits(components);
+    const rawComponents = l.components.map(serializeComponent);
+    const unit = sumUnits(rawComponents);
     costCents += unit.costCents * l.quantity;
     sellCents += unit.sellCents * l.quantity;
-    for (const c of components) {
+    for (const c of rawComponents) {
       if (c.damaged) damagedCents += toCents(calcTotalValue(c.quantity, c.unitCost)) * l.quantity;
       const cur = needsMilli.get(c.itemId) ?? { name: c.itemName, unit: c.unit, available: c.available, active: c.itemActive, milli: 0 };
       cur.milli += Math.round(c.quantity * 1000) * l.quantity;
       needsMilli.set(c.itemId, cur);
+    }
+    if (hideMoney) {
+      return {
+        id: l.id,
+        productId: l.productId,
+        productName: l.productName,
+        quantity: l.quantity,
+        components: rawComponents.map(stripComponentMoney),
+      };
     }
     return {
       id: l.id,
       productId: l.productId,
       productName: l.productName,
       quantity: l.quantity,
-      components,
+      components: rawComponents,
       costPerUnit: fromCents(unit.costCents),
       sellPerUnit: fromCents(unit.sellCents),
       totalCost: fromCents(unit.costCents * l.quantity),
@@ -117,7 +143,7 @@ export function serializeSalesOrder(o: SalesOrderRow) {
     }
   }
 
-  return {
+  const base = {
     id: o.id,
     date: o.date,
     waybill: o.waybill,
@@ -130,16 +156,22 @@ export function serializeSalesOrder(o: SalesOrderRow) {
     createdAt: o.createdAt.toISOString(),
     updatedAt: o.updatedAt.toISOString(),
     lines,
-    costTotal: fromCents(costCents),
-    sellTotal: fromCents(sellCents),
-    profit: fromCents(sellCents - costCents),
-    /** تكلفة التالف في هذا الأوردر (يدخل في إجمالي التالف لليوم) */
-    damagedTotal: fromCents(damagedCents),
     /** الشركة علّمت الأوردر «مرتجع» ليراجعه الموظف ويسجله (لا أثر على المخزون) */
     returnFlagged: o.returnFlagged,
     returnFlaggedAt: o.returnFlaggedAt ? o.returnFlaggedAt.toISOString() : null,
     shortages,
     archivedItems,
+  };
+
+  if (hideMoney) return base;
+
+  return {
+    ...base,
+    costTotal: fromCents(costCents),
+    sellTotal: fromCents(sellCents),
+    profit: fromCents(sellCents - costCents),
+    /** تكلفة التالف في هذا الأوردر (يدخل في إجمالي التالف لليوم) */
+    damagedTotal: fromCents(damagedCents),
   };
 }
 

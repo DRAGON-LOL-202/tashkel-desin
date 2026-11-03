@@ -10,11 +10,13 @@ interface MovementModalProps {
   onClose: () => void;
   item: InventoryItem;
   initialType?: InventoryMovementType;
+  inOnly?: boolean;
+  hidePrices?: boolean;
   onSubmit: (input: InventoryMovementInput) => Promise<boolean>;
 }
 
-export function MovementModal({ open, onClose, item, initialType = "IN", onSubmit }: MovementModalProps) {
-  const [type, setType] = useState<InventoryMovementType>(initialType);
+export function MovementModal({ open, onClose, item, initialType = "IN", inOnly = false, hidePrices = false, onSubmit }: MovementModalProps) {
+  const [type, setType] = useState<InventoryMovementType>(inOnly ? "IN" : initialType);
   const [qty, setQty] = useState("");
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
@@ -52,15 +54,19 @@ export function MovementModal({ open, onClose, item, initialType = "IN", onSubmi
       open={open}
       onClose={onClose}
       title={type === "IN" ? "إضافة وارد للمخزون" : type === "OUT" ? "سحب من المخزون" : type === "RETURN" ? "إضافة مرتجع" : "جرد وضبط الرصيد"}
-      description={`${item.name} — الرصيد الحالي ${fmtQty(item.quantity)} ${item.unit} (${fmtMoney(item.totalValue)})`}
+      description={`${item.name} — الرصيد الحالي ${fmtQty(item.quantity)} ${item.unit}${!hidePrices ? ` (${fmtMoney(item.totalValue ?? 0)})` : ""}`}
     >
       <form onSubmit={(e) => void submit(e)} noValidate>
         <FieldWrap label="نوع الحركة" htmlFor="mv-type">
-          <Select id="mv-type" value={type} onChange={(e) => setType(e.target.value as InventoryMovementType)}>
+          <Select id="mv-type" value={type} disabled={inOnly} onChange={(e) => !inOnly && setType(e.target.value as InventoryMovementType)}>
             <option value="IN">وارد (إضافة للمخزون)</option>
-            <option value="OUT">سحب (خصم من المخزون)</option>
-            <option value="RETURN">مرتجع (إعادة للمخزون)</option>
-            <option value="ADJUST">جرد (تسوية الرصيد الفعلي)</option>
+            {!inOnly && (
+              <>
+                <option value="OUT">سحب (خصم من المخزون)</option>
+                <option value="RETURN">مرتجع (إعادة للمخزون)</option>
+                <option value="ADJUST">جرد (تسوية الرصيد الفعلي)</option>
+              </>
+            )}
           </Select>
         </FieldWrap>
         <FieldWrap label={type === "ADJUST" ? `الرصيد الفعلي بالمخزن (${item.unit})` : `الكمية (${item.unit})`} htmlFor="mv-qty" error={error}>
@@ -71,9 +77,11 @@ export function MovementModal({ open, onClose, item, initialType = "IN", onSubmi
             <span>
               الرصيد بعد الحركة: <strong className="text-text">{fmtQty(preview)} {item.unit}</strong>
             </span>
-            <span>
-              القيمة بعد الحركة: <strong className="text-primary-deep">{fmtMoney(calcTotalValue(preview, item.unitPrice))}</strong>
-            </span>
+            {!hidePrices && (
+              <span>
+                القيمة بعد الحركة: <strong className="text-primary-deep">{fmtMoney(calcTotalValue(preview, item.unitPrice ?? 0))}</strong>
+              </span>
+            )}
           </div>
         )}
         {(type === "ADJUST" || type === "RETURN") && (

@@ -68,17 +68,41 @@ function computeFallbackStats(items: InventoryItem[]): InventoryStats {
 
 export const inventoryService = {
   /** كل العناصر (بما فيها المؤرشفة) والتصنيفات والإحصائيات والوحدات معاً ليعمل مع useResource والمزامنة الحية */
-  async list(): Promise<InventoryData> {
+  async list(opts?: { includeGroups?: boolean }): Promise<InventoryData> {
     const [invRes, catRes, unitsRes, groupsRes] = await Promise.all([
       api<{ items: InventoryItem[]; stats?: InventoryStats }>("/inventory?includeInactive=true"),
       api<{ categories: InventoryCategory[] }>("/inventory/categories"),
       api<{ units: string[] }>("/inventory/units").catch(() => ({ units: [...DEFAULT_INVENTORY_UNITS] })),
-      api<InventoryGroupsData>("/inventory/groups").catch(() => ({ groups: [] as InventoryGroup[] })),
+      opts?.includeGroups === false
+        ? Promise.resolve({ groups: [] as InventoryGroup[] })
+        : api<InventoryGroupsData>("/inventory/groups").catch(() => ({ groups: [] as InventoryGroup[] })),
     ]);
-    const items = invRes.items;
-    const stats = invRes.stats ?? computeFallbackStats(items);
+    const items = invRes.items.map((i) => ({
+      ...i,
+      unitPrice: i.unitPrice ?? 0,
+      sellPrice: i.sellPrice ?? 0,
+      totalValue: i.totalValue ?? 0,
+    }));
+    const rawStats = invRes.stats ?? computeFallbackStats(items);
+    const stats: InventoryStats = { ...rawStats, totalValue: rawStats.totalValue ?? 0 };
     const units = unitsRes.units?.length ? unitsRes.units : [...DEFAULT_INVENTORY_UNITS];
     return { items, categories: catRes.categories, groups: groupsRes.groups, stats, units };
+  },
+
+  /** لاختيار مكونات المبيعات (الأصناف النشطة والتصنيفات فقط دون استدعاء مسارات الإدارة) */
+  async listForSalesPicker(): Promise<InventoryData> {
+    const [invRes, catRes] = await Promise.all([
+      api<{ items: InventoryItem[] }>("/inventory"),
+      api<{ categories: InventoryCategory[] }>("/inventory/categories"),
+    ]);
+    const items = invRes.items.map((i) => ({
+      ...i,
+      unitPrice: i.unitPrice ?? 0,
+      sellPrice: i.sellPrice ?? 0,
+      totalValue: i.totalValue ?? 0,
+      suggestedReorderQty: i.suggestedReorderQty ?? 0,
+    }));
+    return { items, categories: catRes.categories, groups: [], stats: EMPTY_INVENTORY_STATS, units: [...DEFAULT_INVENTORY_UNITS] };
   },
 
   /**

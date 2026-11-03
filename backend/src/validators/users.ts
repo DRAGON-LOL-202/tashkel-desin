@@ -3,7 +3,7 @@ import { z } from "zod";
 const roleInput = z
   .string()
   .transform((s) => s.toUpperCase())
-  .pipe(z.enum(["ADMIN", "MANAGER", "DESIGNER", "PACKER", "OPERATOR"]));
+  .pipe(z.enum(["ADMIN", "MANAGER", "DESIGNER", "PACKER", "OPERATOR", "SALES_FLAGGER", "SALES_EDITOR", "SALES_SUPERVISOR"]));
 
 // مستوى وصول المصمم للمخزون (يُتجاهل لغيره)، والمجموعات الرئيسية لدوري «تعبئة» و«مشغل» فقط
 const inventoryAccessInput = z

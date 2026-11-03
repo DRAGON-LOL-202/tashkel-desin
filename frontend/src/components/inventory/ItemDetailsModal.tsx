@@ -23,6 +23,8 @@ interface ItemDetailsModalProps {
   onClose: () => void;
   item: InventoryItem;
   canManage: boolean;
+  canAddStock?: boolean;
+  hidePrices?: boolean;
   onEdit: (item: InventoryItem) => void;
   onIn: (item: InventoryItem) => void;
   onOut: (item: InventoryItem) => void;
@@ -37,6 +39,8 @@ export function ItemDetailsModal({
   onClose,
   item,
   canManage,
+  canAddStock = canManage,
+  hidePrices = false,
   onEdit,
   onIn,
   onOut,
@@ -129,18 +133,22 @@ export function ItemDetailsModal({
                   {fmtQty(item.minQuantity)} {item.unit}
                 </span>
               </div>
-              <div>
-                <span className="block text-xs text-muted">سعر الوحدة</span>
-                <span className="font-semibold text-text">{fmtMoney(item.unitPrice)}</span>
-              </div>
-              <div>
-                <span className="block text-xs text-muted">سعر البيع</span>
-                <span className="font-semibold text-text">{fmtMoney(item.sellPrice ?? 0)}</span>
-              </div>
-              <div>
-                <span className="block text-xs text-muted">إجمالي القيمة</span>
-                <span className="text-base font-bold text-primary-deep">{fmtMoney(item.totalValue)}</span>
-              </div>
+              {!hidePrices && (
+                <>
+                  <div>
+                    <span className="block text-xs text-muted">سعر الوحدة</span>
+                    <span className="font-semibold text-text">{fmtMoney(item.unitPrice ?? 0)}</span>
+                  </div>
+                  <div>
+                    <span className="block text-xs text-muted">سعر البيع</span>
+                    <span className="font-semibold text-text">{fmtMoney(item.sellPrice ?? 0)}</span>
+                  </div>
+                  <div>
+                    <span className="block text-xs text-muted">إجمالي القيمة</span>
+                    <span className="text-base font-bold text-primary-deep">{fmtMoney(item.totalValue ?? 0)}</span>
+                  </div>
+                </>
+              )}
             </div>
 
             {item.isShortage && item.isActive && (
@@ -151,9 +159,11 @@ export function ItemDetailsModal({
                     {fmtQty(item.suggestedReorderQty)} {item.unit}
                   </strong>
                 </span>
-                <span className="text-muted">
-                  بتكلفة تقديرية: <strong>{fmtMoney(item.suggestedReorderQty * item.unitPrice)}</strong>
-                </span>
+                {!hidePrices && (
+                  <span className="text-muted">
+                    بتكلفة تقديرية: <strong>{fmtMoney(item.suggestedReorderQty * (item.unitPrice ?? 0))}</strong>
+                  </span>
+                )}
               </div>
             )}
 
@@ -186,20 +196,22 @@ export function ItemDetailsModal({
             >
               سجل الحركات
             </Button>
+            {(canManage || canAddStock) && item.isActive && (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                icon={<ArrowDownToLine size={15} />}
+                onClick={() => {
+                  onClose();
+                  onIn(item);
+                }}
+              >
+                إضافة وارد
+              </Button>
+            )}
             {canManage && item.isActive && (
               <>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  icon={<ArrowDownToLine size={15} />}
-                  onClick={() => {
-                    onClose();
-                    onIn(item);
-                  }}
-                >
-                  إضافة وارد
-                </Button>
                 <Button
                   type="button"
                   size="sm"

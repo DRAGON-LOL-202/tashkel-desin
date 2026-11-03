@@ -5,7 +5,7 @@ import { prisma } from "../db.js";
 import { env } from "../utils/env.js";
 import { forbidden, unauthorized } from "../utils/httpError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
-import { isRestrictedRole, isRestrictedRoleAllowed } from "../utils/inventoryAccess.js";
+import { isRestrictedRole, isRestrictedRoleAllowed, isSalesRole, isSalesRoleAllowed } from "../utils/inventoryAccess.js";
 
 declare module "express-serve-static-core" {
   interface Request {
@@ -55,6 +55,7 @@ export const restrictedRoleGate = asyncHandler(async (req: Request, _res: Respon
   }
   req.user = user;
   if (isRestrictedRole(user) && !isRestrictedRoleAllowed(req.method, req.path)) return next(forbidden());
+  if (isSalesRole(user) && !isSalesRoleAllowed(user.role, req.method, req.path, req.body)) return next(forbidden());
   next();
 });
 
