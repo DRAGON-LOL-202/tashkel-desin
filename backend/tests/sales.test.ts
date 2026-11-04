@@ -608,10 +608,12 @@ describe("sales roles: الأدوار الثلاثة المحصورة في ال�
     expect(prodList.status).toBe(200);
     assertNoMoneyLeak(prodList.body, "SALES_EDITOR GET /products");
 
-    // ممنوع تعديل أو إيقاف أو حذف منتج ثابت موجود
-    expect((await api(editor).patch(`/api/sales/products/${prodId}`).send({ name: "اسم آخر" })).status).toBe(403);
-    expect((await api(editor).patch(`/api/sales/products/${prodId}`).send({ isActive: false })).status).toBe(403);
-    expect((await api(editor).delete(`/api/sales/products/${prodId}`)).status).toBe(403);
+    // تعديل وإيقاف وحذف منتج ثابت موجود مسموح (بلا أي مبالغ في الاستجابة)
+    const edRename = await api(editor).patch(`/api/sales/products/${prodId}`).send({ name: "اسم آخر" });
+    expect(edRename.status).toBe(200);
+    assertNoMoneyLeak(edRename.body, "SALES_EDITOR PATCH /products/:id");
+    expect((await api(editor).patch(`/api/sales/products/${prodId}`).send({ isActive: false })).status).toBe(200);
+    expect((await api(editor).delete(`/api/sales/products/${prodId}`)).status).toBe(200);
 
     // إضافة أوردر جديد وتعديل بياناته ونقله ليوم آخر وتعليم المرتجع
     const created = await api(editor).post("/api/sales/orders").send({
@@ -761,7 +763,15 @@ describe("sales roles: الأدوار الثلاثة المحصورة في ال�
       });
       expect(r.status, `movement type=${badType}`).toBe(403);
     }
-    expect((await api(supervisor).patch(`/api/inventory/${newItemId}`).send({ name: "تعديل ممنوع" })).status).toBe(403);
+    // تعديل بيانات الصنف مسموح (بلا أسعار في الرد، ودون المساس بالأسعار المخزّنة عند عدم إرسالها)، أما الأرشفة فممنوعة
+    const priceBefore = await prisma().inventoryItem.findUniqueOrThrow({ where: { id: newItemId } });
+    const supPatch = await api(supervisor).patch(`/api/inventory/${newItemId}`).send({ name: "اسم معدّل", notes: "ملاحظة", minQuantity: 3 });
+    expect(supPatch.status).toBe(200);
+    expect(supPatch.body.item.name).toBe("اسم معدّل");
+    assertNoMoneyLeak(supPatch.body, "SALES_SUPERVISOR PATCH /inventory/:id");
+    const priceAfter = await prisma().inventoryItem.findUniqueOrThrow({ where: { id: newItemId } });
+    expect(Number(priceAfter.unitPrice)).toBe(Number(priceBefore.unitPrice));
+    expect(Number(priceAfter.sellPrice)).toBe(Number(priceBefore.sellPrice));
     expect((await api(supervisor).patch(`/api/inventory/${newItemId}`).send({ isActive: false })).status).toBe(403);
     expect((await api(supervisor).delete(`/api/inventory/${newItemId}`)).status).toBe(403);
     expect((await api(supervisor).get("/api/inventory/movements")).status).toBe(403);
@@ -781,8 +791,14 @@ describe("sales roles: الأدوار الثلاثة المحصورة في ال�
     assertNoMoneyLeak(supOrders.body, "SALES_SUPERVISOR GET /sales/orders");
     const someOrderId = supOrders.body.orders[0].id;
     expect((await api(supervisor).patch(`/api/sales/orders/${someOrderId}`).send({ status: "EXECUTED" })).status).toBe(403);
-    expect((await api(supervisor).patch(`/api/sales/products/${bigBox.id}`).send({ name: "x" })).status).toBe(403);
-    expect((await api(supervisor).delete(`/api/sales/products/${bigBox.id}`)).status).toBe(403);
+    // تعديل وحذف المنتج الثابت مسموح للمشرف أيضاً (نجرّب على منتج مؤقت كي لا نمس bigBox)
+    const tmpProd = await api(supervisor).post("/api/sales/products").send({ name: "منتج مؤقت للمشرف", components: [{ itemId: rose.id, quantity: 1 }] });
+    expect(tmpProd.status).toBe(201);
+    const tmpId = tmpProd.body.product.id as string;
+    const supEditProd = await api(supervisor).patch(`/api/sales/products/${tmpId}`).send({ name: "منتج معدّل" });
+    expect(supEditProd.status).toBe(200);
+    assertNoMoneyLeak(supEditProd.body, "SALES_SUPERVISOR PATCH /products/:id");
+    expect((await api(supervisor).delete(`/api/sales/products/${tmpId}`)).status).toBe(200);
   });
 });
 

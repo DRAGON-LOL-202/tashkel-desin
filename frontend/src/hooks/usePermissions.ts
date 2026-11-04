@@ -20,6 +20,8 @@ export function usePermissions() {
     /** المخزون: الجميع يرى، الإدارة (المدير العام والمدير) تضيف وتعدّل وتسجّل الحركات وتحذف نهائياً */
     canManageInventory: isStaff,
     canDeleteInventory: isStaff,
+    /** تعديل بيانات صنف موجود في المخزون (بدون أرشفة أو حذف): الإدارة + مشرف المبيعات */
+    canEditInventoryItem: isStaff || isSalesSupervisor,
     /** إضافة صنف جديد للمخزون وإضافة كمية (حركة وارد IN): الإدارة + مشرف المبيعات */
     canAddStock: isStaff || isSalesSupervisor,
     /** إخفاء جميع الأسعار والإجماليات في المخزون والحركات (مشرف مبيعات ومنفّذ أوردرات ومراجع مرتجعات) */
@@ -30,8 +32,8 @@ export function usePermissions() {
     canEditSalesOrders: isStaff || isSalesEditor || isSalesSupervisor,
     /** المبيعات: تغيير حالة الأوردر (تنفيذ/شحن/تسليم/مرتجع فعلي) — للإدارة فقط لأنها تخصم/تعيد المخزون */
     canChangeSalesOrderStatus: isStaff,
-    /** المبيعات: تعديل أو إيقاف أو حذف منتج ثابت موجود — للإدارة فقط */
-    canManageSalesProducts: isStaff,
+    /** المبيعات: تعديل أو إيقاف أو حذف منتج ثابت موجود — الإدارة + منفّذ الأوردرات + مشرف المبيعات */
+    canManageSalesProducts: isStaff || isSalesEditor || isSalesSupervisor,
     /** المصمم يحذف تعليقه فقط؛ الإدارة أي تعليق */
     canDeleteComment: (commentUserId?: string) => isStaff || (!!user && commentUserId === user.id),
   };

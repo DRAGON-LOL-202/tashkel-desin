@@ -84,7 +84,7 @@ export default function InventoryPage() {
   const { show } = useToast();
   const run = useSafeAction();
   const { user } = useAuth();
-  const { canManageInventory, canDeleteInventory, canAddStock, hideInventoryPrices } = usePermissions();
+  const { canManageInventory, canDeleteInventory, canAddStock, canEditInventoryItem, hideInventoryPrices } = usePermissions();
   const loadInventory = useMemo(() => () => inventoryService.list({ includeGroups: canManageInventory }), [canManageInventory]);
   const { data, loading, error, reload, retry } = useResource<InventoryData>(loadInventory, EMPTY_INVENTORY_DATA);
   const { items, categories, groups, stats, units } = data;
@@ -142,9 +142,9 @@ export default function InventoryPage() {
     }
   };
 
-  const handleItemSubmit = async (input: InventoryItemInput) => {
+  const handleItemSubmit = async (input: Partial<InventoryItemInput>) => {
     const editing = itemModal?.editing ?? null;
-    const result = await run(() => (editing ? inventoryService.update(editing.id, input) : inventoryService.create(input)));
+    const result = await run(() => (editing ? inventoryService.update(editing.id, input) : inventoryService.create(input as InventoryItemInput)));
     await reload();
     if (!result.ok) return false;
     show(editing ? "تم تحديث المنتج بنجاح" : "تمت إضافة المنتج إلى المخزون");
@@ -565,6 +565,18 @@ export default function InventoryPage() {
                               </button>
                             )}
 
+                            {canEditInventoryItem && (
+                              <button
+                                type="button"
+                                onClick={() => setItemModal({ editing: i })}
+                                aria-label={`تعديل ${i.name}`}
+                                title="تعديل"
+                                className="rounded-full p-1.5 text-muted pp-hover-row"
+                              >
+                                <Pencil size={15} />
+                              </button>
+                            )}
+
                             {canManageInventory && (
                               <>
                                 <button
@@ -587,16 +599,6 @@ export default function InventoryPage() {
                                   className="rounded-full p-1.5 text-muted pp-hover-row disabled:opacity-40"
                                 >
                                   <ClipboardCheck size={15} />
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => setItemModal({ editing: i })}
-                                  aria-label={`تعديل ${i.name}`}
-                                  title="تعديل"
-                                  className="rounded-full p-1.5 text-muted pp-hover-row"
-                                >
-                                  <Pencil size={15} />
                                 </button>
 
                                 <button
@@ -645,6 +647,7 @@ export default function InventoryPage() {
           units={units}
           canCreateCategory={canManageInventory}
           hidePricePreview={hideInventoryPrices}
+          canArchive={canManageInventory}
           onCreateCategory={handleCreateCategory}
           onSubmit={handleItemSubmit}
         />
@@ -657,6 +660,7 @@ export default function InventoryPage() {
           item={live(detailsItem)!}
           canManage={canManageInventory}
           canAddStock={canAddStock}
+          canEdit={canEditInventoryItem}
           hidePrices={hideInventoryPrices}
           onEdit={(it) => setItemModal({ editing: it })}
           onIn={(it) => setMoving({ item: it, type: "IN" })}

@@ -108,7 +108,7 @@ export default function LowStockPage() {
     }
   };
 
-  const handleItemSubmit = async (input: InventoryItemInput) => {
+  const handleItemSubmit = async (input: Partial<InventoryItemInput>) => {
     if (!editingItem) return false;
     const result = await run(() => inventoryService.update(editingItem.id, input));
     await reload();

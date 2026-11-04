@@ -70,6 +70,8 @@ export function isSalesRouteAllowed(role: Role, method: string, path: string, bo
   if (role === "SALES_EDITOR" || role === "SALES_SUPERVISOR") {
     if (method === "GET" && (p === "/products" || p === "/orders" || p === "/closers")) return true;
     if (method === "POST" && (p === "/products" || p === "/orders")) return true;
+    // تعديل/إيقاف/حذف المنتج الثابت
+    if ((method === "PATCH" || method === "DELETE") && /^\/products\/[^/]+$/.test(p)) return true;
     if (method === "PATCH" && /^\/orders\/[^/]+$/.test(p)) {
       if (isPlainRecord(body) && ("status" in body || "damagedComponentIds" in body)) return false;
       return true;
@@ -105,6 +107,10 @@ export function isSalesInventoryAllowed(role: Role, method: string, path: string
     if (method === "GET" && /^\/[^/]+$/.test(p) && !RESERVED_INVENTORY_SEGMENTS.has(p)) return true;
     if (method === "GET" && /^\/[^/]+\/movements$/.test(p)) return true;
     if (method === "POST" && (p === "/" || p === "")) return true;
+    // تعديل بيانات الصنف بعد إدخاله (الاسم/التصنيف/الوحدة/الحد الأدنى/الملاحظات/الصور...) — بلا أرشفة (isActive) ولا حذف
+    if (method === "PATCH" && /^\/[^/]+$/.test(p) && !RESERVED_INVENTORY_SEGMENTS.has(p)) {
+      return isPlainRecord(body) && !("isActive" in body);
+    }
     if (method === "POST" && /^\/[^/]+\/movements$/.test(p)) {
       return isPlainRecord(body) && body.type === "IN";
     }

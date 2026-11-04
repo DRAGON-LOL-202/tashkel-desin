@@ -22,10 +22,13 @@ interface ItemModalProps {
   canCreateCategory?: boolean;
   /** إخفاء معاينة إجمالي قيمة المنتج (لمشرف المبيعات) */
   hidePricePreview?: boolean;
+  /** إظهار خيار الأرشفة (نشط/مؤرشف) عند التعديل؛ مخفي لمشرف المبيعات */
+  canArchive?: boolean;
   /** يعيد التصنيف الجديد (أو الموجود مسبقاً) أو null عند الفشل */
   onCreateCategory: (name: string, groupId: string, description?: string) => Promise<InventoryCategory | null>;
   /** يعيد true عند النجاح لإغلاق النافذة */
-  onSubmit: (input: InventoryItemInput) => Promise<boolean>;
+  /** عند التعديل بأسعار مخفية تُحذف حقول السعر من الحمولة (بلا تغيير)، لذلك Partial */
+  onSubmit: (input: Partial<InventoryItemInput>) => Promise<boolean>;
 }
 
 const toNum = (s: string) => (s.trim() === "" ? NaN : Number(s));
@@ -39,6 +42,7 @@ export function ItemModal({
   units = [],
   canCreateCategory = true,
   hidePricePreview = false,
+  canArchive = true,
   onCreateCategory,
   onSubmit,
 }: ItemModalProps) {
@@ -56,8 +60,10 @@ export function ItemModal({
 
   const [min, setMin] = useState(String(editing?.minQuantity ?? 0));
   const [initial, setInitial] = useState("0");
-  const [unitPrice, setUnitPrice] = useState(String(editing?.unitPrice ?? 0));
-  const [sellPrice, setSellPrice] = useState(String(editing?.sellPrice ?? 0));
+  // عند التعديل والأسعار مخفية عن المستخدم (مشرف المبيعات): الحقلان يبدآن فارغين، والفارغ = «بلا تغيير» فلا تُصفَّر الأسعار المخزّنة
+  const keepHiddenPrices = !!editing && hidePricePreview;
+  const [unitPrice, setUnitPrice] = useState(keepHiddenPrices ? "" : String(editing?.unitPrice ?? 0));
+  const [sellPrice, setSellPrice] = useState(keepHiddenPrices ? "" : String(editing?.sellPrice ?? 0));
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [isActive, setIsActive] = useState(editing?.isActive ?? true);
 
@@ -138,28 +144,30 @@ export function ItemModal({
     if (!unit.trim()) next.unit = "وحدة القياس مطلوبة";
     const minN = toNum(min);
     if (!Number.isFinite(minN) || minN < 0) next.min = "أدخل رقماً صحيحاً (0 أو أكثر)";
+    const skipUnitPrice = keepHiddenPrices && unitPrice.trim() === "";
+    const skipSellPrice = keepHiddenPrices && sellPrice.trim() === "";
     const priceN = toNum(unitPrice);
-    if (!Number.isFinite(priceN) || priceN < 0) next.unitPrice = "أدخل سعراً صحيحاً (0 أو أكثر)";
+    if (!skipUnitPrice && (!Number.isFinite(priceN) || priceN < 0)) next.unitPrice = "أدخل سعراً صحيحاً (0 أو أكثر)";
     const sellN = toNum(sellPrice);
-    if (!Number.isFinite(sellN) || sellN < 0) next.sellPrice = "أدخل سعر بيع صحيحاً (0 أو أكثر)";
+    if (!skipSellPrice && (!Number.isFinite(sellN) || sellN < 0)) next.sellPrice = "أدخل سعر بيع صحيحاً (0 أو أكثر)";
     const initN = toNum(initial);
     if (!editing && (!Number.isFinite(initN) || initN < 0)) next.initial = "أدخل رقماً صحيحاً (0 أو أكثر)";
     setErrors(next);
     if (Object.keys(next).length > 0) return;
 
     setSaving(true);
-    const payload: InventoryItemInput = {
+    const payload: Partial<InventoryItemInput> = {
       name: name.trim(),
       categoryId,
       attachments: images,
       unit: unit.trim(),
       minQuantity: minN,
-      unitPrice: priceN,
-      sellPrice: sellN,
+      ...(skipUnitPrice ? {} : { unitPrice: priceN }),
+      ...(skipSellPrice ? {} : { sellPrice: sellN }),
       notes: notes.trim(),
       ...(editing
         ? {
-            isActive,
+            ...(canArchive ? { isActive } : {}),
             ...(skuEditable ? { sku: sku.trim() === "" ? null : sku.trim() } : {}),
           }
         : {
@@ -411,7 +419,7 @@ export function ItemModal({
               step="any"
               value={unitPrice}
               onChange={(e) => setUnitPrice(e.target.value)}
-              placeholder="0.00"
+              placeholder={keepHiddenPrices ? "اتركه فارغاً ليبقى كما هو" : "0.00"}
             />
           </FieldWrap>
 
@@ -424,7 +432,7 @@ export function ItemModal({
               step="any"
               value={sellPrice}
               onChange={(e) => setSellPrice(e.target.value)}
-              placeholder="0.00"
+              placeholder={keepHiddenPrices ? "اتركه فارغاً ليبقى كما هو" : "0.00"}
             />
           </FieldWrap>
 
@@ -455,7 +463,7 @@ export function ItemModal({
           <Textarea id="inv-notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={1000} placeholder="أي تفاصيل أو مواصفات إضافية للمنتج..." />
         </FieldWrap>
 
-        {editing && (
+        {editing && canArchive && (
           <label className="mb-4 flex items-center gap-2 text-sm text-text">
             <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
             المنتج نشط (إلغاء التحديد يؤرشف المنتج ويخفيه من القوائم النشطة)

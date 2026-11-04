@@ -619,7 +619,7 @@ inventoryRouter.post(
 // ===== تعديل بيانات عنصر (الرصيد يتغيّر بالحركات فقط، ولا تتكرر الحركة الافتتاحية) =====
 inventoryRouter.patch(
   "/:id",
-  requireStaff,
+  requireStaffOrSupervisor,
   asyncHandler(async (req, res) => {
     const existing = await getItem(req.params.id);
     const body = updateItemSchema.parse(req.body);
@@ -660,7 +660,8 @@ inventoryRouter.patch(
         ]);
       }
 
-      res.json({ item: serializeInventoryItem(updated) });
+      const out = serializeInventoryItem(updated);
+      res.json({ item: shouldHideInventoryPrices(req.user!) ? stripItemPrices(out) : out });
     } catch (e) {
       if (isUniqueViolation(e)) throw conflict("كود المنتج مستخدم مسبقاً");
       throw e;

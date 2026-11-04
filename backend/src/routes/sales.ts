@@ -293,7 +293,7 @@ salesRouter.post(
 
 salesRouter.patch(
   "/products/:id",
-  requireStaff,
+  requireSalesEdit,
   asyncHandler(async (req, res) => {
     const id = idOf(req.params.id);
     const existing = await prisma().salesProduct.findUnique({ where: { id }, select: { id: true } });
@@ -323,7 +323,7 @@ salesRouter.patch(
 // حذف المنتج الثابت لا يمس الأوردرات السابقة (محتوياتها منسوخة واسمه محفوظ في البند)
 salesRouter.delete(
   "/products/:id",
-  requireStaff,
+  requireSalesEdit,
   asyncHandler(async (req, res) => {
     const id = idOf(req.params.id);
     const existing = await prisma().salesProduct.findUnique({ where: { id }, select: { id: true } });

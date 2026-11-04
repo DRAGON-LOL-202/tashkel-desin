@@ -24,6 +24,8 @@ interface ItemDetailsModalProps {
   item: InventoryItem;
   canManage: boolean;
   canAddStock?: boolean;
+  /** تعديل البيانات (الإدارة + مشرف المبيعات)؛ الأرشفة تبقى لـ canManage */
+  canEdit?: boolean;
   hidePrices?: boolean;
   onEdit: (item: InventoryItem) => void;
   onIn: (item: InventoryItem) => void;
@@ -40,6 +42,7 @@ export function ItemDetailsModal({
   item,
   canManage,
   canAddStock = canManage,
+  canEdit = canManage,
   hidePrices = false,
   onEdit,
   onIn,
@@ -250,20 +253,22 @@ export function ItemDetailsModal({
                 </Button>
               </>
             )}
+            {canEdit && (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                icon={<Pencil size={15} />}
+                onClick={() => {
+                  onClose();
+                  onEdit(item);
+                }}
+              >
+                تعديل
+              </Button>
+            )}
             {canManage && (
               <>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  icon={<Pencil size={15} />}
-                  onClick={() => {
-                    onClose();
-                    onEdit(item);
-                  }}
-                >
-                  تعديل
-                </Button>
                 <Button
                   type="button"
                   size="sm"
