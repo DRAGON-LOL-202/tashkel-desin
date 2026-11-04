@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { CategoryOptions } from "../components/inventory/CategoryOptions";
-import { History, Minus, Package, PackageMinus, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
+import { Minus, Package, PackageMinus, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
 import { AppLayout } from "../components/layout/AppLayout";
 import { Header } from "../components/header/Header";
-import { fmtQty, formatBatchCode } from "../components/inventory/format";
-import { Badge } from "../components/ui/Badge";
+import { fmtQty } from "../components/inventory/format";
+import { WithdrawalLog } from "../components/inventory/WithdrawalLog";
 import { AttachmentImage } from "../components/ui/ImageAttachments";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -54,16 +54,6 @@ export default function WithdrawalsPage() {
       .filter((i) => categoryFilter === "all" || i.categoryId === categoryFilter)
       .filter((i) => !q || `${i.name} ${i.sku ?? ""}`.toLowerCase().includes(q));
   }, [items, search, categoryFilter]);
-
-  // سحوبات مجمّعة بحسب رقم العملية (batchId) من السجل
-  const batches = useMemo(() => {
-    const map = new Map<string, InventoryMovement[]>();
-    for (const m of log.data) {
-      const key = m.batchId ?? m.id;
-      map.set(key, [...(map.get(key) ?? []), m]);
-    }
-    return [...map.values()];
-  }, [log.data]);
 
   const add = (item: InventoryItem) => {
     const wanted = quickQty[item.id]?.trim();
@@ -350,45 +340,8 @@ export default function WithdrawalsPage() {
             </section>
           </div>
 
-          {/* سجل السحوبات المجمع حسب رقم العملية */}
-          <section className="pp-panel p-4" aria-label="سجل السحوبات">
-            <h2 className="mb-3 flex items-center gap-2 text-base font-bold text-text">
-              <History size={18} /> سجل عمليات السحب
-            </h2>
-            {batches.length === 0 ? (
-              <p className="py-4 text-center text-sm text-muted">لا توجد عمليات سحب مسجلة بعد</p>
-            ) : (
-              <ul className="flex flex-col gap-2.5">
-                {batches.map((b) => {
-                  const opCode = formatBatchCode(b[0].batchId, b[0].id);
-                  return (
-                    <li key={b[0].batchId ?? b[0].id} className="rounded-control border border-border p-3.5">
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded bg-primary/15 px-2 py-0.5 font-mono text-xs font-bold text-primary-deep" dir="ltr">
-                            {opCode}
-                          </span>
-                          <span>
-                            الموظف المسؤول: <strong className="text-text">{b[0].createdByName}</strong>
-                          </span>
-                          <span>· عدد الأصناف: {b.length}</span>
-                        </div>
-                        <span>{new Date(b[0].createdAt).toLocaleString("ar-EG")}</span>
-                      </div>
-                      <div className="mt-2.5 flex flex-wrap gap-2">
-                        {b.map((m) => (
-                          <Badge key={m.id} color="#C0392B">
-                            {m.itemName} {m.itemSku ? `(${m.itemSku})` : ""} · {fmtQty(Math.abs(m.delta))} {m.unit}
-                          </Badge>
-                        ))}
-                      </div>
-                      {b[0].note && <p className="mt-2 text-xs text-muted">ملاحظات: {b[0].note}</p>}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
+          {/* سجل السحوبات المجمع حسب اليوم ورقم العملية */}
+          <WithdrawalLog movements={log.data} />
         </div>
       )}
     </AppLayout>
