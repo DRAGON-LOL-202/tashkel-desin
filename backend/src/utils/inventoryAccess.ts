@@ -91,12 +91,16 @@ export function isSalesRouteAllowed(role: Role, method: string, path: string, bo
 export function isSalesInventoryAllowed(role: Role, method: string, path: string, body?: unknown): boolean {
   const p = path.length > 1 ? path.replace(/\/+$/, "") : path;
 
-  // منفّذ الأوردرات يحتاج قراءة الأصناف والتصنيفات فقط لاختيار مكوّنات الأوردر والمنتج الثابت (بدون أسعار)
+  // السحب من المخزون (صفحة السحب): مسموح لمنفّذ الأوردرات ومشرف المبيعات، بالمسارين: سجل السحوبات (GET) وتنفيذ السحب (POST)
+  const isWithdrawalsRoute = p === "/withdrawals" && (method === "GET" || method === "POST");
+
+  // منفّذ الأوردرات يحتاج قراءة الأصناف والتصنيفات لاختيار مكوّنات الأوردر والمنتج الثابت (بدون أسعار) + صفحة السحب
   if (role === "SALES_EDITOR") {
-    return method === "GET" && (p === "/" || p === "" || p === "/categories");
+    return (method === "GET" && (p === "/" || p === "" || p === "/categories")) || isWithdrawalsRoute;
   }
 
   if (role === "SALES_SUPERVISOR") {
+    if (isWithdrawalsRoute) return true;
     if (method === "GET" && (p === "/" || p === "" || p === "/categories" || p === "/units" || p === "/next-sku")) return true;
     if (method === "GET" && /^\/[^/]+$/.test(p) && !RESERVED_INVENTORY_SEGMENTS.has(p)) return true;
     if (method === "GET" && /^\/[^/]+\/movements$/.test(p)) return true;

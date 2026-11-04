@@ -686,6 +686,16 @@ describe("sales roles: الأدوار الثلاثة المحصورة في ال�
     expect((await api(editor).get(`/api/inventory/${watch.id}`)).status).toBe(403);
     expect((await api(editor).get(`/api/inventory/${watch.id}/movements`)).status).toBe(403);
     expect((await api(editor).get("/api/inventory/movements")).status).toBe(403);
+
+    // السحب من المخزون مسموح لمنفّذ الأوردرات (بلا أسعار في الرد)، والرصيد يُخصم فعلاً
+    const before = await qty(rose.id);
+    const wd = await api(editor).post("/api/inventory/withdrawals").send({ lines: [{ itemId: rose.id, quantity: 2 }], note: "سحب منفّذ" });
+    expect(wd.status).toBe(201);
+    assertNoMoneyLeak(wd.body, "SALES_EDITOR POST /inventory/withdrawals");
+    expect(await qty(rose.id)).toBe(before - 2);
+    const wdLog = await api(editor).get("/api/inventory/withdrawals");
+    expect(wdLog.status).toBe(200);
+    assertNoMoneyLeak(wdLog.body, "SALES_EDITOR GET /inventory/withdrawals");
   });
 
   it("الدور 3 (SALES_SUPERVISOR): يضيف صنفاً بسعر وسعر بيع فيُحفظان في القاعدة ويظهران للمدير ولا يظهران في أي استجابة له، ويضيف وارد IN فقط", async () => {
@@ -759,8 +769,11 @@ describe("sales roles: الأدوار الثلاثة المحصورة في ال�
     expect((await api(supervisor).post("/api/inventory/categories").send({ name: "تصنيف", groupId: "invgrp_materials" })).status).toBe(403);
     expect((await api(supervisor).patch(`/api/inventory/categories/${catId}`).send({ name: "تعديل" })).status).toBe(403);
     expect((await api(supervisor).delete(`/api/inventory/categories/${catId}`)).status).toBe(403);
-    expect((await api(supervisor).get("/api/inventory/withdrawals")).status).toBe(403);
-    expect((await api(supervisor).post("/api/inventory/withdrawals").send({ lines: [{ itemId: newItemId, quantity: 1 }], note: "x" })).status).toBe(403);
+    // السحب من المخزون مسموح للمشرف (بلا أسعار في الرد)
+    expect((await api(supervisor).get("/api/inventory/withdrawals")).status).toBe(200);
+    const supWd = await api(supervisor).post("/api/inventory/withdrawals").send({ lines: [{ itemId: newItemId, quantity: 1 }], note: "x" });
+    expect(supWd.status).toBe(201);
+    assertNoMoneyLeak(supWd.body, "SALES_SUPERVISOR POST /inventory/withdrawals");
 
     // 6. وفي المبيعات: يتمتع بصلاحيات الدور 2 مع منع تغيير الحالة أو تعديل/حذف المنتجات الثابتة وعدم تسريب أي مبالغ
     const supOrders = await api(supervisor).get("/api/sales/orders?date=2026-06-15");

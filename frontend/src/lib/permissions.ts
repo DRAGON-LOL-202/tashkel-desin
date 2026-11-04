@@ -11,7 +11,9 @@ const DESIGNER_BASE: AppPage[] = ["dailyTasks", "notifications", "feedback", "pr
 const RESTRICTED_PAGES: AppPage[] = ["withdrawals", "profile"];
 // أدوار المبيعات الإلكترونية المحصورة
 const SALES_ORDERS_PAGES: AppPage[] = ["salesOrders", "profile"];
-const SALES_SUPERVISOR_PAGES: AppPage[] = ["salesOrders", "inventory", "profile"];
+// منفّذ الأوردرات ومشرف المبيعات: يضاف لهما السحب من المخزون
+const SALES_EDITOR_PAGES: AppPage[] = ["salesOrders", "withdrawals", "profile"];
+const SALES_SUPERVISOR_PAGES: AppPage[] = ["salesOrders", "inventory", "withdrawals", "profile"];
 
 export const isRestrictedRole = (role: UserRole) => role === "packer" || role === "operator";
 export const isSalesRole = (role: UserRole) =>
@@ -26,8 +28,9 @@ export function pagesFor(user: AccessSubject): AppPage[] {
     case "operator":
       return RESTRICTED_PAGES;
     case "sales_flagger":
-    case "sales_editor":
       return SALES_ORDERS_PAGES;
+    case "sales_editor":
+      return SALES_EDITOR_PAGES;
     case "sales_supervisor":
       return SALES_SUPERVISOR_PAGES;
     default:

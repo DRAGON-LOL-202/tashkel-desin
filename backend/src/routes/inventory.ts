@@ -66,6 +66,8 @@ inventoryRouter.use((req, _res, next) => {
 const requireStaffOrSupervisor = requireRole("ADMIN", "MANAGER", "SALES_SUPERVISOR");
 const isWithdrawOnly = (u: Parameters<typeof effectiveInventoryAccess>[0]) => effectiveInventoryAccess(u) === "WITHDRAW";
 const shouldHideInventoryPrices = (u: Parameters<typeof isSalesRole>[0]) => isSalesRole(u);
+/** حركات السحب بلا أسعار لمن يملك «السحب فقط» ولأدوار المبيعات */
+const hideWithdrawalMoney = (u: Parameters<typeof effectiveInventoryAccess>[0]) => isWithdrawOnly(u) || shouldHideInventoryPrices(u);
 /** التصنيفات المسموحة لتعبئة/مشغل؛ null = بلا قيد تصنيفات (إدارة أو مصمم) */
 const categoryScope = (u: Parameters<typeof isRestrictedRole>[0] & { id: string }) => (isRestrictedRole(u) ? allowedCategoryIds(u.id) : Promise.resolve(null));
 
@@ -496,7 +498,7 @@ inventoryRouter.post(
 
     await handleLowStockTransition(transitions);
     const out = movements.map(serializeInventoryMovement);
-    res.status(201).json({ batchId, movements: isWithdrawOnly(req.user!) ? out.map(stripMovementPrices) : out });
+    res.status(201).json({ batchId, movements: hideWithdrawalMoney(req.user!) ? out.map(stripMovementPrices) : out });
   })
 );
 
@@ -514,7 +516,7 @@ inventoryRouter.get(
       take: limit,
     });
     const out = rows.map(serializeInventoryMovement);
-    res.json({ movements: isWithdrawOnly(req.user!) ? out.map(stripMovementPrices) : out });
+    res.json({ movements: hideWithdrawalMoney(req.user!) ? out.map(stripMovementPrices) : out });
   })
 );
 
