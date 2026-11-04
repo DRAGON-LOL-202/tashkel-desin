@@ -128,7 +128,7 @@ export function TeamMemberCard({
 
   const card = (
     <Card
-      className={`p-4 md:p-5 flex ${focusMode ? "min-h-[calc(100vh-2.5rem)]" : "min-h-[520px]"} flex-col gap-4 transition-colors ${
+      className={`p-4 md:p-5 flex min-h-[520px] flex-col gap-4 transition-colors ${
         isDragOverMember ? "border-primary-deep bg-primary/5" : ""
       }`}
       onDragOver={(event) => {
@@ -302,7 +302,7 @@ export function TeamMemberCard({
   if (!focusMode) return card;
   return (
     <div className="fixed inset-0 z-40 overflow-y-auto bg-background">
-      <div className="w-full p-3 md:p-5" style={{ zoom: 1.1 }}>
+      <div className="mx-auto max-w-4xl p-3 md:p-6" style={{ zoom: 1.25 }}>
         {card}
       </div>
     </div>
