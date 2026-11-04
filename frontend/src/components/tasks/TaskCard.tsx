@@ -319,6 +319,7 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
   const isPaused = task.status === "paused";
   const hasSubtasks = subtasks.length > 0;
   const allSubtasks = hasSubtasks ? getAllSubtasks(task.id, getSubtasks) : [];
+  const completedSubtasks = allSubtasks.filter((subtask) => subtask.status === "completed").length;
   const subtasksDuration = allSubtasks.reduce((sum, subtask) => sum + getTaskElapsed(subtask), 0);
   const percentage = hasSubtasks ? calculateParentProgress(subtasks) : calculateTaskProgress(task);
   const displayCompleted = hasSubtasks ? percentage >= 100 : isCompleted;
@@ -329,11 +330,10 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
 
   const hasStopNotes = !hasSubtasks && task.stopNotes.length > 0;
   const hasComments = !hasSubtasks && task.comments.length > 0;
-  const hasAttachments = Boolean(task.attachments && task.attachments.length > 0);
   const hasTimer = !hasSubtasks && !isCompleted && Boolean(task.timer);
   const canAddTimer = !hasSubtasks && !isCompleted && !task.timer;
-  const hasDetails = Boolean(task.createdByName || task.description || hasAttachments || hasStopNotes || hasComments);
-  const showDetails = detailsOpen && (hasDetails || canAddTimer);
+  const hasDetails = true; // سطر القياسات (بدأت/انتهت/الوقت) متاح دائمًا، إضافةً للوصف والمرفقات والتعليقات
+  const showDetails = detailsOpen;
 
   // الإجراءات الثانوية تظهر عند الضغط على الثلاث نقاط فقط
   const menuItems: TaskMenuItem[] = [
@@ -396,6 +396,9 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
         {/* 3) النسبة + شريط التقدم (مع − / + لعدّاد الإنجاز) */}
         <div className="tr-prog">
           <span className="tr-pct" dir="ltr">{percentage}%</span>
+          <span className="tr-count" dir="ltr" title={hasSubtasks ? "المهام الفرعية المكتملة" : "الإنجاز الحالي / الهدف"}>
+            {hasSubtasks ? completedSubtasks + "/" + allSubtasks.length : task.current + "/" + task.target}
+          </span>
           {!hasSubtasks && (
             <button
               type="button"
@@ -474,6 +477,21 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
 
       {showDetails && (
         <section className="tc-details task-subtasks-enter">
+          <div className="tr-metrics">
+            {hasSubtasks ? (
+              <>
+                <span>المهام: <b>{allSubtasks.length}</b></span>
+                <span>المكتملة: <b>{completedSubtasks}</b></span>
+                <span><Clock size={14} aria-hidden />إجمالي الوقت: <b dir="ltr">{formatDuration(subtasksDuration)}</b></span>
+              </>
+            ) : (
+              <>
+                <span><CalendarDays size={14} aria-hidden />بدأت: <b>{formatArabicTime(task.startedAt ?? task.startTime)}</b></span>
+                <span><CalendarDays size={14} aria-hidden />انتهت: <b>{formatArabicTime(task.endTime)}</b></span>
+                <span><Clock size={14} aria-hidden />الوقت: <b dir="ltr">{formatDuration(elapsed)}</b></span>
+              </>
+            )}
+          </div>
           {task.createdByName && (
             <div className="tc-meta">
               <p>أضيفت بواسطة: {task.createdByName}</p>
