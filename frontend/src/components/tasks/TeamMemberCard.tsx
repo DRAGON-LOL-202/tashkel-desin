@@ -131,7 +131,7 @@ export function TeamMemberCard({
 
   const card = (
     <Card
-      className={`tm-card p-4 md:p-5 flex ${focusMode ? "min-h-[calc(100vh-2.5rem)]" : "min-h-[520px]"} flex-col gap-4 transition-colors ${
+      className={`mh-card p-4 md:p-5 flex ${focusMode ? "min-h-[calc(100vh-2.5rem)]" : "min-h-[520px]"} flex-col gap-4 transition-colors ${
         isDragOverMember ? "border-primary-deep bg-primary/5" : ""
       }`}
       onDragOver={(event) => {
@@ -184,15 +184,15 @@ export function TeamMemberCard({
       />
 
       {/* شريط الإحصائيات + إضافة مهمة (بنفس شكل مدير المهام) */}
-      <div className="tm-stats">
-        <div className="tm-add">
-          <Button icon={<Plus size={18} />} onClick={() => onAddNormalTask(member)} className="tm-add-btn">
+      <div className="mh-stats">
+        <div className="mh-add">
+          <Button icon={<Plus size={18} />} onClick={() => onAddNormalTask(member)} className="mh-add-btn">
             إضافة مهمة
           </Button>
           <div className="relative">
             <button
               type="button"
-              className="tm-add-more"
+              className="mh-add-more"
               onClick={() => setTaskMenuOpen((value) => !value)}
               aria-expanded={taskMenuOpen}
               aria-label="إضافة مهمة رئيسية أو فرعية"
@@ -221,41 +221,41 @@ export function TeamMemberCard({
           </div>
         </div>
 
-        <div className="tm-stat">
-          <Layers size={22} aria-hidden className="tm-stat-ico" />
+        <div className="mh-stat">
+          <Layers size={22} aria-hidden className="mh-stat-ico" />
           <div>
-            <p className="tm-stat-v">{rootTasks.length}</p>
-            <p className="tm-stat-k">إجمالي المهام</p>
+            <p className="mh-stat-v">{rootTasks.length}</p>
+            <p className="mh-stat-k">إجمالي المهام</p>
           </div>
         </div>
-        <div className="tm-stat">
-          <CheckCircle2 size={22} aria-hidden className="tm-stat-ico" />
+        <div className="mh-stat">
+          <CheckCircle2 size={22} aria-hidden className="mh-stat-ico" />
           <div>
-            <p className="tm-stat-v">{completed}</p>
-            <p className="tm-stat-k">مكتملة</p>
+            <p className="mh-stat-v">{completed}</p>
+            <p className="mh-stat-k">مكتملة</p>
           </div>
         </div>
-        <div className="tm-stat">
-          <Clock size={22} aria-hidden className="tm-stat-ico" />
+        <div className="mh-stat">
+          <Clock size={22} aria-hidden className="mh-stat-ico" />
           <div>
-            <p className="tm-stat-v" dir="ltr">{formatDuration(totalDuration)}</p>
-            <p className="tm-stat-k">إجمالي الوقت</p>
+            <p className="mh-stat-v" dir="ltr">{formatDuration(totalDuration)}</p>
+            <p className="mh-stat-k">إجمالي الوقت</p>
           </div>
         </div>
-        <div className="tm-stat tm-stat--ring">
-          <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden className="tm-ring">
-            <circle cx="22" cy="22" r={ringRadius} fill="none" strokeWidth="5" className="tm-ring-bg" />
+        <div className="mh-stat mh-stat--ring">
+          <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden className="mh-ring">
+            <circle cx="22" cy="22" r={ringRadius} fill="none" strokeWidth="5" className="mh-ring-bg" />
             <circle
               cx="22" cy="22" r={ringRadius} fill="none" strokeWidth="5" strokeLinecap="round"
-              className="tm-ring-fg"
+              className="mh-ring-fg"
               strokeDasharray={ringLength}
               strokeDashoffset={ringLength * (1 - completionRate / 100)}
               transform="rotate(-90 22 22)"
             />
           </svg>
           <div>
-            <p className="tm-stat-v"><Target size={15} aria-hidden className="tm-stat-inline" /> <span dir="ltr">{completionRate}%</span></p>
-            <p className="tm-stat-k">معدل الإنجاز</p>
+            <p className="mh-stat-v"><Target size={15} aria-hidden className="mh-stat-inline" /> <span dir="ltr">{completionRate}%</span></p>
+            <p className="mh-stat-k">معدل الإنجاز</p>
           </div>
         </div>
       </div>
