@@ -476,6 +476,8 @@ body {
 .tr-prog { display: flex; align-items: center; gap: 0.4rem; min-width: 0; padding-inline: 0.6rem; border-inline-start: 1px solid var(--border); }
 .tr-prog > div:nth-of-type(1), .tr-prog > .w-full { flex: 1 1 auto; min-width: 3rem; height: 0.45rem; }
 .tr-pct { flex-shrink: 0; min-width: 2.6rem; text-align: start; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.85rem; font-weight: 700; color: var(--text); }
+.tr-card--sub { background: color-mix(in srgb, var(--primary) 4%, color-mix(in srgb, var(--surface) 80%, transparent)); box-shadow: none; }
+.tr-children { display: grid; gap: 0.5rem; margin-top: 0.5rem; padding-top: 0.5rem; padding-inline-start: 1rem; border-top: 1px solid var(--border); }
 .tr-count { flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.72rem; color: var(--muted); }
 .tr-metrics { display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; font-size: 0.82rem; color: var(--muted); }
 .tr-metrics span { display: inline-flex; align-items: center; gap: 0.3rem; }

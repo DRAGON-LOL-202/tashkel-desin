@@ -1,4 +1,4 @@
-import { AlarmClock, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Clock, Copy, Layers, MessageSquarePlus, Minus, Pause, Pencil, Play, Plus, RotateCcw, Timer, Trash2 } from "lucide-react";
+import { AlarmClock, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Clock, Copy, Layers, MessageSquarePlus, Minus, Pause, Pencil, Play, Plus, RotateCcw, Timer, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import type { Task, TimerAction } from "../../types";
 import { calculateParentProgress, calculateTaskProgress } from "../../lib/taskProgress";
@@ -6,7 +6,6 @@ import { formatArabicTime, formatDuration } from "../../lib/date";
 import { getTaskElapsed, useElapsed } from "../../hooks/useTaskTimer";
 import { TaskTimerPanel } from "./TaskTimerPanel";
 import { TaskActionsMenu, type TaskMenuItem } from "./TaskActionsMenu";
-import { Button } from "../ui/Button";
 import { PriorityTag } from "../ui/Badge";
 import { ProgressBar } from "../ui/ProgressBar";
 import { ImageAttachmentGallery } from "../ui/ImageAttachments";
@@ -30,43 +29,6 @@ interface TaskCardProps {
   onAddComment: (id: string) => void;
   onDeleteComment: (id: string, commentTime: number) => void;
   onTimer: (id: string, action: TimerAction) => void;
-}
-
-const statusLabels = {
-  not_started: "لم تبدأ",
-  running: "قيد التنفيذ",
-  paused: "متوقفة",
-  completed: "مكتملة",
-};
-
-function ProgressControls({ task, onSetCurrent }: { task: Task; onSetCurrent: (id: string, current: number) => void }) {
-  return (
-    <div className="task-stepper">
-      <button
-        type="button"
-        onClick={() => onSetCurrent(task.id, task.current - 1)}
-        aria-label="تقليل الإنجاز"
-        title="تقليل الإنجاز"
-        className="task-stepper-btn"
-        disabled={task.current <= 0}
-      >
-        <Minus size={16} />
-      </button>
-      <span dir="ltr" className="min-w-16 px-1 text-center font-mono text-sm font-bold tabular-nums text-text">
-        {task.current} / {task.target}
-      </span>
-      <button
-        type="button"
-        onClick={() => onSetCurrent(task.id, task.current + 1)}
-        aria-label="زيادة الإنجاز"
-        title="زيادة الإنجاز"
-        className="task-stepper-btn"
-        disabled={task.current >= task.target}
-      >
-        <Plus size={16} />
-      </button>
-    </div>
-  );
 }
 
 function NumberBadge({ value, size = "md", done = false }: { value?: number; size?: "md" | "sm"; done?: boolean }) {
@@ -166,134 +128,8 @@ function subtasksLabel(count: number): string {
   return `${count} مهمة فرعية`;
 }
 
-function SubtaskRow({ task, getSubtasks, taskNumbers, onStart, onRequestStop, onFinish, onReopen, onDelete, onEdit, onSetCurrent, onAddSubtask, onAddComment, onDeleteComment, onTimer }: Pick<TaskCardProps, "getSubtasks" | "taskNumbers" | "onStart" | "onRequestStop" | "onFinish" | "onReopen" | "onDelete" | "onEdit" | "onSetCurrent" | "onAddSubtask" | "onAddComment" | "onDeleteComment" | "onTimer"> & { task: Task }) {
-  const [expanded, setExpanded] = useState(false);
-  const { canManageTasks, canDeleteComment } = usePermissions();
-  const elapsed = useElapsed(task);
-  const isCompleted = task.status === "completed";
-  const isRunning = task.status === "running";
-  const isPaused = task.status === "paused";
-  const children = getSubtasks(task.id);
-  const hasChildren = children.length > 0;
-  const percentage = hasChildren ? calculateParentProgress(children) : calculateTaskProgress(task);
-
-  return (
-    <div className="rounded-xl border border-primary-deep/25 bg-primary/5 p-2.5">
-      <div className="flex items-start gap-2">
-        <button
-          type="button"
-          onClick={() => !isCompleted && onFinish(task.id)}
-          aria-label="إنهاء المهمة الفرعية"
-          className={"mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 flex items-center justify-center " + (isCompleted ? "border-primary-dark bg-primary-dark text-background" : "border-muted/40 hover:border-primary-deep")}
-        >
-          {isCompleted && <CheckCircle2 size={13} />}
-        </button>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <h4 className={"text-sm font-semibold " + (isCompleted ? "line-through text-muted" : "text-text")}><NumberBadge value={taskNumbers.get(task.id)} size="sm" done={isCompleted} />{task.title}</h4>
-              {task.description && <p className="mt-1 text-xs leading-5 text-muted">{task.description}</p>}
-              <ImageAttachmentGallery attachments={task.attachments} />
-              {task.createdByName && (
-                <p className="mt-1 text-[11px] text-muted">أضيفت بواسطة: {task.createdByName} · المسؤول: {task.assigneeName ?? "—"}</p>
-              )}
-            </div>
-            {canManageTasks && (
-              <div className="flex shrink-0 items-center">
-                <TaskActionsMenu
-                  label="إجراءات المهمة الفرعية"
-                  buttonClassName="tc-ico !h-7 !w-7"
-                  items={[
-                    { key: "edit", label: "تعديل المهمة", icon: <Pencil size={16} />, onSelect: () => onEdit(task) },
-                    { key: "delete", label: "حذف المهمة", icon: <Trash2 size={16} />, onSelect: () => onDelete(task), danger: true },
-                  ]}
-                />
-              </div>
-            )}
-          </div>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted">{hasChildren ? subtasksLabel(children.length) : statusLabels[task.status]}</span>
-              {hasChildren && (
-                <button type="button" onClick={() => setExpanded((value) => !value)} className="text-primary-deep" aria-label={expanded ? "إخفاء المهام الفرعية" : "إظهار المهام الفرعية"}>
-                  {expanded ? <ChevronDown size={16} /> : <ChevronLeft size={16} />}
-                </button>
-              )}
-            </div>
-            {!hasChildren && <ProgressControls task={task} onSetCurrent={onSetCurrent} />}
-          </div>
-          <div className="mt-2 flex items-center gap-3">
-            <ProgressBar percentage={percentage} className="h-2" />
-            <span className="w-11 shrink-0 text-left font-mono text-xs font-bold text-text">{percentage}%</span>
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
-            <span className="flex items-center gap-1.5"><Clock size={13} />الوقت: <span className="font-mono font-semibold text-text">{formatDuration(elapsed)}</span></span>
-            <span>بدأت: {formatArabicTime(task.startedAt ?? task.startTime)}</span>
-            <span>انتهت: {formatArabicTime(task.endTime)}</span>
-          </div>
-          <TaskTimerPanel task={task} onAction={onTimer} />
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {!isCompleted && (
-              isRunning
-                ? <Button size="sm" variant="secondary" icon={<Pause size={14} />} onClick={() => onRequestStop(task.id)}>إيقاف</Button>
-                : <Button size="sm" variant="secondary" icon={<Play size={14} />} onClick={() => onStart(task.id)}>{isPaused ? "استكمال" : "بدء"}</Button>
-            )}
-            <Button size="sm" variant="ghost" icon={<Plus size={14} />} onClick={() => onAddSubtask(task)}>مهمة فرعية</Button>
-            <Button size="sm" variant="secondary" icon={<MessageSquarePlus size={14} />} onClick={() => onAddComment(task.id)}>تعليق</Button>
-            {!isCompleted && <Button size="sm" variant="primary" onClick={() => onFinish(task.id)}>إنهاء المهمة</Button>}
-            {isCompleted && <Button size="sm" variant="secondary" icon={<RotateCcw size={14} />} onClick={() => onReopen(task.id)}>إعادة فتح</Button>}
-          </div>
-          {hasChildren && expanded && (
-            <div className="task-subtasks-enter mt-3 space-y-3">
-              {children.map((child) => (
-                <SubtaskRow
-                  key={child.id}
-                  task={child}
-                  getSubtasks={getSubtasks}
-                  taskNumbers={taskNumbers}
-                  onStart={onStart}
-                  onRequestStop={onRequestStop}
-                  onFinish={onFinish}
-                  onReopen={onReopen}
-                  onDelete={onDelete}
-                  onEdit={onEdit}
-                  onSetCurrent={onSetCurrent}
-                  onAddSubtask={onAddSubtask}
-                  onAddComment={onAddComment}
-                  onDeleteComment={onDeleteComment}
-                  onTimer={onTimer}
-                />
-              ))}
-            </div>
-          )}
-          {task.comments.length > 0 && (
-            <div className="mt-3 border-t border-border pt-2 text-xs text-text/85">
-              <p className="mb-1 font-semibold text-primary-deep">تعليقات ({task.comments.length})</p>
-              {task.comments.map((comment) => (
-                <div key={String(comment.time) + comment.text} className="flex items-start justify-between gap-2 py-1.5">
-                  <p className="min-w-0 break-words">
-{comment.userName && <span className="ml-1.5 font-semibold text-primary-deep">{comment.userName}:</span>}
-{comment.text}
-</p>
-                  {canDeleteComment(comment.userId) && (
-                    <button type="button" onClick={() => onDeleteComment(task.id, comment.time)} className="text-muted hover:text-problem" aria-label="حذف التعليق">
-                    <Trash2 size={13} />
-                  </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-          <StopNotesHistory task={task} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 type CardState = "not_started" | "running" | "paused" | "completed" | "idle";
 
-/** حالة البطاقة تُشتق دائمًا من task.status الحقيقية (لا حالة بصرية مستقلة) */
 const stateLabels: Record<CardState, string> = {
   not_started: "لم تبدأ",
   running: "جارية الآن",
@@ -304,27 +140,35 @@ const stateLabels: Record<CardState, string> = {
 
 const priorityLabels = { low: "منخفضة", medium: "متوسطة", high: "عالية" } as const;
 
+type RowHandlers = Pick<
+  TaskCardProps,
+  "getSubtasks" | "taskNumbers" | "onStart" | "onRequestStop" | "onFinish" | "onReopen" | "onDelete" | "onEdit" | "onSetCurrent" | "onAddSubtask" | "onAddComment" | "onDeleteComment" | "onTimer"
+>;
+
 /**
- * بطاقة المهمة بصفّ واحد (مطابقة للتصميم المرجعي):
- * [المهام الفرعية] [أيقونة + العنوان] | [النسبة + شريط التقدم] [الوقت] [تشغيل/إيقاف] [إنهاء] [تعليق] [⋮]
- * شريط ملوّن على الحافة يدل على الحالة. في العرض الضيق (جوال) ينكسر الصف إلى سطرين تلقائيًا.
+ * صفّ مهمة واحد (للمهمة الرئيسية والفرعية معًا، بتصميم موحّد):
+ * [المهام الفرعية] [أيقونة + رقم + عنوان] | [% + عدّاد + شريط] [وقت] [تشغيل/إيقاف] [إنهاء] [تعليق] [⋮]
+ * شريط ملوّن على الحافة = الحالة. العرض الضيق ينكسر لسطرين تلقائيًا (container query).
+ * التفاصيل (بدأت/انتهت/الوقت، الوصف، المرفقات، المؤقت، التعليقات، سجل التوقفات) تُفتح بالضغط على العنوان.
+ * المهام الفرعية (متداخلة بلا حد) تظهر تحت الصف بنفس التصميم.
  */
-export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, onRequestStop, onFinish, onReopen, onMoveToDate, onCopy, onDelete, onEdit, onSetCurrent, onAddSubtask, onAddComment, onDeleteComment, onTimer }: TaskCardProps) {
+function TaskRowLine({ task, h, variant, menuBase }: { task: Task; h: RowHandlers; variant: "root" | "sub"; menuBase: TaskMenuItem[] }) {
   const [expanded, setExpanded] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const { canManageTasks, canDeleteComment } = usePermissions();
   const elapsed = useElapsed(task);
+  const children = h.getSubtasks(task.id);
   const isCompleted = task.status === "completed";
   const isRunning = task.status === "running";
   const isPaused = task.status === "paused";
-  const hasSubtasks = subtasks.length > 0;
-  const allSubtasks = hasSubtasks ? getAllSubtasks(task.id, getSubtasks) : [];
+  const hasSubtasks = children.length > 0;
+  const allSubtasks = hasSubtasks ? getAllSubtasks(task.id, h.getSubtasks) : [];
   const completedSubtasks = allSubtasks.filter((subtask) => subtask.status === "completed").length;
   const subtasksDuration = allSubtasks.reduce((sum, subtask) => sum + getTaskElapsed(subtask), 0);
-  const percentage = hasSubtasks ? calculateParentProgress(subtasks) : calculateTaskProgress(task);
+  const percentage = hasSubtasks ? calculateParentProgress(children) : calculateTaskProgress(task);
   const displayCompleted = hasSubtasks ? percentage >= 100 : isCompleted;
 
-  // المهمة الأم لا تعرض حالة تشغيل (كما كان سابقًا)؛ تظهر فقط "مكتملة" عند 100%
+  // المهمة الأم لا تعرض حالة تشغيل؛ تظهر فقط "مكتملة" عند 100%
   const cardState: CardState = hasSubtasks ? (displayCompleted ? "completed" : "idle") : task.status;
   const progressColor = cardState === "running" ? "var(--primary-dark)" : cardState === "paused" ? "var(--operational)" : undefined;
 
@@ -332,29 +176,22 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
   const hasComments = !hasSubtasks && task.comments.length > 0;
   const hasTimer = !hasSubtasks && !isCompleted && Boolean(task.timer);
   const canAddTimer = !hasSubtasks && !isCompleted && !task.timer;
-  const hasDetails = true; // سطر القياسات (بدأت/انتهت/الوقت) متاح دائمًا، إضافةً للوصف والمرفقات والتعليقات
-  const showDetails = detailsOpen;
 
-  // الإجراءات الثانوية تظهر عند الضغط على الثلاث نقاط فقط
-  const menuItems: TaskMenuItem[] = [
-    { key: "edit", label: "تعديل المهمة", icon: <Pencil size={16} />, onSelect: () => onEdit(task) },
-    ...(canAddTimer ? [{ key: "timer", label: "مؤقت تنازلي", icon: <AlarmClock size={16} />, onSelect: () => setDetailsOpen(true) }] : []),
-    { key: "move", label: "نقل المهمة", icon: <CalendarDays size={16} />, onSelect: () => onMoveToDate(task) },
-    { key: "copy", label: "نسخ (كوبي)", icon: <Copy size={16} />, onSelect: () => onCopy(task) },
-    { key: "delete", label: "حذف المهمة", icon: <Trash2 size={16} />, onSelect: () => onDelete(task), danger: true },
-  ];
+  const menuItems: TaskMenuItem[] = canAddTimer
+    ? [menuBase[0], { key: "timer", label: "مؤقت تنازلي", icon: <AlarmClock size={16} />, onSelect: () => setDetailsOpen(true) }, ...menuBase.slice(1)]
+    : menuBase;
 
   const subLabel = hasSubtasks ? "المهام الفرعية" : "مهمة فرعية";
   const playLabel = isRunning ? "إيقاف" : isPaused ? "استكمال" : "بدء";
 
   return (
-    <article className={"tc-card tr-card tc-card--" + cardState} data-status={cardState}>
+    <article className={"tc-card tr-card tc-card--" + cardState + (variant === "sub" ? " tr-card--sub" : "")} data-status={cardState}>
       <div className="tr-row">
-        {/* 1) المهام الفرعية: تفتح القائمة إن وُجدت، وإلا تضيف مهمة فرعية */}
+        {/* المهام الفرعية: تفتح القائمة إن وُجدت، وإلا تضيف مهمة فرعية */}
         <button
           type="button"
           className={"tr-sub" + (hasSubtasks ? "" : " tr-sub--add")}
-          onClick={() => (hasSubtasks ? setExpanded((value) => !value) : onAddSubtask(task))}
+          onClick={() => (hasSubtasks ? setExpanded((value) => !value) : h.onAddSubtask(task))}
           aria-expanded={hasSubtasks ? expanded : undefined}
           aria-label={hasSubtasks ? (expanded ? "إخفاء المهام الفرعية" : "إظهار المهام الفرعية") : "إضافة مهمة فرعية"}
           title={hasSubtasks ? subtasksLabel(allSubtasks.length) : "إضافة مهمة فرعية"}
@@ -365,17 +202,16 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
           {hasSubtasks && <ChevronDown size={14} aria-hidden className={"tr-sub-chev" + (expanded ? " is-open" : "")} />}
         </button>
 
-        {/* 2) أيقونة + رقم + عنوان المهمة (الضغط عليه يعرض التفاصيل إن وُجدت) */}
+        {/* أيقونة + رقم + عنوان المهمة (الضغط عليه يعرض التفاصيل) */}
         <div className="tr-main">
           <ClipboardList size={19} aria-hidden className="tr-clip" />
-          <NumberBadge value={taskNumbers.get(task.id)} size="sm" done={displayCompleted} />
+          <NumberBadge value={h.taskNumbers.get(task.id)} size="sm" done={displayCompleted} />
           <button
             type="button"
             className={"tr-title" + (displayCompleted ? " tc-title--done" : "")}
-            onClick={() => hasDetails && setDetailsOpen((value) => !value)}
-            aria-expanded={hasDetails ? detailsOpen : undefined}
-            title={hasDetails ? (detailsOpen ? "إخفاء التفاصيل" : "عرض التفاصيل") : task.title}
-            disabled={!hasDetails}
+            onClick={() => setDetailsOpen((value) => !value)}
+            aria-expanded={detailsOpen}
+            title={detailsOpen ? "إخفاء التفاصيل" : "عرض التفاصيل"}
           >
             {task.title}
           </button>
@@ -393,54 +229,40 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
           )}
         </div>
 
-        {/* 3) النسبة + شريط التقدم (مع − / + لعدّاد الإنجاز) */}
+        {/* النسبة + العدّاد + شريط التقدم (− / + لتعديل الإنجاز) */}
         <div className="tr-prog">
           <span className="tr-pct" dir="ltr">{percentage}%</span>
           <span className="tr-count" dir="ltr" title={hasSubtasks ? "المهام الفرعية المكتملة" : "الإنجاز الحالي / الهدف"}>
             {hasSubtasks ? completedSubtasks + "/" + allSubtasks.length : task.current + "/" + task.target}
           </span>
           {!hasSubtasks && (
-            <button
-              type="button"
-              className="tr-step"
-              onClick={() => onSetCurrent(task.id, task.current - 1)}
-              disabled={task.current <= 0}
-              aria-label="تقليل الإنجاز"
-              title={"تقليل الإنجاز (" + task.current + " / " + task.target + ")"}
-            >
+            <button type="button" className="tr-step" onClick={() => h.onSetCurrent(task.id, task.current - 1)} disabled={task.current <= 0} aria-label="تقليل الإنجاز" title="تقليل الإنجاز">
               <Minus size={13} />
             </button>
           )}
           <ProgressBar percentage={percentage} color={progressColor} className="h-2" />
           {!hasSubtasks && (
-            <button
-              type="button"
-              className="tr-step"
-              onClick={() => onSetCurrent(task.id, task.current + 1)}
-              disabled={task.current >= task.target}
-              aria-label="زيادة الإنجاز"
-              title={"زيادة الإنجاز (" + task.current + " / " + task.target + ")"}
-            >
+            <button type="button" className="tr-step" onClick={() => h.onSetCurrent(task.id, task.current + 1)} disabled={task.current >= task.target} aria-label="زيادة الإنجاز" title="زيادة الإنجاز">
               <Plus size={13} />
             </button>
           )}
         </div>
 
-        {/* 4) الوقت */}
+        {/* الوقت */}
         <span className="tr-time" dir="ltr" title={hasSubtasks ? "إجمالي وقت المهام الفرعية" : "الوقت المستغرق"}>
           {formatDuration(hasSubtasks ? subtasksDuration : elapsed)}
         </span>
 
-        {/* 5) تشغيل/إيقاف + إنهاء */}
+        {/* تشغيل/إيقاف + إنهاء */}
         <div className="tr-ctrl">
           {!hasSubtasks && (
             isCompleted ? (
-              <button type="button" className="tr-play tr-play--reopen" onClick={() => onReopen(task.id)} aria-label="إعادة فتح" title="إعادة فتح"><RotateCcw size={16} /></button>
+              <button type="button" className="tr-play tr-play--reopen" onClick={() => h.onReopen(task.id)} aria-label="إعادة فتح" title="إعادة فتح"><RotateCcw size={16} /></button>
             ) : (
               <button
                 type="button"
                 className={"tr-play" + (isRunning ? " is-running" : "")}
-                onClick={() => (isRunning ? onRequestStop(task.id) : onStart(task.id))}
+                onClick={() => (isRunning ? h.onRequestStop(task.id) : h.onStart(task.id))}
                 aria-label={playLabel}
                 title={playLabel}
               >
@@ -449,23 +271,23 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
             )
           )}
           {!hasSubtasks && !isCompleted && (
-            <button type="button" className="tr-finish" onClick={() => onFinish(task.id)} title="إنهاء المهمة">
+            <button type="button" className="tr-finish" onClick={() => h.onFinish(task.id)} title="إنهاء المهمة">
               <span>إنهاء</span><CheckCircle2 size={15} aria-hidden />
             </button>
           )}
         </div>
 
-        {/* 6) التعليقات (الرقم = عدد التعليقات) */}
+        {/* التعليقات (الرقم = عددها) */}
         <span className="tr-cm-cell">
           {!hasSubtasks && (
-            <button type="button" className="tr-ico tr-cm" onClick={() => onAddComment(task.id)} aria-label="تعليق" title="إضافة تعليق">
+            <button type="button" className="tr-ico tr-cm" onClick={() => h.onAddComment(task.id)} aria-label="تعليق" title="إضافة تعليق">
               <MessageSquarePlus size={16} />
               {hasComments && <span className="tr-cm-n">{task.comments.length}</span>}
             </button>
           )}
         </span>
 
-        {/* 7) القائمة (⋮) */}
+        {/* القائمة (⋮) */}
         {canManageTasks && (
           <span className="tr-menu">
             <TaskActionsMenu items={menuItems} buttonClassName="tr-ico" />
@@ -473,9 +295,9 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
         )}
       </div>
 
-      {hasTimer && <TaskTimerPanel task={task} onAction={onTimer} />}
+      {hasTimer && <TaskTimerPanel task={task} onAction={h.onTimer} />}
 
-      {showDetails && (
+      {detailsOpen && (
         <section className="tc-details task-subtasks-enter">
           <div className="tr-metrics">
             {hasSubtasks ? (
@@ -501,7 +323,7 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
           {task.description && <p className="tc-desc">{task.description}</p>}
           <ImageAttachmentGallery attachments={task.attachments} />
 
-          {canAddTimer && <div><TaskTimerPanel task={task} onAction={onTimer} /></div>}
+          {canAddTimer && <div><TaskTimerPanel task={task} onAction={h.onTimer} /></div>}
 
           {hasComments && (
             <div className="tc-panel">
@@ -513,7 +335,7 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
                     {comment.text}
                   </p>
                   {canDeleteComment(comment.userId) && (
-                    <button type="button" onClick={() => onDeleteComment(task.id, comment.time)} className="text-muted hover:text-problem" aria-label="حذف التعليق"><Trash2 size={13} /></button>
+                    <button type="button" onClick={() => h.onDeleteComment(task.id, comment.time)} className="text-muted hover:text-problem" aria-label="حذف التعليق"><Trash2 size={13} /></button>
                   )}
                 </div>
               ))}
@@ -525,28 +347,33 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
       )}
 
       {hasSubtasks && expanded && (
-        <section className="task-subtasks-enter mt-2 space-y-2 border-t border-border pt-2">
-          {subtasks.map((subtask) => (
-            <SubtaskRow
-              key={subtask.id}
-              task={subtask}
-              getSubtasks={getSubtasks}
-              taskNumbers={taskNumbers}
-              onStart={onStart}
-              onRequestStop={onRequestStop}
-              onFinish={onFinish}
-              onReopen={onReopen}
-              onDelete={onDelete}
-              onEdit={onEdit}
-              onSetCurrent={onSetCurrent}
-              onAddSubtask={onAddSubtask}
-              onAddComment={onAddComment}
-              onDeleteComment={onDeleteComment}
-              onTimer={onTimer}
-            />
+        <section className="task-subtasks-enter tr-children">
+          {children.map((child) => (
+            <SubtaskRow key={child.id} task={child} h={h} />
           ))}
         </section>
       )}
     </article>
   );
+}
+
+/** مهمة فرعية (قد تحتوي مهامًا فرعية أخرى): نفس صف المهمة الرئيسية، قائمتها تعديل/حذف فقط */
+function SubtaskRow({ task, h }: { task: Task; h: RowHandlers }) {
+  const menuBase: TaskMenuItem[] = [
+    { key: "edit", label: "تعديل المهمة", icon: <Pencil size={16} />, onSelect: () => h.onEdit(task) },
+    { key: "delete", label: "حذف المهمة", icon: <Trash2 size={16} />, onSelect: () => h.onDelete(task), danger: true },
+  ];
+  return <TaskRowLine task={task} h={h} variant="sub" menuBase={menuBase} />;
+}
+
+export function TaskCard({ task, getSubtasks, taskNumbers, onStart, onRequestStop, onFinish, onReopen, onMoveToDate, onCopy, onDelete, onEdit, onSetCurrent, onAddSubtask, onAddComment, onDeleteComment, onTimer }: TaskCardProps) {
+  const h: RowHandlers = { getSubtasks, taskNumbers, onStart, onRequestStop, onFinish, onReopen, onDelete, onEdit, onSetCurrent, onAddSubtask, onAddComment, onDeleteComment, onTimer };
+  // الإجراءات الثانوية تظهر عند الضغط على الثلاث نقاط فقط
+  const menuBase: TaskMenuItem[] = [
+    { key: "edit", label: "تعديل المهمة", icon: <Pencil size={16} />, onSelect: () => onEdit(task) },
+    { key: "move", label: "نقل المهمة", icon: <CalendarDays size={16} />, onSelect: () => onMoveToDate(task) },
+    { key: "copy", label: "نسخ (كوبي)", icon: <Copy size={16} />, onSelect: () => onCopy(task) },
+    { key: "delete", label: "حذف المهمة", icon: <Trash2 size={16} />, onSelect: () => onDelete(task), danger: true },
+  ];
+  return <TaskRowLine task={task} h={h} variant="root" menuBase={menuBase} />;
 }
