@@ -460,6 +460,26 @@ body {
 .tr-title:not(:disabled) { cursor: pointer; }
 .tr-title:not(:disabled):hover { color: var(--primary-deep); }
 .tr-title.tc-title--done { color: var(--muted); }
+.tr-more {
+  display: inline-flex; align-items: center; gap: 0.25rem; flex-shrink: 0; height: 1.6rem; padding: 0 0.35rem; border-radius: 999px;
+  color: var(--muted); border: 1px solid transparent; transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease;
+}
+.tr-more:hover { color: var(--primary-deep); background: color-mix(in srgb, var(--primary) 12%, transparent); border-color: color-mix(in srgb, var(--primary-deep) 35%, var(--border)); }
+.tr-more svg { transition: transform 200ms ease; }
+.tr-more.is-open svg { transform: rotate(180deg); }
+.tr-more.is-open { color: var(--primary-deep); }
+.tr-more-n { font-size: 0.68rem; font-weight: 700; color: var(--primary-deep); }
+.tr-stopline {
+  display: flex; align-items: center; gap: 0.4rem; width: 100%; margin-top: 0.4rem; padding: 0.3rem 0.7rem; border-radius: 10px; text-align: start;
+  font-size: 0.8rem; color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--operational) 35%, transparent); background: color-mix(in srgb, var(--operational) 9%, transparent);
+  transition: background-color 150ms ease;
+}
+.tr-stopline:hover { background: color-mix(in srgb, var(--operational) 16%, transparent); }
+.tr-stopline svg { flex-shrink: 0; color: var(--operational); }
+.tr-stopline-k { flex-shrink: 0; font-weight: 700; color: var(--operational); }
+.tr-stopline-v { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-stopline-n { flex-shrink: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.72rem; color: var(--muted); }
 .tr-badge {
   display: inline-flex; align-items: center; gap: 0.2rem; flex-shrink: 0; height: 1.25rem; padding: 0 0.4rem;
   border-radius: 999px; font-size: 0.7rem; font-weight: 700;

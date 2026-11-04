@@ -215,6 +215,17 @@ function TaskRowLine({ task, h, variant, menuBase }: { task: Task; h: RowHandler
           >
             {task.title}
           </button>
+          <button
+            type="button"
+            className={"tr-more" + (detailsOpen ? " is-open" : "")}
+            onClick={() => setDetailsOpen((value) => !value)}
+            aria-expanded={detailsOpen}
+            aria-label={detailsOpen ? "إخفاء التفاصيل" : "عرض التفاصيل (بدأت/انتهت/التعليقات)"}
+            title={detailsOpen ? "إخفاء التفاصيل" : "التفاصيل: بدأت/انتهت، التعليقات، الوصف"}
+          >
+            <ChevronDown size={16} aria-hidden />
+            {hasComments && <span className="tr-more-n">{task.comments.length}</span>}
+          </button>
           <span className="tc-prio" title={"الأولوية: " + priorityLabels[task.priority]}>
             <PriorityTag priority={task.priority} outlined className="text-xs font-semibold" />
           </span>
@@ -294,6 +305,15 @@ function TaskRowLine({ task, h, variant, menuBase }: { task: Task; h: RowHandler
           </span>
         )}
       </div>
+
+      {hasStopNotes && (
+        <button type="button" className="tr-stopline" onClick={() => setDetailsOpen((value) => !value)} aria-expanded={detailsOpen} title="عرض سجل التوقفات كاملًا">
+          <Pause size={13} aria-hidden />
+          <span className="tr-stopline-k">سبب التوقف:</span>
+          <span className="tr-stopline-v" dir="auto">{task.stopNotes[task.stopNotes.length - 1].note}</span>
+          {task.stopNotes.length > 1 && <span className="tr-stopline-n" dir="ltr">({task.stopNotes.length})</span>}
+        </button>
+      )}
 
       {hasTimer && <TaskTimerPanel task={task} onAction={h.onTimer} />}
 
