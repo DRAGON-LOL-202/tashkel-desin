@@ -5,8 +5,8 @@ import { calculateParentProgress, calculateTaskProgress } from "../../lib/taskPr
 import { formatArabicTime, formatDuration } from "../../lib/date";
 import { getTaskElapsed, useElapsed } from "../../hooks/useTaskTimer";
 import { TaskTimerPanel } from "./TaskTimerPanel";
+import { TaskActionsMenu, type TaskMenuItem } from "./TaskActionsMenu";
 import { Button } from "../ui/Button";
-import { IconButton } from "../ui/IconButton";
 import { PriorityTag } from "../ui/Badge";
 import { ProgressBar } from "../ui/ProgressBar";
 import { ImageAttachmentGallery } from "../ui/ImageAttachments";
@@ -199,10 +199,16 @@ function SubtaskRow({ task, getSubtasks, taskNumbers, onStart, onRequestStop, on
               )}
             </div>
             {canManageTasks && (
-            <div className="flex shrink-0 items-center gap-1">
-              <IconButton onClick={() => onEdit(task)} aria-label="تعديل المهمة الفرعية" title="تعديل" className="h-7 w-7"><Pencil size={14} /></IconButton>
-              <IconButton onClick={() => onDelete(task)} aria-label="حذف المهمة الفرعية" title="حذف" className="h-7 w-7"><Trash2 size={14} /></IconButton>
-            </div>
+              <div className="flex shrink-0 items-center">
+                <TaskActionsMenu
+                  label="إجراءات المهمة الفرعية"
+                  buttonClassName="tc-ico !h-7 !w-7"
+                  items={[
+                    { key: "edit", label: "تعديل المهمة", icon: <Pencil size={16} />, onSelect: () => onEdit(task) },
+                    { key: "delete", label: "حذف المهمة", icon: <Trash2 size={16} />, onSelect: () => onDelete(task), danger: true },
+                  ]}
+                />
+              </div>
             )}
           </div>
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
@@ -313,6 +319,14 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
   const displayCompleted = hasSubtasks ? percentage >= 100 : isCompleted;
   const grip = <GripVertical size={20} aria-hidden className="tc-grip" />;
 
+  // الإجراءات الثانوية تظهر عند الضغط على الثلاث نقاط فقط
+  const menuItems: TaskMenuItem[] = [
+    { key: "edit", label: "تعديل المهمة", icon: <Pencil size={16} />, onSelect: () => onEdit(task) },
+    { key: "move", label: "نقل المهمة", icon: <CalendarDays size={16} />, onSelect: () => onMoveToDate(task) },
+    { key: "copy", label: "نسخ (كوبي)", icon: <Copy size={16} />, onSelect: () => onCopy(task) },
+    { key: "delete", label: "حذف المهمة", icon: <Trash2 size={16} />, onSelect: () => onDelete(task), danger: true },
+  ];
+
   // المهمة الأم لا تعرض حالة تشغيل (كما كان سابقًا)؛ تظهر فقط "مكتملة" عند 100%
   const cardState: CardState = hasSubtasks ? (displayCompleted ? "completed" : "idle") : task.status;
   const progressColor = cardState === "running" ? "var(--primary-dark)" : cardState === "paused" ? "var(--operational)" : undefined;
@@ -341,10 +355,7 @@ export function TaskCard({ task, subtasks, getSubtasks, taskNumbers, onStart, on
 
         {canManageTasks && (
           <div className="tc-icons">
-            <button type="button" onClick={() => onCopy(task)} aria-label="نسخ إلى شخص آخر" title="نسخ إلى شخص آخر" className="tc-ico"><Copy size={17} /></button>
-            <button type="button" onClick={() => onMoveToDate(task)} aria-label="نقل إلى يوم" title="نقل إلى يوم" className="tc-ico"><CalendarDays size={17} /></button>
-            <button type="button" onClick={() => onEdit(task)} aria-label="تعديل المهمة" title="تعديل" className="tc-ico"><Pencil size={17} /></button>
-            <button type="button" onClick={() => onDelete(task)} aria-label="حذف المهمة" title="حذف" className="tc-ico tc-ico--danger"><Trash2 size={17} /></button>
+            <TaskActionsMenu items={menuItems} />
           </div>
         )}
 
