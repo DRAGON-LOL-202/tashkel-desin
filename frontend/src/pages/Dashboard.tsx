@@ -417,7 +417,7 @@ export default function Dashboard() {
           onExportExcel={handleExportExcel}
         />
 
-        <div className={`grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-5 items-start transition-opacity ${dayLoading ? "opacity-60" : ""}`}>
+        <div className={`grid grid-cols-1 2xl:grid-cols-2 gap-5 items-start transition-opacity ${dayLoading ? "opacity-60" : ""}`}>
           {teamMembers.map((member) => (
             <TeamMemberCard
               key={member.id}
