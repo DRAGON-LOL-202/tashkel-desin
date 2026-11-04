@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronDown, Clock, Layers, ListTodo, Maximize2, Minimize2, Plus, Target, UserRound } from "lucide-react";
+import { CheckCircle2, ChevronDown, ListTodo, Maximize2, Minimize2, Plus, Timer, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AttendanceSession, Task, TeamMember, TimerAction } from "../../types";
 import { getTaskElapsed } from "../../hooks/useTaskTimer";
@@ -104,9 +104,6 @@ export function TeamMemberCard({
     });
   const completed = rootTasks.filter(isTaskCompleted).length;
   const totalDuration = tasks.reduce((sum, task) => sum + getTaskElapsed(task), 0);
-  const completionRate = rootTasks.length > 0 ? Math.round((completed / rootTasks.length) * 100) : 0;
-  const ringRadius = 17;
-  const ringLength = 2 * Math.PI * ringRadius;
 
   const reorderTask = (fromId: string, toId: string) => {
     if (fromId === toId) return;
@@ -131,7 +128,7 @@ export function TeamMemberCard({
 
   const card = (
     <Card
-      className={`tm-card p-4 md:p-5 flex ${focusMode ? "min-h-[calc(100vh-2.5rem)]" : "min-h-[520px]"} flex-col gap-4 transition-colors ${
+      className={`p-4 md:p-5 flex min-h-[520px] flex-col gap-4 transition-colors ${
         isDragOverMember ? "border-primary-deep bg-primary/5" : ""
       }`}
       onDragOver={(event) => {
@@ -183,80 +180,55 @@ export function TeamMemberCard({
         onDeleteSession={onRequestDeleteSession}
       />
 
-      {/* شريط الإحصائيات + إضافة مهمة (بنفس شكل مدير المهام) */}
-      <div className="tm-stats">
-        <div className="tm-add">
-          <Button icon={<Plus size={18} />} onClick={() => onAddNormalTask(member)} className="tm-add-btn">
-            إضافة مهمة
-          </Button>
-          <div className="relative">
+      <div className="grid grid-cols-3 divide-x divide-x-reverse divide-border rounded-control border border-border bg-surface">
+        <div className="p-3 text-center">
+          <ListTodo size={16} className="mx-auto mb-1 text-primary-deep" />
+          <p className="text-xs text-muted">المهام</p>
+          <p className="font-mono font-bold text-text">{rootTasks.length}</p>
+        </div>
+        <div className="p-3 text-center">
+          <CheckCircle2 size={16} className="mx-auto mb-1 text-primary-dark" />
+          <p className="text-xs text-muted">مكتملة</p>
+          <p className="font-mono font-bold text-text">{completed}</p>
+        </div>
+        <div className="p-3 text-center">
+          <Timer size={16} className="mx-auto mb-1 text-muted" />
+          <p className="text-xs text-muted">الوقت</p>
+          <p className="font-mono text-sm font-bold text-text">{formatDuration(totalDuration)}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <Button icon={<Plus size={16} />} onClick={() => onAddNormalTask(member)}>
+          إضافة مهمة
+        </Button>
+        <div className="relative">
+        <Button
+          variant="secondary"
+          icon={<ChevronDown size={16} />}
+          onClick={() => setTaskMenuOpen((value) => !value)}
+          className="w-full"
+        >
+          مهمة
+        </Button>
+        {taskMenuOpen && (
+          <div className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-control border border-border bg-surface shadow-pop">
             <button
               type="button"
-              className="tm-add-more"
-              onClick={() => setTaskMenuOpen((value) => !value)}
-              aria-expanded={taskMenuOpen}
-              aria-label="إضافة مهمة رئيسية أو فرعية"
-              title="مهمة رئيسية / فرعية"
+              onClick={() => { setTaskMenuOpen(false); onAddMainTask(member); }}
+              className="w-full px-3 py-2.5 text-right text-sm text-text hover:bg-primary/10"
             >
-              <ChevronDown size={18} />
+              مهمة رئيسية
             </button>
-            {taskMenuOpen && (
-              <div className="absolute end-0 top-full z-20 mt-1 w-36 overflow-hidden rounded-control border border-border bg-surface shadow-pop">
-                <button
-                  type="button"
-                  onClick={() => { setTaskMenuOpen(false); onAddMainTask(member); }}
-                  className="w-full px-3 py-2.5 text-right text-sm text-text hover:bg-primary/10"
-                >
-                  مهمة رئيسية
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setTaskMenuOpen(false); onAddSubtask(member); }}
-                  className="w-full border-t border-border px-3 py-2.5 text-right text-sm text-text hover:bg-primary/10"
-                >
-                  مهمة فرعية
-                </button>
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={() => { setTaskMenuOpen(false); onAddSubtask(member); }}
+              className="w-full border-t border-border px-3 py-2.5 text-right text-sm text-text hover:bg-primary/10"
+            >
+              مهمة فرعية
+            </button>
           </div>
-        </div>
-
-        <div className="tm-stat">
-          <Layers size={22} aria-hidden className="tm-stat-ico" />
-          <div>
-            <p className="tm-stat-v">{rootTasks.length}</p>
-            <p className="tm-stat-k">إجمالي المهام</p>
-          </div>
-        </div>
-        <div className="tm-stat">
-          <CheckCircle2 size={22} aria-hidden className="tm-stat-ico" />
-          <div>
-            <p className="tm-stat-v">{completed}</p>
-            <p className="tm-stat-k">مكتملة</p>
-          </div>
-        </div>
-        <div className="tm-stat">
-          <Clock size={22} aria-hidden className="tm-stat-ico" />
-          <div>
-            <p className="tm-stat-v" dir="ltr">{formatDuration(totalDuration)}</p>
-            <p className="tm-stat-k">إجمالي الوقت</p>
-          </div>
-        </div>
-        <div className="tm-stat tm-stat--ring">
-          <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden className="tm-ring">
-            <circle cx="22" cy="22" r={ringRadius} fill="none" strokeWidth="5" className="tm-ring-bg" />
-            <circle
-              cx="22" cy="22" r={ringRadius} fill="none" strokeWidth="5" strokeLinecap="round"
-              className="tm-ring-fg"
-              strokeDasharray={ringLength}
-              strokeDashoffset={ringLength * (1 - completionRate / 100)}
-              transform="rotate(-90 22 22)"
-            />
-          </svg>
-          <div>
-            <p className="tm-stat-v"><Target size={15} aria-hidden className="tm-stat-inline" /> <span dir="ltr">{completionRate}%</span></p>
-            <p className="tm-stat-k">معدل الإنجاز</p>
-          </div>
+        )}
         </div>
       </div>
 
@@ -330,7 +302,7 @@ export function TeamMemberCard({
   if (!focusMode) return card;
   return (
     <div className="fixed inset-0 z-40 overflow-y-auto bg-background">
-      <div className="w-full p-3 md:p-5" style={{ zoom: 1.1 }}>
+      <div className="mx-auto max-w-4xl p-3 md:p-6" style={{ zoom: 1.25 }}>
         {card}
       </div>
     </div>
