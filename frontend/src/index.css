@@ -428,13 +428,6 @@ body {
 .tc-card--completed { --tr-strip: var(--idea); }
 
 .tr-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.5rem; padding-inline-start: 0.25rem; }
-.tr-sub { order: 0; }
-.tr-main { order: 1; }
-.tr-menu { order: 2; }
-.tr-prog { order: 3; flex: 1 1 11rem; min-width: 11rem; }
-.tr-time { order: 4; }
-.tr-ctrl { order: 5; }
-.tr-cm-cell { order: 6; }
 
 .tr-sub {
   display: inline-flex; align-items: center; gap: 0.35rem; height: 2rem; padding: 0 0.7rem;
@@ -545,29 +538,6 @@ body {
   background: var(--primary-dark); color: #07201a;
 }
 
-/* عرض متوسط/واسع: كل شيء في صف واحد */
-@container tc (min-width: 780px) {
-  .tr-row { flex-wrap: nowrap; gap: 0.5rem; }
-  .tr-sub, .tr-main, .tr-prog, .tr-time, .tr-ctrl, .tr-cm-cell, .tr-menu { order: 0; }
-  .tr-prog { flex: 1 1 11rem; min-width: 10.5rem; max-width: 24rem; }
-  .tr-sub-label { display: none; }
-  .tr-count { display: none; }
-  .tr-time { min-width: 4.9rem; padding: 0 0.5rem; }
-  .tr-finish { padding: 0 0.55rem; }
-  .tr-finish span { display: none; }
-  .tr-title { font-size: 0.95rem; }
-}
-@container tc (min-width: 940px) {
-  .tr-sub-label { display: inline; }
-  .tr-state-label { display: inline; }
-  .tr-count { display: inline; }
-  .tr-finish span { display: inline; }
-  .tr-finish { padding: 0 0.75rem; }
-  .tr-ctrl { min-width: 7.2rem; }
-  .tr-time { min-width: 6rem; }
-  .tr-prog { flex-basis: 13rem; }
-  .tr-title { font-size: 1.02rem; }
-}
 @media (prefers-reduced-motion: reduce) { .tr-state--running .tc-dot, .tr-sub-chev { animation: none; transition: none; } }
 
 /* قسم التفاصيل القابل للطي */
@@ -662,8 +632,6 @@ body {
   background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 5%, var(--surface)), var(--surface));
   border-color: color-mix(in srgb, var(--primary-deep) 22%, var(--border));
 }
-.mh-stats { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0.6rem; }
-.mh-add { display: flex; align-items: stretch; gap: 0.35rem; flex: 1 1 100%; }
 .mh-add .mh-add-btn { flex: 1 1 auto; min-height: 2.9rem; border-radius: 14px; font-weight: 700; font-size: 1rem; box-shadow: inset 0 1px 0 rgba(255,255,255,0.35); }
 .mh-add-more {
   display: inline-flex; align-items: center; justify-content: center; height: 100%; min-height: 2.9rem; width: 2.9rem; border-radius: 14px;
@@ -672,7 +640,7 @@ body {
 }
 .mh-add-more:hover { background: color-mix(in srgb, var(--primary) 16%, transparent); border-color: var(--primary-deep); }
 .mh-stat {
-  flex: 1 1 8rem; display: flex; align-items: center; gap: 0.7rem; padding: 0.6rem 0.9rem; border-radius: 14px;
+  min-width: 0; display: flex; align-items: center; gap: 0.7rem; padding: 0.6rem 0.9rem; border-radius: 14px;
   border: 1px solid color-mix(in srgb, var(--primary-deep) 26%, var(--border));
   background: color-mix(in srgb, var(--primary) 4%, color-mix(in srgb, var(--surface) 85%, transparent));
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--primary) 12%, transparent);
@@ -684,13 +652,9 @@ body {
 .mh-ring { flex-shrink: 0; }
 .mh-ring-bg { stroke: color-mix(in srgb, var(--muted) 30%, transparent); }
 .mh-ring-fg { stroke: var(--primary-dark); filter: drop-shadow(0 0 4px color-mix(in srgb, var(--primary-dark) 70%, transparent)); transition: stroke-dashoffset 500ms ease; }
-@media (min-width: 640px) {
-  .mh-add { flex: 0 1 15rem; }
-}
 
 /* صفوف المهام: فواصل بين الأقسام + أزرار أوضح كما في التصميم */
 .mh-card .tr-card { border-radius: 16px; padding: 0.6rem 0.8rem; }
-.mh-card .tr-prog { border-inline-start: 1px solid color-mix(in srgb, var(--border) 90%, transparent); }
 .mh-card .tr-prog > .w-full { height: 0.5rem; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 60%, transparent); }
 .mh-card .tr-prog > .w-full > div { box-shadow: 0 0 10px -1px color-mix(in srgb, var(--primary-dark) 80%, transparent); }
 .mh-card .tr-pct { font-size: 0.9rem; }
@@ -699,3 +663,67 @@ body {
 .mh-card .tr-finish { border-radius: 999px; height: 2.1rem; }
 .mh-card .tr-ico { border-radius: 999px; }
 .mh-card .tc-card--completed .tr-pct { color: var(--primary-dark); }
+
+
+/* ===== تخطيط صف المهمة (grid) — متناسق في العرض الضيق والواسع =====
+   ضيق: سطران  [فرعية][ العنوان … ][⋮]  /  [تقدّم … ][وقت][تشغيل/إنهاء][تعليق]
+   واسع: صف واحد بأعمدة ثابتة فتصطف الصفوف تحت بعضها كما في التصميم. */
+.mh-card { container-type: inline-size; container-name: mh; }
+.tr-row {
+  display: grid; align-items: center; gap: 0.55rem 0.6rem; padding-inline: 0.35rem 0.1rem;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  grid-template-areas: "sub main main main menu" "prog prog time ctrl cm";
+}
+.tr-sub { grid-area: sub; justify-content: center; }
+.tr-main { grid-area: main; min-width: 0; flex: none; }
+.tr-menu { grid-area: menu; justify-self: end; }
+.tr-prog { grid-area: prog; min-width: 0; flex: none; padding-inline: 0; border-inline-start: 0; }
+.tr-prog > .w-full { flex: 1 1 0; min-width: 2.5rem; }
+.tr-time { grid-area: time; min-width: 5.4rem; }
+.tr-ctrl { grid-area: ctrl; }
+.tr-cm-cell { grid-area: cm; justify-self: end; }
+.tr-title { flex: 0 1 auto; font-size: 1rem; }
+.tr-main { flex-wrap: nowrap; }
+
+/* ضيق جداً (جوال): ثلاثة أسطر وبدون نصوص الأزرار */
+@container tc (max-width: 520px) {
+  .tr-sub-label, .tr-finish span { display: none; }
+  .tr-finish { padding: 0 0.6rem; }
+}
+@container tc (max-width: 400px) {
+  .tr-row {
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    grid-template-areas: "main main main menu" "prog prog prog prog" "sub time ctrl cm";
+  }
+  .tr-sub { justify-self: start; }
+  .tr-time { min-width: 4.8rem; padding: 0 0.4rem; }
+}
+
+/* واسع: صف واحد، أعمدة ثابتة (بدون نصوص الأزرار) */
+@container tc (min-width: 860px) {
+  .tr-row {
+    grid-template-columns: 4.8rem minmax(8rem, 1fr) minmax(12rem, 20rem) 5.8rem 6.9rem 2.2rem 2.2rem;
+    grid-template-areas: "sub main prog time ctrl cm menu";
+    gap: 0 0.7rem;
+  }
+  .tr-sub-label, .tr-finish span { display: none; }
+  .tr-finish { padding: 0 0.6rem; }
+  .tr-prog { padding-inline: 0.9rem; border-inline: 1px solid color-mix(in srgb, var(--border) 90%, transparent); }
+  .tr-time { min-width: 0; padding: 0; }
+  .tr-menu, .tr-cm-cell { justify-self: center; }
+}
+/* واسع جداً: نصوص كاملة (المهام الفرعية / إنهاء / حالة المهمة) */
+@container tc (min-width: 1100px) {
+  .tr-row { grid-template-columns: 10.4rem minmax(10rem, 1fr) minmax(14rem, 26rem) 6.2rem 9.4rem 2.2rem 2.2rem; }
+  .tr-sub-label, .tr-finish span, .tr-state-label { display: inline; }
+  .tr-finish { padding: 0 0.85rem; }
+  .tr-title { font-size: 1.05rem; }
+}
+
+/* ===== شريط الإحصائيات: ضيق = شبكة 2×2 تحت زر الإضافة، واسع = صف واحد ===== */
+.mh-stats { display: grid; gap: 0.6rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mh-add { display: flex; align-items: stretch; gap: 0.4rem; grid-column: 1 / -1; }
+@container mh (min-width: 860px) {
+  .mh-stats { grid-template-columns: minmax(15rem, 18rem) repeat(4, minmax(0, 1fr)); }
+  .mh-add { grid-column: auto; }
+}
