@@ -654,3 +654,49 @@ body {
 .tm-input { width: 4.5rem; height: 1.6rem; padding: 0 0.4rem; border-radius: 8px; border: 1px solid var(--border); background: var(--background); font-size: 0.78rem; }
 .tm-error { width: 100%; margin: 0; font-size: 0.7rem; color: var(--problem); }
 .tm-panel button:focus-visible, .tm-add:focus-visible { outline: 2px solid var(--primary-dark); outline-offset: 2px; }
+
+
+/* ===== شكل "مدير المهام": شريط الإحصائيات وصفوف المهام (tm-*) =====
+   كل الألوان من متغيرات الموقع فتعمل في الوضعين الفاتح والداكن. */
+.tm-card {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 5%, var(--surface)), var(--surface));
+  border-color: color-mix(in srgb, var(--primary-deep) 22%, var(--border));
+}
+.tm-stats { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0.6rem; }
+.tm-add { display: flex; align-items: stretch; gap: 0.35rem; flex: 1 1 100%; }
+.tm-add-btn { flex: 1 1 auto; min-height: 2.9rem; border-radius: 14px; font-weight: 700; font-size: 1rem; box-shadow: 0 0 18px -4px color-mix(in srgb, var(--primary-dark) 70%, transparent); }
+.tm-add-more {
+  display: inline-flex; align-items: center; justify-content: center; height: 100%; min-height: 2.9rem; width: 2.9rem; border-radius: 14px;
+  color: var(--text); border: 1px solid color-mix(in srgb, var(--primary-deep) 45%, var(--border));
+  background: color-mix(in srgb, var(--primary) 7%, transparent); transition: background-color 150ms ease, border-color 150ms ease;
+}
+.tm-add-more:hover { background: color-mix(in srgb, var(--primary) 16%, transparent); border-color: var(--primary-deep); }
+.tm-stat {
+  flex: 1 1 8rem; display: flex; align-items: center; gap: 0.7rem; padding: 0.6rem 0.9rem; border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--primary-deep) 26%, var(--border));
+  background: color-mix(in srgb, var(--primary) 4%, color-mix(in srgb, var(--surface) 85%, transparent));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.tm-stat-ico { flex-shrink: 0; color: var(--text); opacity: 0.9; }
+.tm-stat-v { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1.05rem; font-weight: 700; line-height: 1.2; color: var(--text); font-variant-numeric: tabular-nums; }
+.tm-stat-k { font-size: 0.75rem; color: var(--muted); }
+.tm-stat-inline { display: inline; vertical-align: -2px; color: var(--primary-deep); }
+.tm-ring { flex-shrink: 0; }
+.tm-ring-bg { stroke: color-mix(in srgb, var(--muted) 30%, transparent); }
+.tm-ring-fg { stroke: var(--primary-dark); filter: drop-shadow(0 0 4px color-mix(in srgb, var(--primary-dark) 70%, transparent)); transition: stroke-dashoffset 500ms ease; }
+@media (min-width: 640px) {
+  .tm-add { flex: 0 1 15rem; }
+}
+
+/* صفوف المهام: فواصل بين الأقسام + أزرار أوضح كما في التصميم */
+.tm-card .tr-card { border-radius: 16px; padding: 0.6rem 0.8rem; }
+.tm-card .tr-card::before { inset-inline-end: 0; width: 5px; border-radius: 999px; }
+.tm-card .tr-prog { border-inline-start: 1px solid color-mix(in srgb, var(--border) 90%, transparent); }
+.tm-card .tr-prog > .w-full { height: 0.5rem; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 60%, transparent); }
+.tm-card .tr-prog > .w-full > div { box-shadow: 0 0 10px -1px color-mix(in srgb, var(--primary-dark) 80%, transparent); }
+.tm-card .tr-pct { font-size: 0.9rem; }
+.tm-card .tr-time { height: 2.1rem; border-radius: 999px; }
+.tm-card .tr-play { height: 2.7rem; width: 2.7rem; box-shadow: 0 0 18px -2px color-mix(in srgb, var(--primary-dark) 80%, transparent); }
+.tm-card .tr-finish { border-radius: 999px; height: 2.1rem; }
+.tm-card .tr-ico { border-radius: 999px; }
+.tm-card .tc-card--completed .tr-pct { color: var(--primary-dark); }
