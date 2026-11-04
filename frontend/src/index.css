@@ -428,6 +428,15 @@ body {
 .tc-card--completed { --tr-strip: var(--idea); }
 
 .tr-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.5rem; padding-inline-start: 0.25rem; }
+.tr-sub { order: 0; }
+.tr-main { order: 1; }
+.tr-menu { order: 2; }
+.tr-prog { order: 3; flex: 1 1 11rem; min-width: 11rem; }
+.tr-time { order: 4; }
+.tr-ctrl { order: 5; }
+.tr-cm-cell { order: 6; }
+/* العرض الضيق: سطر للعنوان، وسطر للتقدم والتحكم (فاصل سطر بعد القائمة) */
+.tr-row::after { content: ""; order: 2; flex-basis: 100%; height: 0; }
 
 .tr-sub {
   display: inline-flex; align-items: center; gap: 0.35rem; height: 2rem; padding: 0 0.7rem;
@@ -444,7 +453,12 @@ body {
 .tr-sub-chev.is-open { transform: rotate(180deg); }
 
 .tr-main { flex: 2 1 9rem; min-width: 6rem; display: flex; align-items: center; gap: 0.45rem; }
-.tr-clip { flex-shrink: 0; color: var(--text); opacity: 0.85; }
+.tr-clip {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; height: 1.9rem; width: 1.9rem; border-radius: 9px;
+  color: var(--text); opacity: 0.85; background: transparent; border: 1px solid transparent; transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, opacity 150ms ease;
+}
+.tr-clip:hover, .tr-clip.is-open { opacity: 1; color: var(--primary-deep); background: color-mix(in srgb, var(--primary) 12%, transparent); border-color: color-mix(in srgb, var(--primary-deep) 35%, var(--border)); }
+.tr-sub.is-open { background: color-mix(in srgb, var(--primary) 18%, transparent); border-color: var(--primary-deep); }
 .tr-main .task-number { height: 1.6rem; min-width: 1.6rem; font-size: 0.8rem; border-radius: 8px; box-shadow: none; flex-shrink: 0; }
 .tr-title {
   min-width: 2.5rem; flex: 0 1 auto; text-align: start; font-size: 1rem; font-weight: 700; line-height: 1.35; color: var(--text);
@@ -486,7 +500,7 @@ body {
 .tr-state--running .tc-dot { animation: tc-pulse 1.8s ease-in-out infinite; }
 .tr-state-label { display: none; }
 
-.tr-prog { display: flex; align-items: center; gap: 0.4rem; padding-inline: 0.6rem; border-inline-start: 1px solid var(--border); }
+.tr-prog { display: flex; align-items: center; gap: 0.4rem; padding-inline: 0; }
 .tr-prog > .w-full { width: auto; flex: 1 1 0; min-width: 3rem; height: 0.45rem; background: color-mix(in srgb, var(--muted) 32%, transparent); }
 .tr-pct { flex-shrink: 0; min-width: 2.6rem; text-align: start; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.85rem; font-weight: 700; color: var(--text); }
 .tr-card--sub { background: color-mix(in srgb, var(--primary) 4%, color-mix(in srgb, var(--surface) 80%, transparent)); box-shadow: none; }
@@ -501,6 +515,7 @@ body {
 }
 .tr-step:hover:not(:disabled) { color: var(--primary-deep); border-color: var(--primary-deep); background: color-mix(in srgb, var(--primary) 12%, transparent); }
 .tr-step:disabled { opacity: 0.35; cursor: not-allowed; }
+.tr-step--ghost { visibility: hidden; }
 
 .tr-time {
   display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; height: 2rem; min-width: 5.4rem; padding: 0 0.7rem;
@@ -533,11 +548,48 @@ body {
 }
 .tr-ico:hover { background: color-mix(in srgb, var(--primary) 12%, transparent); border-color: color-mix(in srgb, var(--primary-deep) 35%, var(--border)); }
 .tr-cm-n {
-  position: absolute; top: -0.1rem; inset-inline-end: -0.1rem; min-width: 1rem; height: 1rem; padding: 0 0.2rem; border-radius: 999px;
+  position: absolute; top: -0.15rem; inset-inline-start: -0.15rem; min-width: 1rem; height: 1rem; padding: 0 0.2rem; border-radius: 999px;
   display: inline-flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 700;
   background: var(--primary-dark); color: #07201a;
 }
 
+/* الجوال: زر المهام الفرعية أيقونة + عدد فقط ليتسع العنوان */
+@container tc (max-width: 520px) {
+  .tr-sub-label { display: none; }
+  .tr-sub { padding: 0 0.55rem; }
+}
+/* عرض متوسط/واسع: صف واحد بأعمدة ثابتة فتتحاذى كل الصفوف (كما في تصميم "مدير المهام")
+   [المهام الفرعية] [أيقونة + عنوان] | [شريط + %] | [وقت] [تشغيل + إنهاء] [تعليق] [⋮] */
+@container tc (min-width: 780px) {
+  .tr-row {
+    display: grid; align-items: center; gap: 0.5rem;
+    grid-template-columns: 3.6rem minmax(7rem, 1fr) minmax(10rem, 17rem) 5.2rem 5.1rem 2.1rem 2rem;
+  }
+  .tr-sub, .tr-main, .tr-prog, .tr-time, .tr-ctrl, .tr-cm-cell, .tr-menu { order: 0; }
+  .tr-row::after { content: none; }
+  .tr-sub { justify-self: start; max-width: 100%; overflow: hidden; padding: 0 0.6rem; }
+  .tr-main { min-width: 0; }
+  .tr-prog { min-width: 0; height: 2rem; padding-inline: 0.75rem; border-inline: 1px solid var(--border); }
+  .tr-sub-label { display: none; }
+  .tr-count { display: none; }
+  .tr-time { min-width: 0; width: 100%; padding: 0 0.4rem; }
+  .tr-finish { padding: 0 0.55rem; }
+  .tr-finish span { display: none; }
+  .tr-title { font-size: 0.95rem; }
+  .tr-menu { justify-content: center; }
+  /* أزرار − / + تظهر عند المرور أو التركيز فقط (تبقى ظاهرة في الأجهزة اللمسية) */
+  .tr-prog .tr-step { opacity: 0; transition: opacity 150ms ease, color 150ms ease, border-color 150ms ease, background-color 150ms ease; }
+  .tr-card:hover > .tr-row .tr-prog .tr-step, .tr-prog:focus-within .tr-step { opacity: 1; }
+  .tr-card:hover > .tr-row .tr-prog .tr-step:disabled { opacity: 0.35; }
+}
+@media (hover: none) { .tr-prog .tr-step { opacity: 1 !important; } }
+@container tc (min-width: 940px) {
+  .tr-row { grid-template-columns: 10.25rem minmax(8rem, 1fr) minmax(11rem, 19rem) 6.2rem 7.9rem 2.2rem 2.1rem; gap: 0.6rem; }
+  .tr-sub-label { display: inline; }
+  .tr-finish span { display: inline; }
+  .tr-finish { padding: 0 0.75rem; }
+  .tr-title { font-size: 1.02rem; }
+}
 @media (prefers-reduced-motion: reduce) { .tr-state--running .tc-dot, .tr-sub-chev { animation: none; transition: none; } }
 
 /* قسم التفاصيل القابل للطي */
@@ -626,104 +678,48 @@ body {
 .tm-panel button:focus-visible, .tm-add:focus-visible { outline: 2px solid var(--primary-dark); outline-offset: 2px; }
 
 
-/* ===== شكل "مدير المهام": شريط الإحصائيات وصفوف المهام (mh-*) =====
+/* ===== شكل "مدير المهام": شريط الإحصائيات وصفوف المهام (tm-*) =====
    كل الألوان من متغيرات الموقع فتعمل في الوضعين الفاتح والداكن. */
-.mh-card {
+.tm-card {
   background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 5%, var(--surface)), var(--surface));
   border-color: color-mix(in srgb, var(--primary-deep) 22%, var(--border));
 }
-.mh-add .mh-add-btn { flex: 1 1 auto; min-height: 2.9rem; border-radius: 14px; font-weight: 700; font-size: 1rem; box-shadow: inset 0 1px 0 rgba(255,255,255,0.35); }
-.mh-add-more {
+.tm-stats { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0.6rem; }
+/* يلغي تنسيق زر المؤقت (.tm-add) المشترك في الاسم */
+.tm-stats .tm-add { height: auto; margin-top: 0; padding: 0; border-radius: 0; background: none; }
+.tm-add { display: flex; align-items: stretch; gap: 0.35rem; flex: 1 1 100%; }
+.tm-add-btn { flex: 1 1 auto; min-height: 2.9rem; border-radius: 14px; font-weight: 700; font-size: 1rem; box-shadow: 0 0 18px -4px color-mix(in srgb, var(--primary-dark) 70%, transparent); }
+.tm-add-more {
   display: inline-flex; align-items: center; justify-content: center; height: 100%; min-height: 2.9rem; width: 2.9rem; border-radius: 14px;
   color: var(--text); border: 1px solid color-mix(in srgb, var(--primary-deep) 45%, var(--border));
   background: color-mix(in srgb, var(--primary) 7%, transparent); transition: background-color 150ms ease, border-color 150ms ease;
 }
-.mh-add-more:hover { background: color-mix(in srgb, var(--primary) 16%, transparent); border-color: var(--primary-deep); }
-.mh-stat {
-  min-width: 0; display: flex; align-items: center; gap: 0.7rem; padding: 0.6rem 0.9rem; border-radius: 14px;
+.tm-add-more:hover { background: color-mix(in srgb, var(--primary) 16%, transparent); border-color: var(--primary-deep); }
+.tm-stat {
+  flex: 1 1 8rem; display: flex; align-items: center; gap: 0.7rem; padding: 0.6rem 0.9rem; border-radius: 14px;
   border: 1px solid color-mix(in srgb, var(--primary-deep) 26%, var(--border));
   background: color-mix(in srgb, var(--primary) 4%, color-mix(in srgb, var(--surface) 85%, transparent));
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--primary) 12%, transparent);
 }
-.mh-stat-ico { flex-shrink: 0; color: var(--text); opacity: 0.9; }
-.mh-stat-v { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1.05rem; font-weight: 700; line-height: 1.2; color: var(--text); font-variant-numeric: tabular-nums; }
-.mh-stat-k { font-size: 0.75rem; color: var(--muted); }
-.mh-stat-inline { display: inline; vertical-align: -2px; color: var(--primary-deep); }
-.mh-ring { flex-shrink: 0; }
-.mh-ring-bg { stroke: color-mix(in srgb, var(--muted) 30%, transparent); }
-.mh-ring-fg { stroke: var(--primary-dark); filter: drop-shadow(0 0 4px color-mix(in srgb, var(--primary-dark) 70%, transparent)); transition: stroke-dashoffset 500ms ease; }
+.tm-stat-ico { flex-shrink: 0; color: var(--text); opacity: 0.9; }
+.tm-stat-v { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1.05rem; font-weight: 700; line-height: 1.2; color: var(--text); font-variant-numeric: tabular-nums; }
+.tm-stat-k { font-size: 0.75rem; color: var(--muted); }
+.tm-stat-inline { display: inline; vertical-align: -2px; color: var(--primary-deep); }
+.tm-ring { flex-shrink: 0; }
+.tm-ring-bg { stroke: color-mix(in srgb, var(--muted) 30%, transparent); }
+.tm-ring-fg { stroke: var(--primary-dark); filter: drop-shadow(0 0 4px color-mix(in srgb, var(--primary-dark) 70%, transparent)); transition: stroke-dashoffset 500ms ease; }
+@media (min-width: 640px) {
+  .tm-add { flex: 0 1 15rem; }
+}
 
 /* صفوف المهام: فواصل بين الأقسام + أزرار أوضح كما في التصميم */
-.mh-card .tr-card { border-radius: 16px; padding: 0.6rem 0.8rem; }
-.mh-card .tr-prog > .w-full { height: 0.5rem; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 60%, transparent); }
-.mh-card .tr-prog > .w-full > div { box-shadow: 0 0 10px -1px color-mix(in srgb, var(--primary-dark) 80%, transparent); }
-.mh-card .tr-pct { font-size: 0.9rem; }
-.mh-card .tr-time { height: 2.1rem; border-radius: 999px; }
-.mh-card .tr-play { height: 2.7rem; width: 2.7rem; box-shadow: 0 0 18px -2px color-mix(in srgb, var(--primary-dark) 80%, transparent); }
-.mh-card .tr-finish { border-radius: 999px; height: 2.1rem; }
-.mh-card .tr-ico { border-radius: 999px; }
-.mh-card .tc-card--completed .tr-pct { color: var(--primary-dark); }
-
-
-/* ===== تخطيط صف المهمة (grid) — متناسق في العرض الضيق والواسع =====
-   ضيق: سطران  [فرعية][ العنوان … ][⋮]  /  [تقدّم … ][وقت][تشغيل/إنهاء][تعليق]
-   واسع: صف واحد بأعمدة ثابتة فتصطف الصفوف تحت بعضها كما في التصميم. */
-.mh-card { container-type: inline-size; container-name: mh; }
-.tr-row {
-  display: grid; align-items: center; gap: 0.55rem 0.6rem; padding-inline: 0.35rem 0.1rem;
-  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
-  grid-template-areas: "sub main main main menu" "prog prog time ctrl cm";
-}
-.tr-sub { grid-area: sub; justify-content: center; }
-.tr-main { grid-area: main; min-width: 0; flex: none; }
-.tr-menu { grid-area: menu; justify-self: end; }
-.tr-prog { grid-area: prog; min-width: 0; flex: none; padding-inline: 0; border-inline-start: 0; }
-.tr-prog > .w-full { flex: 1 1 0; min-width: 2.5rem; }
-.tr-time { grid-area: time; min-width: 5.4rem; }
-.tr-ctrl { grid-area: ctrl; }
-.tr-cm-cell { grid-area: cm; justify-self: end; }
-.tr-title { flex: 0 1 auto; font-size: 1rem; }
-.tr-main { flex-wrap: nowrap; }
-
-/* ضيق جداً (جوال): ثلاثة أسطر وبدون نصوص الأزرار */
-@container tc (max-width: 520px) {
-  .tr-sub-label, .tr-finish span { display: none; }
-  .tr-finish { padding: 0 0.6rem; }
-}
-@container tc (max-width: 400px) {
-  .tr-row {
-    grid-template-columns: minmax(0, 1fr) auto auto auto;
-    grid-template-areas: "main main main menu" "prog prog prog prog" "sub time ctrl cm";
-  }
-  .tr-sub { justify-self: start; }
-  .tr-time { min-width: 4.8rem; padding: 0 0.4rem; }
-}
-
-/* واسع: صف واحد، أعمدة ثابتة (بدون نصوص الأزرار) */
-@container tc (min-width: 860px) {
-  .tr-row {
-    grid-template-columns: 4.8rem minmax(8rem, 1fr) minmax(12rem, 20rem) 5.8rem 6.9rem 2.2rem 2.2rem;
-    grid-template-areas: "sub main prog time ctrl cm menu";
-    gap: 0 0.7rem;
-  }
-  .tr-sub-label, .tr-finish span { display: none; }
-  .tr-finish { padding: 0 0.6rem; }
-  .tr-prog { padding-inline: 0.9rem; border-inline: 1px solid color-mix(in srgb, var(--border) 90%, transparent); }
-  .tr-time { min-width: 0; padding: 0; }
-  .tr-menu, .tr-cm-cell { justify-self: center; }
-}
-/* واسع جداً: نصوص كاملة (المهام الفرعية / إنهاء / حالة المهمة) */
-@container tc (min-width: 1100px) {
-  .tr-row { grid-template-columns: 10.4rem minmax(10rem, 1fr) minmax(14rem, 26rem) 6.2rem 9.4rem 2.2rem 2.2rem; }
-  .tr-sub-label, .tr-finish span, .tr-state-label { display: inline; }
-  .tr-finish { padding: 0 0.85rem; }
-  .tr-title { font-size: 1.05rem; }
-}
-
-/* ===== شريط الإحصائيات: ضيق = شبكة 2×2 تحت زر الإضافة، واسع = صف واحد ===== */
-.mh-stats { display: grid; gap: 0.6rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.mh-add { display: flex; align-items: stretch; gap: 0.4rem; grid-column: 1 / -1; }
-@container mh (min-width: 860px) {
-  .mh-stats { grid-template-columns: minmax(15rem, 18rem) repeat(4, minmax(0, 1fr)); }
-  .mh-add { grid-column: auto; }
-}
+.tm-card .tr-card { border-radius: 14px; padding: 0.45rem 0.75rem; }
+.tm-card .tr-card::before { inset-block: 7px; inset-inline-start: -1px; width: 4px; border-radius: 999px; }
+.tm-card .tr-prog > .w-full { height: 0.5rem; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 60%, transparent); }
+.tm-card .tr-prog > .w-full > div { box-shadow: 0 0 10px -1px color-mix(in srgb, var(--primary-dark) 80%, transparent); }
+.tm-card .tr-pct { font-size: 0.9rem; }
+.tm-card .tr-time { height: 2.1rem; border-radius: 999px; }
+.tm-card .tr-play { height: 2.45rem; width: 2.45rem; box-shadow: 0 0 18px -2px color-mix(in srgb, var(--primary-dark) 80%, transparent); }
+.tm-card .tr-finish { border-radius: 999px; height: 2.1rem; }
+.tm-card .tr-ico { border-radius: 999px; }
+.tm-card .tc-card--completed .tr-pct { color: var(--primary-dark); }

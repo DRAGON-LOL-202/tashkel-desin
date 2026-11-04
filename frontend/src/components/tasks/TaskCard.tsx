@@ -1,4 +1,4 @@
-import { AlarmClock, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Clock, Copy, Layers, MessageSquarePlus, Minus, Pause, Pencil, Play, Plus, RotateCcw, Timer, Trash2 } from "lucide-react";
+import { AlarmClock, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Clock, Copy, Layers, MessageSquareText, Minus, Move, Pause, Pencil, Play, Plus, RotateCcw, Timer, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import type { Task, TimerAction } from "../../types";
 import { calculateParentProgress, calculateTaskProgress } from "../../lib/taskProgress";
@@ -167,10 +167,12 @@ function TaskRowLine({ task, h, variant, menuBase }: { task: Task; h: RowHandler
   const subtasksDuration = allSubtasks.reduce((sum, subtask) => sum + getTaskElapsed(subtask), 0);
   const percentage = hasSubtasks ? calculateParentProgress(children) : calculateTaskProgress(task);
   const displayCompleted = hasSubtasks ? percentage >= 100 : isCompleted;
+  const progressCount = hasSubtasks ? completedSubtasks + "/" + allSubtasks.length : task.current + "/" + task.target;
 
   // المهمة الأم لا تعرض حالة تشغيل؛ تظهر فقط "مكتملة" عند 100%
   const cardState: CardState = hasSubtasks ? (displayCompleted ? "completed" : "idle") : task.status;
-  const progressColor = cardState === "running" ? "var(--primary-dark)" : cardState === "paused" ? "var(--operational)" : undefined;
+  // الشريط بلون الموقع (كما في التصميم)؛ المتوقفة فقط بلون التنبيه
+  const progressColor = cardState === "paused" ? "var(--operational)" : "var(--primary)";
 
   const hasStopNotes = !hasSubtasks && task.stopNotes.length > 0;
   const hasComments = !hasSubtasks && task.comments.length > 0;
@@ -190,7 +192,7 @@ function TaskRowLine({ task, h, variant, menuBase }: { task: Task; h: RowHandler
         {/* المهام الفرعية: تفتح القائمة إن وُجدت، وإلا تضيف مهمة فرعية */}
         <button
           type="button"
-          className={"tr-sub" + (hasSubtasks ? "" : " tr-sub--add")}
+          className={"tr-sub" + (hasSubtasks ? "" : " tr-sub--add") + (hasSubtasks && expanded ? " is-open" : "")}
           onClick={() => (hasSubtasks ? setExpanded((value) => !value) : h.onAddSubtask(task))}
           aria-expanded={hasSubtasks ? expanded : undefined}
           aria-label={hasSubtasks ? (expanded ? "إخفاء المهام الفرعية" : "إظهار المهام الفرعية") : "إضافة مهمة فرعية"}
@@ -199,12 +201,20 @@ function TaskRowLine({ task, h, variant, menuBase }: { task: Task; h: RowHandler
           {hasSubtasks ? <Layers size={15} aria-hidden /> : <Plus size={15} aria-hidden />}
           <span className="tr-sub-label">{subLabel}</span>
           {hasSubtasks && <span className="tr-sub-count" dir="ltr">({allSubtasks.length})</span>}
-          {hasSubtasks && <ChevronDown size={14} aria-hidden className={"tr-sub-chev" + (expanded ? " is-open" : "")} />}
         </button>
 
-        {/* أيقونة + رقم + عنوان المهمة (الضغط عليه يعرض التفاصيل) */}
+        {/* أيقونة + رقم + عنوان المهمة (الضغط على الأيقونة أو العنوان يعرض التفاصيل) */}
         <div className="tr-main">
-          <ClipboardList size={19} aria-hidden className="tr-clip" />
+          <button
+            type="button"
+            className={"tr-clip" + (detailsOpen ? " is-open" : "")}
+            onClick={() => setDetailsOpen((value) => !value)}
+            aria-expanded={detailsOpen}
+            aria-label={detailsOpen ? "إخفاء التفاصيل" : "عرض التفاصيل (بدأت/انتهت/التعليقات)"}
+            title={detailsOpen ? "إخفاء التفاصيل" : "التفاصيل: بدأت/انتهت، التعليقات، الوصف"}
+          >
+            <ClipboardList size={19} aria-hidden />
+          </button>
           <NumberBadge value={h.taskNumbers.get(task.id)} size="sm" done={displayCompleted} />
           <button
             type="button"
@@ -215,17 +225,6 @@ function TaskRowLine({ task, h, variant, menuBase }: { task: Task; h: RowHandler
           >
             {task.title}
           </button>
-          <button
-            type="button"
-            className={"tr-more" + (detailsOpen ? " is-open" : "")}
-            onClick={() => setDetailsOpen((value) => !value)}
-            aria-expanded={detailsOpen}
-            aria-label={detailsOpen ? "إخفاء التفاصيل" : "عرض التفاصيل (بدأت/انتهت/التعليقات)"}
-            title={detailsOpen ? "إخفاء التفاصيل" : "التفاصيل: بدأت/انتهت، التعليقات، الوصف"}
-          >
-            <ChevronDown size={16} aria-hidden />
-            {hasComments && <span className="tr-more-n">{task.comments.length}</span>}
-          </button>
           <span className="tc-prio" title={"الأولوية: " + priorityLabels[task.priority]}>
             <PriorityTag priority={task.priority} outlined className="text-xs font-semibold" />
           </span>
@@ -233,30 +232,32 @@ function TaskRowLine({ task, h, variant, menuBase }: { task: Task; h: RowHandler
             <span className="tr-badge" title={"توقفات: " + task.stopNotes.length}><Pause size={11} aria-hidden />{task.stopNotes.length}</span>
           )}
           {cardState !== "idle" && cardState !== "not_started" && (
-            <span className={"tr-state tr-state--" + cardState} role="status">
+            <span className={"tr-state tr-state--" + cardState} role="status" title={stateLabels[cardState]}>
               {cardState === "completed" ? <CheckCircle2 size={13} aria-hidden /> : <span className="tc-dot" aria-hidden />}
               <span className="tr-state-label">{stateLabels[cardState]}</span>
             </span>
           )}
         </div>
 
-        {/* النسبة + العدّاد + شريط التقدم (− / + لتعديل الإنجاز) */}
-        <div className="tr-prog">
-          <span className="tr-pct" dir="ltr">{percentage}%</span>
-          <span className="tr-count" dir="ltr" title={hasSubtasks ? "المهام الفرعية المكتملة" : "الإنجاز الحالي / الهدف"}>
-            {hasSubtasks ? completedSubtasks + "/" + allSubtasks.length : task.current + "/" + task.target}
-          </span>
-          {!hasSubtasks && (
+        {/* شريط التقدم ثم النسبة (كما في التصميم) — − / + لتعديل الإنجاز تظهر عند المرور، والعدّاد في التلميح والتفاصيل */}
+        <div className="tr-prog" title={(hasSubtasks ? "المهام الفرعية المكتملة: " : "الإنجاز الحالي / الهدف: ") + progressCount}>
+          {hasSubtasks ? (
+            <span className="tr-step tr-step--ghost" aria-hidden />
+          ) : (
             <button type="button" className="tr-step" onClick={() => h.onSetCurrent(task.id, task.current - 1)} disabled={task.current <= 0} aria-label="تقليل الإنجاز" title="تقليل الإنجاز">
               <Minus size={13} />
             </button>
           )}
           <ProgressBar percentage={percentage} color={progressColor} className="h-2" />
-          {!hasSubtasks && (
+          {hasSubtasks ? (
+            <span className="tr-step tr-step--ghost" aria-hidden />
+          ) : (
             <button type="button" className="tr-step" onClick={() => h.onSetCurrent(task.id, task.current + 1)} disabled={task.current >= task.target} aria-label="زيادة الإنجاز" title="زيادة الإنجاز">
               <Plus size={13} />
             </button>
           )}
+          <span className="tr-pct" dir="ltr">{percentage}%</span>
+          <span className="tr-count" dir="ltr">{progressCount}</span>
         </div>
 
         {/* الوقت */}
@@ -292,7 +293,7 @@ function TaskRowLine({ task, h, variant, menuBase }: { task: Task; h: RowHandler
         <span className="tr-cm-cell">
           {!hasSubtasks && (
             <button type="button" className="tr-ico tr-cm" onClick={() => h.onAddComment(task.id)} aria-label="تعليق" title="إضافة تعليق">
-              <MessageSquarePlus size={16} />
+              <MessageSquareText size={17} />
               {hasComments && <span className="tr-cm-n">{task.comments.length}</span>}
             </button>
           )}
@@ -324,6 +325,7 @@ function TaskRowLine({ task, h, variant, menuBase }: { task: Task; h: RowHandler
               <>
                 <span>المهام: <b>{allSubtasks.length}</b></span>
                 <span>المكتملة: <b>{completedSubtasks}</b></span>
+                <span>الإنجاز: <b dir="ltr">{percentage}%</b></span>
                 <span><Clock size={14} aria-hidden />إجمالي الوقت: <b dir="ltr">{formatDuration(subtasksDuration)}</b></span>
               </>
             ) : (
@@ -331,6 +333,7 @@ function TaskRowLine({ task, h, variant, menuBase }: { task: Task; h: RowHandler
                 <span><CalendarDays size={14} aria-hidden />بدأت: <b>{formatArabicTime(task.startedAt ?? task.startTime)}</b></span>
                 <span><CalendarDays size={14} aria-hidden />انتهت: <b>{formatArabicTime(task.endTime)}</b></span>
                 <span><Clock size={14} aria-hidden />الوقت: <b dir="ltr">{formatDuration(elapsed)}</b></span>
+                <span>الإنجاز: <b dir="ltr">{task.current}/{task.target}</b></span>
               </>
             )}
           </div>
@@ -391,7 +394,7 @@ export function TaskCard({ task, getSubtasks, taskNumbers, onStart, onRequestSto
   // الإجراءات الثانوية تظهر عند الضغط على الثلاث نقاط فقط
   const menuBase: TaskMenuItem[] = [
     { key: "edit", label: "تعديل المهمة", icon: <Pencil size={16} />, onSelect: () => onEdit(task) },
-    { key: "move", label: "نقل المهمة", icon: <CalendarDays size={16} />, onSelect: () => onMoveToDate(task) },
+    { key: "move", label: "نقل المهمة", icon: <Move size={16} />, onSelect: () => onMoveToDate(task) },
     { key: "copy", label: "نسخ (كوبي)", icon: <Copy size={16} />, onSelect: () => onCopy(task) },
     { key: "delete", label: "حذف المهمة", icon: <Trash2 size={16} />, onSelect: () => onDelete(task), danger: true },
   ];
