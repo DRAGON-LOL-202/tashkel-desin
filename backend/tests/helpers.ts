@@ -29,6 +29,8 @@ export async function makeUser(
       email: `${username}@example.test`,
       passwordHash: await bcrypt.hash(PASSWORD, 4),
       role,
+      // كما يفعل POST /api/users: تعبئة/مشغل/مبيعات بلا كرت مهام افتراضياً (وإلا صار لهم وصول لمسارات المهام)
+      ...(role === "PACKER" || role === "OPERATOR" || role.startsWith("SALES_") ? { showTaskCard: false } : {}),
       ...extra,
     },
   });

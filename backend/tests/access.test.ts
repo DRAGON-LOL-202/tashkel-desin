@@ -262,3 +262,32 @@ describe("المصمم: مستوى الوصول للمخزون", () => {
     expect(sql).toMatch(/UPDATE "User" SET "inventoryAccess" = 'FULL' WHERE "role" = 'DESIGNER'/);
   });
 });
+
+describe("صاحب الكرت من أي دور يصل لمساراته (مثل المصمم)", () => {
+  it("مشغل بكرت إنتاج: يصل لمهامه وحضوره وإشعاراته فقط، وكل ما عداها يبقى 403", async () => {
+    const u = await makeUser("acc_card_op", "OPERATOR", { showProductionCard: true });
+    const token = await login("acc_card_op");
+    const task = await api(token).post("/api/tasks").send({ title: "مهمة إنتاج", date: "2026-11-08", board: "production" });
+    expect(task.status).toBe(201);
+    expect(task.body.task).toMatchObject({ assigneeId: u.id, board: "production" });
+    const list = await api(token).get("/api/tasks").query({ date: "2026-11-08", board: "production" });
+    expect(list.body.tasks.map((t: any) => t.id)).toEqual([task.body.task.id]);
+    for (const url of ["/api/attendance/today", "/api/notifications"]) expect((await api(token).get(url)).status, url).toBe(200);
+    for (const url of ["/api/users", "/api/goals", "/api/products", "/api/sales/orders"]) expect((await api(token).get(url)).status, url).toBe(403);
+  });
+  it("مشغل/مبيعات بلا كرت ← مهام وحضور وإشعارات 403", async () => {
+    await makeUser("acc_nocard_op", "OPERATOR");
+    await makeUser("acc_nocard_sales", "SALES_FLAGGER");
+    for (const name of ["acc_nocard_op", "acc_nocard_sales"]) {
+      const token = await login(name);
+      for (const url of ["/api/tasks", "/api/attendance/today", "/api/notifications"]) expect((await api(token).get(url)).status, `${name} ${url}`).toBe(403);
+    }
+  });
+  it("منفّذ مبيعات بكرت مهام: يصل لمهامه ويحتفظ بمسارات مبيعاته", async () => {
+    await makeUser("acc_card_sales", "SALES_EDITOR", { showTaskCard: true });
+    const token = await login("acc_card_sales");
+    expect((await api(token).get("/api/tasks").query({ date: "2026-11-08" })).status).toBe(200);
+    expect((await api(token).get("/api/sales/orders")).status).toBe(200);
+    expect((await api(token).get("/api/goals")).status).toBe(403);
+  });
+});

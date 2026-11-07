@@ -134,3 +134,15 @@ export function isSalesRoleAllowed(role: Role, method: string, path: string, bod
   }
   return false;
 }
+
+/**
+ * مسارات صاحب الكرت (showTaskCard / showProductionCard) مهما كان دوره: المهام والحضور والإشعارات والصور المرفقة،
+ * ليتفاعل مع كرته كالمصمم. تُضاف فوق القوائم البيضاء للأدوار المقيَّدة والمبيعات (نسبي لـ /api).
+ * صلاحيات المهام نفسها (مهامه فقط، لا إدارة غيره) يفرضها tasksRouter لغير الإدارة.
+ */
+const CARD_HOLDER_PREFIXES = ["/tasks", "/attendance", "/notifications", "/push", "/files"] as const;
+export const hasTaskCard = (u: { showTaskCard: boolean; showProductionCard: boolean }) => u.showTaskCard || u.showProductionCard;
+export function isCardHolderRouteAllowed(path: string): boolean {
+  const p = path.length > 1 ? path.replace(/\/+$/, "") : path;
+  return CARD_HOLDER_PREFIXES.some((prefix) => p === prefix || p.startsWith(`${prefix}/`));
+}

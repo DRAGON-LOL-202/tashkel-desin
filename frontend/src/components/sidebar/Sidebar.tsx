@@ -56,9 +56,7 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
     : memberItems.filter(
         (item) =>
           allowedPages.includes(item.page) &&
-          !(user && isSalesRole(user.accessRole) && item.to === "/inventory/shortages") &&
-          // صفحة مهام الإنتاج تظهر لغير الإدارة فقط عند تفعيل كرت الإنتاج لهم
-          !(item.page === "productionTasks" && !user?.showProductionCard)
+          !(user && isSalesRole(user.accessRole) && item.to === "/inventory/shortages")
       );
 
   return (

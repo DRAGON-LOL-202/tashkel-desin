@@ -5,7 +5,7 @@ import { prisma } from "../db.js";
 import { env } from "../utils/env.js";
 import { forbidden, unauthorized } from "../utils/httpError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
-import { isRestrictedRole, isRestrictedRoleAllowed, isSalesRole, isSalesRoleAllowed } from "../utils/inventoryAccess.js";
+import { hasTaskCard, isCardHolderRouteAllowed, isRestrictedRole, isRestrictedRoleAllowed, isSalesRole, isSalesRoleAllowed } from "../utils/inventoryAccess.js";
 
 declare module "express-serve-static-core" {
   interface Request {
@@ -42,7 +42,8 @@ export const requireAuth = asyncHandler(async (req: Request, _res: Response, nex
 
 /**
  * بوابة القائمة البيضاء (fail-closed) تُركَّب مرة واحدة على /api قبل كل الراوترات:
- * «تعبئة» و«مشغل» لا يصلان إلا إلى مسارات السحب والملف الشخصي والمزامنة، وأي مسار آخر (حتى المستقبلي) ← 403.
+ * «تعبئة» و«مشغل» (وأدوار المبيعات) لا يصلون إلا إلى مساراتهم والملف الشخصي والمزامنة، وأي مسار آخر (حتى المستقبلي) ← 403؛
+ * ويُستثنى مسارات المهام/الحضور/الإشعارات لمن لديه كرت (hasTaskCard).
  * لا تعترض غير المصادَق عليهم: تتركهم للراوترات (401 / تسجيل الدخول).
  */
 export const restrictedRoleGate = asyncHandler(async (req: Request, _res: Response, next: NextFunction) => {
@@ -54,8 +55,10 @@ export const restrictedRoleGate = asyncHandler(async (req: Request, _res: Respon
     return next(); // توكن/حساب غير صالح: الراوتر نفسه يردّ 401
   }
   req.user = user;
-  if (isRestrictedRole(user) && !isRestrictedRoleAllowed(req.method, req.path)) return next(forbidden());
-  if (isSalesRole(user) && !isSalesRoleAllowed(user.role, req.method, req.path, req.body)) return next(forbidden());
+  // صاحب كرت (تصميم/إنتاج) من أي دور يصل أيضاً لمسارات مهامه وحضوره وإشعاراته
+  const cardRoute = hasTaskCard(user) && isCardHolderRouteAllowed(req.path);
+  if (isRestrictedRole(user) && !isRestrictedRoleAllowed(req.method, req.path) && !cardRoute) return next(forbidden());
+  if (isSalesRole(user) && !isSalesRoleAllowed(user.role, req.method, req.path, req.body) && !cardRoute) return next(forbidden());
   next();
 });
 
