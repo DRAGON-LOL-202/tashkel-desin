@@ -25,6 +25,12 @@ enum InventoryAccess {
   FULL
 }
 
+// لوحة المهام: التصميم (الافتراضية) أو الإنتاج
+enum TaskBoard {
+  DESIGN
+  PRODUCTION
+}
+
 enum TaskPriority {
   LOW
   MEDIUM
@@ -80,6 +86,8 @@ model User {
   inventoryAccess InventoryAccess @default(NONE)
   // يظهر له كرت في لوحة المهام؟ (يحدده المدير؛ الموجودون وقت الإضافة = true)
   showTaskCard    Boolean         @default(true)
+  // يظهر له كرت في لوحة «مهام الإنتاج»؟ (الافتراضي false)
+  showProductionCard Boolean      @default(false)
   jobTitle     String   @default("مصمم")
   isActive     Boolean  @default(true)
   isSystemUser Boolean  @default(false)
@@ -116,6 +124,7 @@ model Task {
   priority     TaskPriority @default(MEDIUM)
   status       TaskStatus   @default(NOT_STARTED)
   date         String       @db.VarChar(10)
+  board        TaskBoard    @default(DESIGN)
   sortOrder    Int          @default(0)
   startedAt    DateTime?
   endTime      DateTime?
@@ -136,6 +145,7 @@ model Task {
   @@index([date])
   @@index([assignedToId, date])
   @@index([parentId])
+  @@index([board, date])
 }
 
 model TaskTimeLog {

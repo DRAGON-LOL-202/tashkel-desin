@@ -23,6 +23,7 @@ interface TaskRow {
   priority: string;
   status: string;
   date: string;
+  board: string;
   sortOrder: number;
   startedAt: Date | null;
   endTime: Date | null;
@@ -61,6 +62,7 @@ export function serializeTask(t: TaskRow) {
     createdById: t.createdById,
     createdByName: t.createdBy.name,
     date: t.date,
+    board: t.board.toLowerCase() as "design" | "production",
     priority: t.priority.toLowerCase(),
     status: t.status.toLowerCase(),
     startedAt: t.startedAt?.getTime(),

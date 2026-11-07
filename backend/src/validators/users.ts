@@ -33,6 +33,7 @@ export const createUserSchema = z.object({
   jobTitle: jobTitle.optional(),
   inventoryAccess: inventoryAccessInput.optional(),
   showTaskCard: z.boolean().optional(),
+  showProductionCard: z.boolean().optional(),
   allowedGroupIds: allowedGroupIds.optional(),
 });
 
@@ -45,7 +46,8 @@ export const updateUserSchema = z
     role: roleInput.optional(),
     jobTitle: jobTitle.optional(),
     inventoryAccess: inventoryAccessInput.optional(),
-  showTaskCard: z.boolean().optional(),
+    showTaskCard: z.boolean().optional(),
+    showProductionCard: z.boolean().optional(),
     allowedGroupIds: allowedGroupIds.optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: "لا توجد حقول للتعديل" });

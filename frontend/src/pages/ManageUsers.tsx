@@ -164,7 +164,8 @@ export default function ManageUsersPage() {
                           <div className="flex flex-wrap items-center gap-2">
                             <h2 className="truncate text-base font-bold text-text">{target.name}</h2>
                             {isSelf && <span className="text-xs text-muted">(أنت)</span>}
-                            {!target.showTaskCard && <Badge color="#78847F">بلا كرت مهام</Badge>}
+                            {target.showProductionCard && <Badge color="#C08A3E">كرت مهام إنتاج</Badge>}
+                            {!target.showTaskCard && !target.showProductionCard && <Badge color="#78847F">بلا كرت مهام</Badge>}
                             {target.isSystemUser && (
                               <span className="inline-flex items-center gap-1 text-xs text-muted">
                                 <ShieldCheck size={13} /> مستخدم نظام

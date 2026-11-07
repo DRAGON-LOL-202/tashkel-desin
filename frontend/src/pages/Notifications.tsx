@@ -58,7 +58,8 @@ export default function NotificationsPage() {
   const open = async (item: AppNotification) => {
     if (!item.isRead) await safe(() => notificationsService.setRead(item.id, true));
     if (item.taskId) {
-      navigate(item.taskDate ? `/daily-tasks?date=${item.taskDate}` : "/daily-tasks");
+      const page = item.taskBoard === "production" ? "/production-tasks" : "/daily-tasks";
+      navigate(item.taskDate ? `${page}?date=${item.taskDate}` : page);
     } else if (item.type === "INVENTORY_LOW") {
       navigate("/inventory/shortages");
     } else {

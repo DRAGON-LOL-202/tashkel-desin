@@ -12,6 +12,7 @@ export interface ApiUser {
   isSystemUser: boolean;
   inventoryAccess: InventoryAccessLevel;
   showTaskCard: boolean;
+  showProductionCard: boolean;
   allowedGroupIds?: string[];
   createdAt: string;
 }
@@ -25,6 +26,8 @@ export interface CreateUserInput {
   jobTitle?: string;
   /** يظهر له كرت في لوحة المهام */
   showTaskCard?: boolean;
+  /** يظهر له كرت في لوحة مهام الإنتاج */
+  showProductionCard?: boolean;
   /** للمصمم فقط (يُتجاهل لغيره) */
   inventoryAccess?: InventoryAccessLevel;
   /** المجموعات الرئيسية (خامات / اكسسوارات وهدايا) لتعبئة/مشغل فقط */

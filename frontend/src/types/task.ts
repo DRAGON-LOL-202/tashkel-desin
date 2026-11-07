@@ -1,6 +1,8 @@
 export type TaskPriority = "low" | "medium" | "high";
 // معرّفات المستخدمين تأتي من قاعدة البيانات (نصوص عشوائية)
 export type TeamMemberId = string;
+/** لوحة المهام: التصميم (المهام اليومية) أو الإنتاج */
+export type TaskBoard = "design" | "production";
 export type TaskStatus = "not_started" | "running" | "paused" | "completed";
 export type UserRole =
   | "admin"
@@ -46,6 +48,7 @@ export type TimerAction =
 
 export interface Task {
   id: string;
+  board?: TaskBoard;
   parentId?: string;
   title: string;
   description?: string;
@@ -83,6 +86,8 @@ export interface TeamMember {
   inventoryAccess: InventoryAccessLevel;
   /** يظهر له كرت في لوحة المهام */
   showTaskCard: boolean;
+  /** يظهر له كرت في لوحة «مهام إنتاج» */
+  showProductionCard: boolean;
   /** المجموعات الرئيسية المسموح السحب منها (تعبئة/مشغل فقط) */
   allowedGroupIds?: string[];
 }
@@ -99,6 +104,8 @@ export interface CreateTaskInput {
   date: string;
   /** مدة مخططة بالدقائق (إنشاء فقط): ينشئ مؤقتاً معلّقاً يبدأ مع تشغيل المهمة */
   plannedMinutes?: number;
+  /** لوحة المهمة (الافتراضي: design) */
+  board?: TaskBoard;
   /** الرقم المطلوب للمهمة بين أشقائها (يبدأ من 1)؛ يُعالَج في الواجهة عبر reorder */
   position?: number;
 }

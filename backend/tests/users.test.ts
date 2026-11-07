@@ -208,3 +208,19 @@ describe("كرت المهام (showTaskCard)", () => {
     expect((await api(me).get("/api/auth/me")).body.user.showTaskCard).toBe(false);
   });
 });
+
+describe("كرت مهام الإنتاج (showProductionCard)", () => {
+  it("الافتراضي false، والمدير يعدّله، ويظهر في /auth/me", async () => {
+    const admin = await login("lol");
+    const mk = (username: string, body: Record<string, unknown> = {}) =>
+      api(admin).post("/api/users").send({ name: "م", username, email: `${username}@e.test`, password: PASSWORD, role: "designer", ...body });
+    const plain = await mk("prod_card_a");
+    expect(plain.body.user.showProductionCard).toBe(false);
+    const on = await mk("prod_card_b", { showProductionCard: true, showTaskCard: false });
+    expect(on.body.user).toMatchObject({ showProductionCard: true, showTaskCard: false });
+    const r = await api(admin).patch(`/api/users/${plain.body.user.id}`).send({ showProductionCard: true, showTaskCard: false });
+    expect(r.body.user).toMatchObject({ showProductionCard: true, showTaskCard: false });
+    const me = await login("prod_card_a");
+    expect((await api(me).get("/api/auth/me")).body.user.showProductionCard).toBe(true);
+  });
+});

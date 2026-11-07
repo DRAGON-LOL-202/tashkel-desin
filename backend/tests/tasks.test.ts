@@ -228,3 +228,33 @@ describe("tasks: نقل بين المسؤولين ونقل غير المنتهي
     expect((await prisma().task.findUnique({ where: { id: kid.id } }))!.date).toBe("2026-09-20");
   });
 });
+
+describe("tasks: لوحة الإنتاج (board)", () => {
+  const PDAY = "2026-10-05";
+  it("المهمة الجديدة تُنشأ في لوحة التصميم افتراضياً، وبـ board=production في الإنتاج، والقوائم معزولة", async () => {
+    const design = await mk(manager, { assigneeId: d1Id, date: PDAY, title: "تصميم" });
+    const prod = await mk(manager, { assigneeId: d1Id, date: PDAY, title: "إنتاج", board: "production" });
+    expect(design.board).toBe("design");
+    expect(prod.board).toBe("production");
+    const dList = await api(manager).get("/api/tasks").query({ date: PDAY });
+    const pList = await api(manager).get("/api/tasks").query({ date: PDAY, board: "production" });
+    expect(dList.body.tasks.map((t: any) => t.id)).toContain(design.id);
+    expect(dList.body.tasks.map((t: any) => t.id)).not.toContain(prod.id);
+    expect(pList.body.tasks.map((t: any) => t.id)).toEqual([prod.id]);
+  });
+  it("المهمة الفرعية ترث لوحة أمّها، ونقل غير المنتهي لا يخلط اللوحتين", async () => {
+    const root = await mk(manager, { assigneeId: d1Id, date: "2026-10-06", title: "أب إنتاج", board: "production" });
+    const kid = await mk(manager, { parentId: root.id, date: "2026-10-06", title: "فرعية" });
+    expect(kid.board).toBe("production");
+    const other = await mk(manager, { assigneeId: d1Id, date: "2026-10-06", title: "تصميم نفس اليوم" });
+    const res = await api(manager).post("/api/tasks/move-unfinished").send({ date: "2026-10-06", board: "production" });
+    expect(res.status).toBe(200);
+    expect((await prisma().task.findUnique({ where: { id: root.id } }))!.date).toBe("2026-10-07");
+    expect((await prisma().task.findUnique({ where: { id: other.id } }))!.date).toBe("2026-10-06");
+  });
+  it("المصمم يرى مهام الإنتاج المسندة إليه فقط عند طلب board=production", async () => {
+    const res = await api(d1).get("/api/tasks").query({ date: PDAY, board: "production" });
+    expect(res.status).toBe(200);
+    expect(res.body.tasks.every((t: any) => t.board === "production" && t.assigneeId === d1Id)).toBe(true);
+  });
+});

@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from "./components/auth/AuthProvider";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { defaultPathForRole } from "./lib/permissions";
 import Dashboard from "./pages/Dashboard";
+import ProductionTasksPage from "./pages/ProductionTasks";
 import FeedbackPage from "./pages/Feedback";
 import GoalsPage from "./pages/Goals";
 import ProductsPage from "./pages/Products";
@@ -44,6 +45,7 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/" element={<HomeRoute />} />
             <Route path="/daily-tasks" element={<ProtectedRoute page="dailyTasks"><Dashboard /></ProtectedRoute>} />
+            <Route path="/production-tasks" element={<ProtectedRoute page="productionTasks"><ProductionTasksPage /></ProtectedRoute>} />
             <Route path="/notifications" element={<ProtectedRoute page="notifications"><NotificationsPage /></ProtectedRoute>} />
             <Route path="/feedback" element={<ProtectedRoute page="feedback"><FeedbackPage /></ProtectedRoute>} />
             <Route path="/goals" element={<ProtectedRoute page="goals"><GoalsPage /></ProtectedRoute>} />

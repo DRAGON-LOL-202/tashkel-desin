@@ -59,8 +59,10 @@ function requireRange(q: { date?: string; from?: string; to?: string }, maxDays:
 const strictRangeEnabled = () => process.env.TASKS_REQUIRE_RANGE?.trim().toLowerCase() === "true";
 
 // المصمم: مهامه فقط مهما كانت الفلاتر؛ الإدارة: الكل أو مسؤول محدد
-function scopeOf(me: User, assigneeId?: string) {
-  return isStaff(me) ? (assigneeId ? { assignedToId: assigneeId } : {}) : { assignedToId: me.id };
+// board: لوحة المهام المطلوبة؛ الافتراضي DESIGN حتى لا تتغير نتائج الواجهات القديمة.
+type Board = "DESIGN" | "PRODUCTION";
+function scopeOf(me: User, assigneeId?: string, board: Board = "DESIGN") {
+  return { board, ...(isStaff(me) ? (assigneeId ? { assignedToId: assigneeId } : {}) : { assignedToId: me.id }) };
 }
 
 async function loadTask(id: string) {
@@ -95,10 +97,10 @@ async function treeIds(rootId: string): Promise<string[]> {
 }
 
 // أسفل ترتيب بين نفس المسؤول/اليوم/الأب (المكتمل يُنقل لأسفل)
-async function bottomOrder(t: { id: string; assignedToId: string; date: string; parentId: string | null; sortOrder: number }) {
+async function bottomOrder(t: { id: string; assignedToId: string; date: string; parentId: string | null; sortOrder: number; board: Board }) {
   const agg = await prisma().task.aggregate({
     _max: { sortOrder: true },
-    where: { assignedToId: t.assignedToId, date: t.date, parentId: t.parentId },
+    where: { assignedToId: t.assignedToId, date: t.date, parentId: t.parentId, board: t.board },
   });
   return Math.max(t.sortOrder, agg._max.sortOrder ?? t.sortOrder) + 1;
 }
@@ -114,7 +116,7 @@ tasksRouter.get(
     if (strictRangeEnabled()) {
       const strictRange = requireRange(q);
       const rows = await prisma().task.findMany({
-        where: { date: strictRange, ...scopeOf(me, q.assigneeId) },
+        where: { date: strictRange, ...scopeOf(me, q.assigneeId, q.board) },
         include: taskInclude,
         orderBy: [{ date: "asc" }, { sortOrder: "asc" }, { createdAt: "asc" }],
         take: LIST_HARD_CAP + 1,
@@ -129,7 +131,7 @@ tasksRouter.get(
     const rows = await prisma().task.findMany({
       where: {
         ...(range ? { date: range } : {}),
-        ...scopeOf(me, q.assigneeId),
+        ...scopeOf(me, q.assigneeId, q.board),
       },
       include: taskInclude,
       orderBy: [{ date: "asc" }, { sortOrder: "asc" }, { createdAt: "asc" }],
@@ -153,7 +155,7 @@ tasksRouter.get(
     const db = prisma();
     const select = { id: true, parentId: true, status: true, date: true } as const;
 
-    const rows = await db.task.findMany({ where: { date: range, ...scopeOf(me, q.assigneeId) }, select });
+    const rows = await db.task.findMany({ where: { date: range, ...scopeOf(me, q.assigneeId, q.board) }, select });
     const byId = new Map(rows.map((r) => [r.id, r]));
 
     // الفرعية قد تقع في تاريخ مختلف عن أمّها (إنشاء المهمة لا يفرض تطابق التاريخ) — نجلبها بالتتبّع
@@ -190,7 +192,8 @@ tasksRouter.get(
 tasksRouter.get(
   "/months",
   asyncHandler(async (req, res) => {
-    const groups = await prisma().task.groupBy({ by: ["date"], where: scopeOf(req.user!), orderBy: { date: "asc" } });
+    const q = listQuerySchema.parse(req.query);
+    const groups = await prisma().task.groupBy({ by: ["date"], where: scopeOf(req.user!, undefined, q.board), orderBy: { date: "asc" } });
     res.json({ months: [...new Set(groups.map((g) => g.date.slice(0, 7)))] });
   })
 );
@@ -203,7 +206,7 @@ tasksRouter.get(
     const q = listQuerySchema.parse(req.query);
     const range = requireRange({ from: q.from, to: q.to }, MAX_STATS_DAYS);
     const tasks = await prisma().task.findMany({
-      where: { date: range, ...scopeOf(req.user!, q.assigneeId) },
+      where: { date: range, ...scopeOf(req.user!, q.assigneeId, q.board) },
       select: {
         date: true,
         assignedToId: true,
@@ -298,6 +301,7 @@ tasksRouter.post(
     const me = req.user!;
     const db = prisma();
 
+    let board: Board = body.board ?? "DESIGN";
     let assigneeId: string;
     if (isStaff(me)) {
       assigneeId = body.assigneeId ?? me.id;
@@ -314,6 +318,7 @@ tasksRouter.post(
         throw badRequest("المهمة الفرعية تتبع مسؤول المهمة الأم");
       }
       assigneeId = parent.assignedToId;
+      board = parent.board; // الفرعية تتبع لوحة أمّها
     }
 
     const assignee = await db.user.findUnique({ where: { id: assigneeId } });
@@ -326,7 +331,7 @@ tasksRouter.post(
     const done = target > 0 && current >= target;
     const top = await db.task.aggregate({
       _min: { sortOrder: true },
-      where: { assignedToId: assigneeId, date: body.date, parentId: body.parentId ?? null },
+      where: { assignedToId: assigneeId, date: body.date, parentId: body.parentId ?? null, board },
     });
 
     const created = await db.task.create({
@@ -340,6 +345,7 @@ tasksRouter.post(
         status: done ? "COMPLETED" : "NOT_STARTED",
         endTime: done ? new Date() : null,
         date: body.date,
+        board,
         sortOrder: Math.min(0, top._min.sortOrder ?? 0) - 1,
         createdById: me.id,
         assignedToId: assigneeId,
@@ -400,9 +406,9 @@ tasksRouter.post(
  * ينقل مهام رئيسية من يوم إلى يوم آخر. الفرعيات المنتهية تبقى في اليوم الأصلي (تحت نسخة هيكلية من الأب)،
  * وغير المنتهية تنتقل مع الأب. إن كانت المهمة المحددة منتهية بالكامل (نقل يدوي) تنتقل كلها كما هي.
  */
-async function moveRootsToDate(date: string, target: string, onlyRootId?: string): Promise<number> {
+async function moveRootsToDate(date: string, target: string, board: Board, onlyRootId?: string): Promise<number> {
   const db = prisma();
-  const day = await db.task.findMany({ where: { date } });
+  const day = await db.task.findMany({ where: { date, board } });
   const byId = new Map(day.map((t) => [t.id, t]));
   const kids = new Map<string, string[]>();
   for (const t of day) {
@@ -423,7 +429,7 @@ async function moveRootsToDate(date: string, target: string, onlyRootId?: string
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
   const existing = await db.task.findMany({
-    where: { date: target, parentId: null },
+    where: { date: target, parentId: null, board },
     select: { assignedToId: true, sortOrder: true },
   });
   const lastOrder = new Map<string, number>();
@@ -449,6 +455,7 @@ async function moveRootsToDate(date: string, target: string, onlyRootId?: string
                 status: "COMPLETED",
                 endTime: new Date(),
                 date,
+                board,
                 sortOrder: node.sortOrder,
                 createdById: node.createdById,
                 assignedToId: node.assignedToId,
@@ -478,9 +485,9 @@ tasksRouter.post(
   "/move-unfinished",
   requireStaff,
   asyncHandler(async (req, res) => {
-    const { date } = moveUnfinishedSchema.parse(req.body);
+    const { date, board } = moveUnfinishedSchema.parse(req.body);
     const next = addDaysISO(date, 1);
-    const moved = await moveRootsToDate(date, next);
+    const moved = await moveRootsToDate(date, next, board ?? "DESIGN");
     res.json({ moved, toDate: next });
   })
 );
@@ -508,7 +515,7 @@ tasksRouter.post(
 
     const top = await db.task.aggregate({
       _min: { sortOrder: true },
-      where: { assignedToId: assigneeId, date: source.date, parentId: null },
+      where: { assignedToId: assigneeId, date: source.date, parentId: null, board: source.board },
     });
 
     const newRootId = await db.$transaction(async (tx) => {
@@ -523,6 +530,7 @@ tasksRouter.post(
             priority: node.priority,
             status: "NOT_STARTED",
             date: source.date,
+            board: source.board,
             sortOrder,
             createdById: req.user!.id,
             assignedToId: assigneeId,
@@ -551,7 +559,7 @@ tasksRouter.post(
     if (!task) throw notFound("المهمة غير موجودة");
     if (task.parentId) throw badRequest("يمكن نقل المهمة الرئيسية فقط");
     if (task.date === date) throw badRequest("المهمة موجودة في هذا اليوم بالفعل");
-    await moveRootsToDate(task.date, date, task.id);
+    await moveRootsToDate(task.date, date, task.board, task.id);
     await notify({
       recipients: [task.assignedToId],
       actor: req.user!,
@@ -969,7 +977,7 @@ tasksRouter.post(
 
     const ids = await treeIds(moving.id);
     const siblings = await db.task.findMany({
-      where: { date: moving.date, assignedToId: assignee.id, parentId: moving.parentId, id: { notIn: ids } },
+      where: { date: moving.date, assignedToId: assignee.id, parentId: moving.parentId, board: moving.board, id: { notIn: ids } },
       orderBy: { sortOrder: "asc" },
       select: { id: true },
     });

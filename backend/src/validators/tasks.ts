@@ -8,6 +8,12 @@ const isoDate = z
 
 const id = z.string().min(1).max(64);
 
+// لوحة المهام: design (الافتراضي) أو production
+const boardInput = z
+  .string()
+  .transform((s) => s.toUpperCase())
+  .pipe(z.enum(["DESIGN", "PRODUCTION"]));
+
 const priorityInput = z
   .string()
   .transform((s) => s.toUpperCase())
@@ -30,6 +36,7 @@ export const createTaskSchema = z.object({
   assigneeId: id.optional(),
   parentId: id.optional(),
   plannedMinutes: z.number().int().min(1).max(1440).optional(),
+  board: boardInput.optional(),
 });
 
 export const updateTaskSchema = z
@@ -48,6 +55,7 @@ export const listQuerySchema = z.object({
   from: isoDate.optional(),
   to: isoDate.optional(),
   assigneeId: id.optional(),
+  board: boardInput.optional(),
 });
 
 export const progressSchema = z.object({ current });
@@ -56,7 +64,7 @@ export const commentSchema = z.object({ text: z.string().trim().min(1, "نص ا�
 export const reorderSchema = z.object({ orderedIds: z.array(id).min(1).max(2000) });
 export const moveSchema = z.object({ assigneeId: id, beforeTaskId: id.optional() });
 export const copyTaskSchema = z.object({ assigneeId: id });
-export const moveUnfinishedSchema = z.object({ date: isoDate });
+export const moveUnfinishedSchema = z.object({ date: isoDate, board: boardInput.optional() });
 
 const timerMinutes = z.number().int("المدة بالدقائق (عدد صحيح)").min(1, "أقل مدة دقيقة واحدة").max(1440, "أقصى مدة 24 ساعة");
 export const timerSetSchema = z.object({ minutes: timerMinutes });

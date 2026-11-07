@@ -72,13 +72,14 @@ export function ttlFor(type: string): number {
 
 const isTimerType = (type: string) => type.startsWith("TIMER_");
 
-function pushUrl(input: { taskId?: string | null; taskDate?: string | null; notificationId?: string }): string {
+function pushUrl(input: { taskId?: string | null; taskDate?: string | null; taskBoard?: string | null; notificationId?: string }): string {
   const nid = input.notificationId ? `nid=${encodeURIComponent(input.notificationId)}` : "";
-  if (input.taskId && input.taskDate) return `/#/daily-tasks?date=${input.taskDate}${nid ? `&${nid}` : ""}`;
+  const page = input.taskBoard === "PRODUCTION" ? "production-tasks" : "daily-tasks";
+  if (input.taskId && input.taskDate) return `/#/${page}?date=${input.taskDate}${nid ? `&${nid}` : ""}`;
   return `/#/notifications${nid ? `?${nid}` : ""}`;
 }
 
-export function buildPayload(input: { type: string; title: string; message: string; taskId?: string | null; taskDate?: string | null; notificationId?: string }): PushPayload {
+export function buildPayload(input: { type: string; title: string; message: string; taskId?: string | null; taskDate?: string | null; taskBoard?: string | null; notificationId?: string }): PushPayload {
   const body = input.message.length > MAX_BODY_CHARS ? `${input.message.slice(0, MAX_BODY_CHARS - 1)}…` : input.message;
   return {
     title: input.title,

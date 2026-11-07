@@ -71,9 +71,11 @@ export async function notify(input: NotifyInput): Promise<string[]> {
 
     // Web Push للأجهزة المشترَكة (الموقع مغلق). فشله لا يؤثر على الإشعار المحفوظ ولا على العملية الأصلية.
     try {
-      const taskDate = input.taskId ? ((await db.task.findUnique({ where: { id: input.taskId }, select: { date: true } }))?.date ?? null) : null;
+      const taskRow = input.taskId ? await db.task.findUnique({ where: { id: input.taskId }, select: { date: true, board: true } }) : null;
+      const taskDate = taskRow?.date ?? null;
+      const taskBoard = taskRow?.board ?? null;
       for (const row of created) {
-        dispatchPush([row.recipientId], buildPayload({ type: input.type, title: input.title, message: input.message, taskId: input.taskId, taskDate, notificationId: row.id }));
+        dispatchPush([row.recipientId], buildPayload({ type: input.type, title: input.title, message: input.message, taskId: input.taskId, taskDate, taskBoard, notificationId: row.id }));
       }
     } catch (e) {
       console.error("push prepare failed", e instanceof Error ? e.message : e);

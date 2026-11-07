@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { AlertTriangle, Bell, CalendarRange, ClipboardList, Home, LogOut, MessageSquare, PanelRightClose, PanelRightOpen, Tag, Warehouse, PackageMinus, ShoppingBag, Target, UserCog, UserRound, Users } from "lucide-react";
+import { AlertTriangle, Bell, CalendarRange, ClipboardList, Factory, Home, LogOut, MessageSquare, PanelRightClose, PanelRightOpen, Tag, Warehouse, PackageMinus, ShoppingBag, Target, UserCog, UserRound, Users } from "lucide-react";
 import { useAuth } from "../auth/AuthProvider";
 import { isSalesRole, pagesFor, type AppPage } from "../../lib/permissions";
 import { useResource } from "../../hooks/useResource";
@@ -7,6 +7,7 @@ import { notificationsService } from "../../services/notificationsService";
 
 const navItems = [
   { to: "/", label: "المهام اليومية", icon: Home, end: true, page: "dailyTasks" as AppPage },
+  { to: "/production-tasks", label: "مهام إنتاج", icon: Factory, page: "productionTasks" as AppPage },
   { to: "/notifications", label: "الإشعارات", icon: Bell, page: "notifications" as AppPage },
   { to: "/feedback", label: "Feedback", icon: MessageSquare, page: "feedback" as AppPage },
   { to: "/goals", label: "الأهداف", icon: Target, page: "goals" as AppPage },
@@ -24,6 +25,7 @@ const navItems = [
 // المصمم وتعبئة/مشغل وأدوار المبيعات: قائمة مختصرة تُرشَّح بحسب صلاحياته (pagesFor)
 const memberItems = [
   { to: "/daily-tasks", label: "المهام اليومية", icon: Home, page: "dailyTasks" as AppPage },
+  { to: "/production-tasks", label: "مهام إنتاج", icon: Factory, page: "productionTasks" as AppPage },
   { to: "/notifications", label: "الإشعارات", icon: Bell, page: "notifications" as AppPage },
   { to: "/feedback", label: "Feedback", icon: MessageSquare, page: "feedback" as AppPage },
   { to: "/sales-orders", label: "أوردرات مبيعات إلكترونية", icon: ClipboardList, page: "salesOrders" as AppPage },
@@ -52,7 +54,11 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
   const visibleItems = isStaffUser
     ? navItems
     : memberItems.filter(
-        (item) => allowedPages.includes(item.page) && !(user && isSalesRole(user.accessRole) && item.to === "/inventory/shortages")
+        (item) =>
+          allowedPages.includes(item.page) &&
+          !(user && isSalesRole(user.accessRole) && item.to === "/inventory/shortages") &&
+          // صفحة مهام الإنتاج تظهر لغير الإدارة فقط عند تفعيل كرت الإنتاج لهم
+          !(item.page === "productionTasks" && !user?.showProductionCard)
       );
 
   return (

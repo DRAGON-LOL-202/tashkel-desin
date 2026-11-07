@@ -1,6 +1,6 @@
 import { api } from "../lib/api";
 import { toAttachmentPayload } from "../lib/attachments";
-import type { CalendarDateState, CreateTaskInput, DailyTimeStat, Task, TeamMemberId, TimerAction } from "../types";
+import type { CalendarDateState, CreateTaskInput, DailyTimeStat, Task, TaskBoard, TeamMemberId, TimerAction } from "../types";
 
 interface TaskResponse {
   task: Task;
@@ -11,6 +11,8 @@ export interface TaskRange {
   date?: string;
   from?: string;
   to?: string;
+  /** لوحة المهام؛ الافتراضي design */
+  board?: TaskBoard;
 }
 
 export function isTaskTreeCompleted(tasks: Task[], task: Task): boolean {
@@ -84,13 +86,13 @@ function taskBody(input: CreateTaskInput) {
 export const tasksService = {
   /** مهام يوم أو فترة. المصمم يحصل من الـ backend على مهامه فقط؛ الإدارة على كل المهام */
   async list(range: TaskRange): Promise<Task[]> {
-    const { tasks } = await api<{ tasks: Task[] }>("/tasks", { query: { date: range.date, from: range.from, to: range.to } });
+    const { tasks } = await api<{ tasks: Task[] }>("/tasks", { query: { date: range.date, from: range.from, to: range.to, board: range.board } });
     return tasks;
   },
 
   /** لون كل يوم في الفترة (أحمر/أخضر) بدون جلب المهام — فترة ≤ 45 يوماً */
-  async dayStates(from: string, to: string): Promise<Record<string, CalendarDateState>> {
-    const { states } = await api<{ states: Record<string, CalendarDateState> }>("/tasks/day-states", { query: { from, to } });
+  async dayStates(from: string, to: string, board?: TaskBoard): Promise<Record<string, CalendarDateState>> {
+    const { states } = await api<{ states: Record<string, CalendarDateState> }>("/tasks/day-states", { query: { from, to, board } });
     return states;
   },
 
@@ -115,6 +117,7 @@ export const tasksService = {
         assigneeId: input.assigneeId,
         parentId: input.parentId,
         plannedMinutes: input.plannedMinutes,
+        board: input.board,
       },
     });
     return task;
@@ -192,8 +195,8 @@ export const tasksService = {
   },
 
   /** للإدارة فقط. يعيد عدد الجذور المنقولة */
-  async moveUnfinishedToNextDay(date: string): Promise<number> {
-    const { moved } = await api<{ moved: number }>("/tasks/move-unfinished", { method: "POST", body: { date } });
+  async moveUnfinishedToNextDay(date: string, board?: TaskBoard): Promise<number> {
+    const { moved } = await api<{ moved: number }>("/tasks/move-unfinished", { method: "POST", body: { date, board } });
     return moved;
   },
 };

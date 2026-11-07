@@ -24,6 +24,18 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 type Errors = Partial<Record<"name" | "username" | "email" | "password", string>>;
 
 const ACCESS_OPTIONS: InventoryAccessLevel[] = ["none", "withdraw", "full"];
+
+type CardMode = "none" | "design" | "production";
+const CARD_OPTIONS: { value: CardMode; label: string }[] = [
+  { value: "none", label: "بلا كرت" },
+  { value: "design", label: "كرت مهام" },
+  { value: "production", label: "كرت مهام إنتاج" },
+];
+const CARD_HINT: Record<CardMode, string> = {
+  none: "لا يظهر له كرت في أي لوحة مهام ولا في إحصاءات الفريق، ولا يمكن إسناد مهام جديدة إليه.",
+  design: "يظهر له كرت في لوحة «المهام اليومية» (فريق التصميم)، ويمكن إسناد مهام إليه هناك.",
+  production: "يظهر له كرت في لوحة «مهام إنتاج»، ويمكن إسناد مهام إنتاج إليه.",
+};
 const ACCESS_HINT: Record<InventoryAccessLevel, string> = {
   none: "لا تظهر له صفحات المخزون ولا السحب.",
   withdraw: "تظهر له صفحة السحب فقط (من كل التصنيفات) بلا أسعار.",
@@ -40,9 +52,9 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<UserRole>(editing?.accessRole ?? "designer");
   const [jobTitle, setJobTitle] = useState(initialJobTitle);
-  // كرت المهام: مفعّل افتراضياً للمستخدم الجديد، ويعدّله المدير حسب الحاجة
-  const initialShowCard = editing ? editing.showTaskCard : true;
-  const [showTaskCard, setShowTaskCard] = useState(initialShowCard);
+  // الكرت: بلا كرت / كرت مهام (التصميم) / كرت مهام إنتاج. الافتراضي للمستخدم الجديد: كرت مهام.
+  const initialCardMode: CardMode = editing ? (editing.showTaskCard ? "design" : editing.showProductionCard ? "production" : "none") : "design";
+  const [cardMode, setCardMode] = useState<CardMode>(initialCardMode);
   // المصمم: مستوى وصول المخزون. تعبئة/مشغل: المجموعات الرئيسية المسموح السحب من كل تصنيفاتها.
   const initialAccess: InventoryAccessLevel = editing?.accessRole === "designer" ? editing.inventoryAccess : "none";
   const initialGroupIds = editing?.allowedGroupIds ?? [];
@@ -113,7 +125,8 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
         password,
         role,
         ...(jobTitle.trim() ? { jobTitle: jobTitle.trim() } : {}),
-        showTaskCard,
+        showTaskCard: cardMode === "design",
+        showProductionCard: cardMode === "production",
         ...(role === "designer" ? { inventoryAccess } : {}),
         ...(restricted ? { allowedGroupIds: groupIds } : {}),
       };
@@ -126,7 +139,10 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
       if (!roleLocked && role !== editing.accessRole) patch.role = role;
       if (jobTitle.trim() && jobTitle.trim() !== initialJobTitle) patch.jobTitle = jobTitle.trim();
       if (password) patch.password = password;
-      if (showTaskCard !== initialShowCard) patch.showTaskCard = showTaskCard;
+      if (cardMode !== initialCardMode) {
+        patch.showTaskCard = cardMode === "design";
+        patch.showProductionCard = cardMode === "production";
+      }
       if (role === "designer" && (inventoryAccess !== initialAccess || editing.accessRole !== "designer")) patch.inventoryAccess = inventoryAccess;
       // عند التحويل إلى تعبئة/مشغل نرسل المجموعات دائماً؛ وإلا عند تغيّرها فقط
       if (restricted && (editing.accessRole !== role || !sameSet(groupIds, initialGroupIds))) patch.allowedGroupIds = groupIds;
@@ -194,7 +210,7 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
               const nextRole = event.target.value as UserRole;
               setRole(nextRole);
               if (!editing) {
-                setShowTaskCard(!isRestrictedRole(nextRole) && !isSalesRole(nextRole));
+                setCardMode(!isRestrictedRole(nextRole) && !isSalesRole(nextRole) ? "design" : "none");
               }
             }}
             disabled={roleLocked}
@@ -208,13 +224,29 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
         </FieldWrap>
       </div>
 
-      <label className="mb-4 flex cursor-pointer items-start gap-2.5 rounded-control border border-border px-3 py-2.5 text-sm text-text hover:bg-border/40" data-testid="show-task-card">
-        <input type="checkbox" checked={showTaskCard} onChange={(event) => setShowTaskCard(event.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-primary-deep,#3FA796)]" />
-        <span>
-          <span className="block font-semibold">إظهار كرت مهام لهذا المستخدم</span>
-          <span className="block text-xs text-muted">عند التعطيل لا يظهر له كرت في لوحة المهام ولا في إحصاءات الفريق، ولا يمكن إسناد مهام جديدة إليه.</span>
-        </span>
-      </label>
+      <fieldset className="mb-4 rounded-control border border-border p-3" data-testid="task-card-mode">
+        <legend className="px-1 text-sm font-medium text-text">كرت المهام</legend>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          {CARD_OPTIONS.map((option) => (
+            <label
+              key={option.value}
+              className={`flex cursor-pointer items-center gap-2 rounded-control border px-3 py-2 text-sm text-text hover:bg-border/40 ${cardMode === option.value ? "border-primary-deep bg-primary/10 font-semibold" : "border-border"}`}
+              data-testid={`card-mode-${option.value}`}
+            >
+              <input
+                type="radio"
+                name="task-card-mode"
+                value={option.value}
+                checked={cardMode === option.value}
+                onChange={() => setCardMode(option.value)}
+                className="h-4 w-4 shrink-0 accent-[var(--color-primary-deep,#3FA796)]"
+              />
+              {option.label}
+            </label>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-muted">{CARD_HINT[cardMode]}</p>
+      </fieldset>
 
       {role === "designer" && (
         <div className="mb-4 rounded-control border border-border p-3" data-testid="inventory-access-section">

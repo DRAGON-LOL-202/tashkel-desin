@@ -20,6 +20,7 @@ export function publicUser(u: User, allowedGroupIds?: string[]) {
     inventoryAccess: effectiveInventoryAccess(u).toLowerCase() as "none" | "withdraw" | "full",
     jobTitle: u.jobTitle,
     showTaskCard: u.showTaskCard,
+    showProductionCard: u.showProductionCard,
     isActive: u.isActive,
     isSystemUser: u.isSystemUser,
     createdAt: u.createdAt.toISOString(),

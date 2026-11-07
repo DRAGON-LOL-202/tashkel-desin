@@ -15,6 +15,8 @@ export interface AppNotification {
   taskTitle: string | null;
   /** يوم المهمة (YYYY-MM-DD) للانتقال إليها */
   taskDate: string | null;
+  /** لوحة المهمة: للانتقال لصفحة المهام الصحيحة */
+  taskBoard?: "design" | "production";
 }
 
 export interface NotificationCounts {

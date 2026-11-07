@@ -27,7 +27,7 @@ const idOf = (v: unknown) => (typeof v === "string" && v.length > 0 && v.length 
 
 const include = {
   actor: { select: { id: true, name: true } },
-  task: { select: { id: true, title: true, date: true, parentId: true } },
+  task: { select: { id: true, title: true, date: true, parentId: true, board: true } },
 } satisfies Prisma.NotificationInclude;
 
 type Row = Prisma.NotificationGetPayload<{ include: typeof include }>;
@@ -47,6 +47,7 @@ function serialize(n: Row) {
     subtaskId: n.relatedSubtaskId,
     taskTitle: n.task?.title ?? null,
     taskDate: n.task?.date ?? null,
+    taskBoard: (n.task?.board ?? "DESIGN").toLowerCase() as "design" | "production",
   };
 }
 

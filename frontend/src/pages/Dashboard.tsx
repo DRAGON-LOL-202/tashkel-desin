@@ -16,7 +16,7 @@ import { CopyTaskModal } from "../components/tasks/CopyTaskModal";
 import { applyMoveToMember, applyReorder, isTaskTreeCompleted, tasksService } from "../services/tasksService";
 import { attendanceService } from "../services/attendanceService";
 import { useResource } from "../hooks/useResource";
-import type { AttendanceSession, AttendanceToday, CalendarDateState, CreateTaskInput, Task, TeamMember, TimerAction } from "../types";
+import type { AttendanceSession, AttendanceToday, CalendarDateState, CreateTaskInput, Task, TaskBoard, TeamMember, TimerAction } from "../types";
 import { getTaskElapsed } from "../hooks/useTaskTimer";
 import { todayISO } from "../lib/date";
 import { useToast } from "../components/ui/ToastProvider";
@@ -40,7 +40,13 @@ function sortTasks(a: Task, b: Task): number {
   return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
 }
 
-export default function Dashboard() {
+const BOARD_TEXT: Record<TaskBoard, { title: string; description: string }> = {
+  design: { title: "المهام اليومية", description: "إدارة ومتابعة مهام فريق التصميم" },
+  production: { title: "مهام إنتاج", description: "إدارة ومتابعة مهام فريق الإنتاج" },
+};
+
+/** لوحة المهام اليومية. board="production" تعرض نفس اللوحة لمهام الإنتاج (مهام وكروت منفصلة عن التصميم). */
+export default function Dashboard({ board = "design" }: { board?: TaskBoard }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(true);
   const [tasksError, setTasksError] = useState<string | null>(null);
@@ -79,25 +85,25 @@ export default function Dashboard() {
   const { user } = useAuth();
   const { isStaff } = usePermissions();
   const run = useSafeAction();
-  const { members: teamMembers, loading: membersLoading, error: membersError, reload: reloadMembers } = useTeamMembers();
+  const { members: teamMembers, loading: membersLoading, error: membersError, reload: reloadMembers } = useTeamMembers(board);
 
   // نجلب مهام اليوم المعروض فقط. عدّاد seq يتجاهل ردود الأيام القديمة المتأخرة.
   const seq = useRef(0);
   const fetchDay = useCallback(async (date: string) => {
     const id = ++seq.current;
-    const result = await tasksService.list({ date });
+    const result = await tasksService.list({ date, board });
     if (id === seq.current) setTasks(result);
-  }, []);
+  }, [board]);
 
   // ألوان التقويم (أحمر/أخضر) للشبكة المعروضة من مسار خفيف بدل حسابها من كل المهام
   const refreshDateStates = useCallback(async () => {
     if (!calendarRange) return;
     try {
-      setDateStates(await tasksService.dayStates(calendarRange.from, calendarRange.to));
+      setDateStates(await tasksService.dayStates(calendarRange.from, calendarRange.to, board));
     } catch {
       // نُبقي الألوان الحالية
     }
-  }, [calendarRange]);
+  }, [calendarRange, board]);
 
   const loadTasks = useCallback(async () => {
     setDayLoading(true);
@@ -225,7 +231,7 @@ export default function Dashboard() {
 
   const handleCreate = (input: CreateTaskInput) =>
     mutate(async () => {
-      const created = await tasksService.create(input);
+      const created = await tasksService.create({ ...input, board });
       // الخادم يضع المهمة الجديدة في أعلى القائمة؛ نعيد ترتيب الأشقاء حسب الرقم المختار (الافتراضي: الرقم التالي في النهاية)
       const siblingIds = getSiblings(tasks, { date: created.date, assigneeId: created.assigneeId, parentId: created.parentId }).map((task) => task.id);
       const orderedIds = insertAtPosition(siblingIds, created.id, input.position ?? siblingIds.length + 1);
@@ -344,7 +350,7 @@ export default function Dashboard() {
       show("لا توجد مهام غير منتهية لنقلها");
       return;
     }
-    await mutate(() => tasksService.moveUnfinishedToNextDay(selectedDate), "تم نقل المهام غير المنتهية إلى اليوم التالي");
+    await mutate(() => tasksService.moveUnfinishedToNextDay(selectedDate, board), "تم نقل المهام غير المنتهية إلى اليوم التالي");
   };
 
   const handleExportExcel = () => {
@@ -354,7 +360,7 @@ export default function Dashboard() {
       return;
     }
     try {
-      downloadDailyReport(dayAll, teamMembers, selectedDate);
+      downloadDailyReport(dayAll, teamMembers, selectedDate, board === "production" ? "تقرير-مهام-الإنتاج" : undefined);
       show("تم تصدير التقرير", "success");
     } catch {
       show("تعذّر إنشاء ملف Excel", "error");
@@ -365,8 +371,8 @@ export default function Dashboard() {
     <AppLayout
       headerSlot={(openMobileNav) => (
         <Header
-          title="المهام اليومية"
-          description="إدارة ومتابعة مهام فريق التصميم"
+          title={BOARD_TEXT[board].title}
+          description={BOARD_TEXT[board].description}
           onOpenMobileNav={openMobileNav}
           action={
             <div className="hidden sm:flex items-center gap-2 rounded-control bg-primary/15 px-3 py-2 text-sm">
