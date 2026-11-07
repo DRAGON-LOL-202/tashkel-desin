@@ -581,14 +581,14 @@ tasksRouter.get(
   })
 );
 
-// تعديل المحتوى: ADMIN/MANAGER فقط (المصمم لا يعدّل)
+// تعديل المحتوى: الإدارة أي مهمة؛ غيرهم مهمة أنشأها بنفسه ومسندة إليه فقط
 tasksRouter.patch(
   "/:id",
-  requireStaff,
   asyncHandler(async (req, res) => {
     const body = updateTaskSchema.parse(req.body);
     const db = prisma();
-    const task = await getTaskFor(req.user!, req.params.id);
+    const task = await getTaskFor(req.user!, req.params.id); // غير الإدارة: مهمته المسندة إليه فقط
+    if (!isStaff(req.user!) && task.createdById !== req.user!.id) throw forbidden("يمكنك تعديل المهام التي أضفتها بنفسك فقط");
     if (body.attachments !== undefined) await assertAttachmentsAllowed(req.user!.id, "tasks", body.attachments, task.attachments);
 
     const target = body.target ?? task.target;

@@ -179,10 +179,10 @@ function TaskRowLine({ task, h, variant, menuBase }: { task: Task; h: RowHandler
   const hasTimer = !hasSubtasks && !isCompleted && Boolean(task.timer);
   const canAddTimer = !hasSubtasks && !isCompleted && !task.timer;
 
-  // غير الإدارة: يحذف المهمة التي أضافها بنفسه فقط (الحذف هو آخر عنصر في القائمة)
-  const canDeleteOwn = !canManageTasks && !!userId && task.createdById === userId && task.assigneeId === userId;
+  // غير الإدارة: يعدّل ويحذف المهمة التي أضافها بنفسه فقط (قائمته: تعديل + حذف)
+  const canEditOwn = !canManageTasks && !!userId && task.createdById === userId && task.assigneeId === userId;
   const menuItems: TaskMenuItem[] = !canManageTasks
-    ? menuBase.filter((item) => item.key === "delete")
+    ? menuBase.filter((item) => item.key === "edit" || item.key === "delete")
     : canAddTimer
       ? [menuBase[0], { key: "timer", label: "مؤقت تنازلي", icon: <AlarmClock size={16} />, onSelect: () => setDetailsOpen(true) }, ...menuBase.slice(1)]
       : menuBase;
@@ -304,7 +304,7 @@ function TaskRowLine({ task, h, variant, menuBase }: { task: Task; h: RowHandler
         </span>
 
         {/* القائمة (⋮) */}
-        {(canManageTasks || canDeleteOwn) && (
+        {(canManageTasks || canEditOwn) && (
           <span className="tr-menu">
             <TaskActionsMenu items={menuItems} buttonClassName="tr-ico" />
           </span>

@@ -68,15 +68,26 @@ describe("tasks: العزل بين المصممين", () => {
   });
 });
 
-describe("tasks: المصمم لا يعدّل، ويحذف ما أضافه بنفسه فقط", () => {
-  it("PATCH ← 403 للمصمم، وتنجح للمدير؛ والمدير يحذف أي مهمة", async () => {
+describe("tasks: المصمم يعدّل ويحذف ما أضافه بنفسه فقط", () => {
+  it("المدير يعدّل أي مهمة ويحذفها", async () => {
     const t = await mk(d1);
-    expect((await api(d1).patch(`/api/tasks/${t.id}`).send({ title: "غيّرت" })).status).toBe(403);
     const ok = await api(manager).patch(`/api/tasks/${t.id}`).send({ title: "عنوان جديد" });
     expect(ok.status).toBe(200);
     expect(ok.body.task.title).toBe("عنوان جديد");
     expect((await api(manager).delete(`/api/tasks/${t.id}`)).status).toBe(200);
     expect((await api(manager).get(`/api/tasks/${t.id}`)).status).toBe(404);
+  });
+  it("المصمم يعدّل مهمته التي أضافها بنفسه ← 200", async () => {
+    const t = await mk(d1);
+    const ok = await api(d1).patch(`/api/tasks/${t.id}`).send({ title: "عدّلتها", priority: "high" });
+    expect(ok.status).toBe(200);
+    expect(ok.body.task.title).toBe("عدّلتها");
+  });
+  it("المصمم لا يعدّل مهمة أضافها المدير له، ولا مهمة غيره ← 403", async () => {
+    const byManager = await mk(manager, { assigneeId: d1Id });
+    expect((await api(d1).patch(`/api/tasks/${byManager.id}`).send({ title: "x" })).status).toBe(403);
+    const other = await mk(d2);
+    expect((await api(d1).patch(`/api/tasks/${other.id}`).send({ title: "x" })).status).toBe(403);
   });
   it("المصمم يحذف مهمته التي أضافها بنفسه ← 200", async () => {
     const t = await mk(d1);
