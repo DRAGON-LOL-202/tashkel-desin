@@ -68,16 +68,32 @@ describe("tasks: العزل بين المصممين", () => {
   });
 });
 
-describe("tasks: المصمم لا يعدّل ولا يحذف", () => {
-  it("PATCH/DELETE ← 403 للمصمم، وتنجح للمدير", async () => {
+describe("tasks: المصمم لا يعدّل، ويحذف ما أضافه بنفسه فقط", () => {
+  it("PATCH ← 403 للمصمم، وتنجح للمدير؛ والمدير يحذف أي مهمة", async () => {
     const t = await mk(d1);
     expect((await api(d1).patch(`/api/tasks/${t.id}`).send({ title: "غيّرت" })).status).toBe(403);
-    expect((await api(d1).delete(`/api/tasks/${t.id}`)).status).toBe(403);
     const ok = await api(manager).patch(`/api/tasks/${t.id}`).send({ title: "عنوان جديد" });
     expect(ok.status).toBe(200);
     expect(ok.body.task.title).toBe("عنوان جديد");
     expect((await api(manager).delete(`/api/tasks/${t.id}`)).status).toBe(200);
     expect((await api(manager).get(`/api/tasks/${t.id}`)).status).toBe(404);
+  });
+  it("المصمم يحذف مهمته التي أضافها بنفسه ← 200", async () => {
+    const t = await mk(d1);
+    expect((await api(d1).delete(`/api/tasks/${t.id}`)).status).toBe(200);
+    expect((await api(manager).get(`/api/tasks/${t.id}`)).status).toBe(404);
+  });
+  it("المصمم لا يحذف مهمة أضافها المدير له، ولا مهمة غيره ← 403", async () => {
+    const byManager = await mk(manager, { assigneeId: d1Id });
+    expect((await api(d1).delete(`/api/tasks/${byManager.id}`)).status).toBe(403);
+    const other = await mk(d2);
+    expect((await api(d1).delete(`/api/tasks/${other.id}`)).status).toBe(403);
+  });
+  it("مهمة أضافها المصمم وتحتها فرعية أضافها المدير ← لا يحذفها المصمم", async () => {
+    const root = await mk(d1);
+    await mk(manager, { parentId: root.id });
+    expect((await api(d1).delete(`/api/tasks/${root.id}`)).status).toBe(403);
+    expect((await api(manager).delete(`/api/tasks/${root.id}`)).status).toBe(200);
   });
 });
 

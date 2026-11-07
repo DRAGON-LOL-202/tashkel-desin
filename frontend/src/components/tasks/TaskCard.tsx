@@ -155,7 +155,7 @@ type RowHandlers = Pick<
 function TaskRowLine({ task, h, variant, menuBase }: { task: Task; h: RowHandlers; variant: "root" | "sub"; menuBase: TaskMenuItem[] }) {
   const [expanded, setExpanded] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const { canManageTasks, canDeleteComment } = usePermissions();
+  const { canManageTasks, canDeleteComment, userId } = usePermissions();
   const elapsed = useElapsed(task);
   const children = h.getSubtasks(task.id);
   const isCompleted = task.status === "completed";
@@ -179,9 +179,13 @@ function TaskRowLine({ task, h, variant, menuBase }: { task: Task; h: RowHandler
   const hasTimer = !hasSubtasks && !isCompleted && Boolean(task.timer);
   const canAddTimer = !hasSubtasks && !isCompleted && !task.timer;
 
-  const menuItems: TaskMenuItem[] = canAddTimer
-    ? [menuBase[0], { key: "timer", label: "مؤقت تنازلي", icon: <AlarmClock size={16} />, onSelect: () => setDetailsOpen(true) }, ...menuBase.slice(1)]
-    : menuBase;
+  // غير الإدارة: يحذف المهمة التي أضافها بنفسه فقط (الحذف هو آخر عنصر في القائمة)
+  const canDeleteOwn = !canManageTasks && !!userId && task.createdById === userId && task.assigneeId === userId;
+  const menuItems: TaskMenuItem[] = !canManageTasks
+    ? menuBase.filter((item) => item.key === "delete")
+    : canAddTimer
+      ? [menuBase[0], { key: "timer", label: "مؤقت تنازلي", icon: <AlarmClock size={16} />, onSelect: () => setDetailsOpen(true) }, ...menuBase.slice(1)]
+      : menuBase;
 
   const subLabel = hasSubtasks ? "المهام الفرعية" : "مهمة فرعية";
   const playLabel = isRunning ? "إيقاف" : isPaused ? "استكمال" : "بدء";
@@ -300,7 +304,7 @@ function TaskRowLine({ task, h, variant, menuBase }: { task: Task; h: RowHandler
         </span>
 
         {/* القائمة (⋮) */}
-        {canManageTasks && (
+        {(canManageTasks || canDeleteOwn) && (
           <span className="tr-menu">
             <TaskActionsMenu items={menuItems} buttonClassName="tr-ico" />
           </span>

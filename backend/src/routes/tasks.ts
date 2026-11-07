@@ -640,14 +640,16 @@ tasksRouter.patch(
   })
 );
 
+// الحذف: الإدارة أي مهمة؛ غيرهم مهمة أنشأها بنفسه ومسندة إليه فقط (وبشرط أن كل ما تحتها أنشأه هو أيضاً)
 tasksRouter.delete(
   "/:id",
-  requireStaff,
   asyncHandler(async (req, res) => {
-    const task = await getTaskFor(req.user!, req.params.id);
+    const me = req.user!;
+    const task = await getTaskFor(me, req.params.id); // غير الإدارة: مهمته المسندة إليه فقط
     // مرفقات المهمة وكل أحفادها تُجمع قبل الحذف لأن الـ cascade يزيل الصفوف
     const ids = await treeIds(task.id);
-    const rows = await prisma().task.findMany({ where: { id: { in: ids } }, select: { attachments: true } });
+    const rows = await prisma().task.findMany({ where: { id: { in: ids } }, select: { attachments: true, createdById: true } });
+    if (!isStaff(me) && rows.some((r) => r.createdById !== me.id)) throw forbidden("يمكنك حذف المهام التي أضفتها بنفسك فقط");
     const keys = rows.flatMap((r) => keysOf(r.attachments));
     await prisma().task.delete({ where: { id: task.id } }); // المهام الفرعية والسجلات والتعليقات تُحذف بالـ cascade
     await deleteUnreferencedObjects(keys);
