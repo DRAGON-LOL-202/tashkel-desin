@@ -59,9 +59,10 @@
 2. **`SALES_EDITOR` («منفّذ أوردرات»)**:
    - الصفحات المتاحة: `/sales-orders` و`/profile` فقط (المسار الافتراضي `/sales-orders`).
    - مسموح: إضافة أوردر، حذف أوردر، تعديل بيانات الأوردر (`waybill`, `closerName`, `notes`, `date`, `returnFlagged`)، تعديل محتويات الأوردر قبل التنفيذ (`withEditableOrder`: بنود ومكوّنات)، إنشاء منتج ثابت جديد (`POST /api/sales/products`)، وقراءة المنتجات الثابتة والمقفلين والأصناف/التصنيفات لاختيار المكونات.
-   - ممنوع: تغيير حالة الأوردر (`status` أو `damagedComponentIds` ← `403`)، وتعديل أو إيقاف أو حذف منتج ثابت موجود (`PATCH/DELETE /api/sales/products/:id` ← `403`).
+   - ممنوع: تغيير حالة الأوردر (`status` أو `damagedComponentIds` ← `403`، وهذا خاص بمنفّذ الأوردرات؛ مشرف المبيعات مسموح له).
 3. **`SALES_SUPERVISOR` («مشرف مبيعات»)**:
-   - كل صلاحيات `SALES_EDITOR`، بالإضافة إلى صفحة المخزون `/inventory` لإضافة مخزون فقط:
+   - كل صلاحيات `SALES_EDITOR`، **بالإضافة إلى تغيير حالة كرت الأوردر** (مسجل ← تم التنفيذ ← شحن ← تم التسليم / مرتجع مع تحديد التالف) عبر `PATCH /api/sales/orders/:id` بحقلي `status` و`damagedComponentIds`؛ يخصم ويعيد المخزون كما للإدارة وبلا أي مبالغ في الرد (`canChangeSalesOrderStatus` في الواجهة).
+   - بالإضافة إلى صفحة المخزون `/inventory` لإضافة مخزون فقط:
      - إنشاء صنف جديد (`POST /api/inventory`) مع قبول `unitPrice` و`sellPrice` كحقول كتابة فقط (تُحفظ في قاعدة البيانات ولا تُعاد في الاستجابة).
      - إضافة كمية (`POST /api/inventory/:id/movements` بحركة `type: "IN"` فقط؛ أي نوع آخر مثل `OUT` أو `ADJUST` أو `RETURN` ← `403`).
      - قراءة الأصناف والتصنيفات والوحدات وتوليد الكود (`GET /api/inventory/next-sku`) وسجل حركات الصنف بدون أي أسعار أو قيم مالية.
@@ -76,7 +77,7 @@
 | `POST /api/sales/orders`, `DELETE /api/sales/orders/:id` | 403 | 201 / 200 | 201 / 200 | 201 / 200 |
 | `PATCH /api/sales/orders/:id` (`{ returnFlagged }` فقط) | 200 | 200 | 200 | 200 |
 | `PATCH /api/sales/orders/:id` (`waybill`, `closerName`, `notes`, `date`) | 403 | 200 | 200 | 200 |
-| `PATCH /api/sales/orders/:id` (`status`, `damagedComponentIds`) | 403 | 403 | 403 | 200 |
+| `PATCH /api/sales/orders/:id` (`status`, `damagedComponentIds`) | 403 | 403 | 200 (بلا مبالغ) | 200 |
 | `POST/PATCH/DELETE /api/sales/orders/:id/lines...` | 403 | 200 / 201 | 200 / 201 | 200 / 201 |
 | `POST /api/sales/products` | 403 | 201 (بلا مبالغ) | 201 (بلا مبالغ) | 201 (كامل) |
 | `PATCH /api/sales/products/:id`, `DELETE /api/sales/products/:id` | 403 | 403 | 403 | 200 |

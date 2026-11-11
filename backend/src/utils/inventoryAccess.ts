@@ -73,7 +73,8 @@ export function isSalesRouteAllowed(role: Role, method: string, path: string, bo
     // تعديل/إيقاف/حذف المنتج الثابت
     if ((method === "PATCH" || method === "DELETE") && /^\/products\/[^/]+$/.test(p)) return true;
     if (method === "PATCH" && /^\/orders\/[^/]+$/.test(p)) {
-      if (isPlainRecord(body) && ("status" in body || "damagedComponentIds" in body)) return false;
+      // تغيير الحالة (status / damagedComponentIds): لمشرف المبيعات فقط، أما منفّذ الأوردرات فممنوع
+      if (role === "SALES_EDITOR" && isPlainRecord(body) && ("status" in body || "damagedComponentIds" in body)) return false;
       return true;
     }
     if (method === "DELETE" && /^\/orders\/[^/]+$/.test(p)) return true;

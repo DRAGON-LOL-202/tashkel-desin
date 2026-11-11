@@ -410,14 +410,15 @@ salesRouter.patch(
       if (typeof req.body !== "object" || req.body === null || Array.isArray(req.body)) throw forbidden();
       const keys = Object.keys(req.body as Record<string, unknown>);
       if (keys.length !== 1 || keys[0] !== "returnFlagged") throw forbidden();
-    } else if (role === "SALES_EDITOR" || role === "SALES_SUPERVISOR") {
+    } else if (role === "SALES_EDITOR") {
       if (typeof req.body === "object" && req.body !== null && ("status" in req.body || "damagedComponentIds" in req.body)) {
         throw forbidden();
       }
     }
     const existing = await getOrder(req.params.id);
     const body = updateOrderSchema.parse(req.body);
-    if (!isStaff(req.user!) && (body.status !== undefined || body.damagedComponentIds !== undefined)) {
+    // تغيير الحالة (تنفيذ/شحن/تسليم/مرتجع) مسموح للإدارة ومشرف المبيعات فقط
+    if (!isStaff(req.user!) && role !== "SALES_SUPERVISOR" && (body.status !== undefined || body.damagedComponentIds !== undefined)) {
       throw forbidden();
     }
     if (body.waybill !== undefined && body.waybill !== existing.waybill) await assertWaybillFree(body.waybill, existing.id);

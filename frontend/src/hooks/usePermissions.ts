@@ -30,8 +30,8 @@ export function usePermissions() {
     canFlagReturn: isStaff || isSalesFlagger || isSalesEditor || isSalesSupervisor,
     /** المبيعات: إضافة/حذف/تعديل الأوردر وبنوده ومكوّناته وإنشاء منتج ثابت جديد */
     canEditSalesOrders: isStaff || isSalesEditor || isSalesSupervisor,
-    /** المبيعات: تغيير حالة الأوردر (تنفيذ/شحن/تسليم/مرتجع فعلي) — للإدارة فقط لأنها تخصم/تعيد المخزون */
-    canChangeSalesOrderStatus: isStaff,
+    /** المبيعات: تغيير حالة الأوردر (تنفيذ/شحن/تسليم/مرتجع فعلي) — الإدارة + مشرف المبيعات (تخصم/تعيد المخزون) */
+    canChangeSalesOrderStatus: isStaff || isSalesSupervisor,
     /** المبيعات: تعديل أو إيقاف أو حذف منتج ثابت موجود — الإدارة + منفّذ الأوردرات + مشرف المبيعات */
     canManageSalesProducts: isStaff || isSalesEditor || isSalesSupervisor,
     /** المصمم يحذف تعليقه فقط؛ الإدارة أي تعليق */

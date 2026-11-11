@@ -590,7 +590,7 @@ describe("sales roles: الأدوار الثلاثة المحصورة في ال�
     expect((await api(flagger).post("/api/inventory").send({})).status).toBe(403);
   });
 
-  it("الدور 2 (SALES_EDITOR): يدير الأوردرات وبنودها ومكوّناتها وينشئ منتجاً ثابتاً بلا أي مبالغ، ويُمنع من تغيير الحالة أو تعديل/حذف منتج ثابت أو إضافة مخزون", async () => {
+  it("الدور 2 (SALES_EDITOR): يدير الأوردرات وبنودها ومكوّناتها وينشئ منتجاً ثابتاً بلا أي مبالغ، ويُمنع من تغيير الحالة أو إضافة مخزون", async () => {
     // إنشاء منتج ثابت جديد مسموح وبلا أسعار في الاستجابة
     const newProd = await api(editor).post("/api/sales/products").send({
       name: "بوكس منفذ الأوردرات",
@@ -785,12 +785,10 @@ describe("sales roles: الأدوار الثلاثة المحصورة في ال�
     expect(supWd.status).toBe(201);
     assertNoMoneyLeak(supWd.body, "SALES_SUPERVISOR POST /inventory/withdrawals");
 
-    // 6. وفي المبيعات: يتمتع بصلاحيات الدور 2 مع منع تغيير الحالة أو تعديل/حذف المنتجات الثابتة وعدم تسريب أي مبالغ
+    // 6. وفي المبيعات: يتمتع بصلاحيات الدور 2 + تغيير حالة الأوردر، مع عدم تسريب أي مبالغ
     const supOrders = await api(supervisor).get("/api/sales/orders?date=2026-06-15");
     expect(supOrders.status).toBe(200);
     assertNoMoneyLeak(supOrders.body, "SALES_SUPERVISOR GET /sales/orders");
-    const someOrderId = supOrders.body.orders[0].id;
-    expect((await api(supervisor).patch(`/api/sales/orders/${someOrderId}`).send({ status: "EXECUTED" })).status).toBe(403);
     // تعديل وحذف المنتج الثابت مسموح للمشرف أيضاً (نجرّب على منتج مؤقت كي لا نمس bigBox)
     const tmpProd = await api(supervisor).post("/api/sales/products").send({ name: "منتج مؤقت للمشرف", components: [{ itemId: rose.id, quantity: 1 }] });
     expect(tmpProd.status).toBe(201);
@@ -799,6 +797,36 @@ describe("sales roles: الأدوار الثلاثة المحصورة في ال�
     expect(supEditProd.status).toBe(200);
     assertNoMoneyLeak(supEditProd.body, "SALES_SUPERVISOR PATCH /products/:id");
     expect((await api(supervisor).delete(`/api/sales/products/${tmpId}`)).status).toBe(200);
+
+    // 7. تغيير حالة الأوردر مسموح للمشرف (يخصم ويعيد المخزون) بلا أي مبالغ في الرد؛ نجرّب على أوردر وصنف خاصَّين بهذا الاختبار
+    const stProd = await api(supervisor).post("/api/sales/products").send({ name: "منتج حالة المشرف", components: [{ itemId: newItemId, quantity: 1 }] });
+    expect(stProd.status).toBe(201);
+    const stOrder = await api(supervisor).post("/api/sales/orders").send({ date: "2026-06-16", waybill: "SUP-ST-1", lines: [{ productId: stProd.body.product.id, quantity: 1 }] });
+    expect(stOrder.status).toBe(201);
+    const stId = stOrder.body.order.id as string;
+    const qtyNow = async () => Number((await prisma().inventoryItem.findUniqueOrThrow({ where: { id: newItemId } })).quantity);
+    const before = await qtyNow();
+
+    const supExec = await api(supervisor).patch(`/api/sales/orders/${stId}`).send({ status: "EXECUTED" });
+    expect(supExec.status).toBe(200);
+    expect(supExec.body.order.status).toBe("EXECUTED");
+    assertNoMoneyLeak(supExec.body, "SALES_SUPERVISOR PATCH status=EXECUTED");
+    expect(await qtyNow()).toBe(before - 1);
+
+    const supShip = await api(supervisor).patch(`/api/sales/orders/${stId}`).send({ status: "SHIPPED" });
+    expect(supShip.status).toBe(200);
+    assertNoMoneyLeak(supShip.body, "SALES_SUPERVISOR PATCH status=SHIPPED");
+    expect(await qtyNow()).toBe(before - 1); // لا خصم مزدوج
+
+    const supRet = await api(supervisor).patch(`/api/sales/orders/${stId}`).send({ status: "RETURNED", damagedComponentIds: [] });
+    expect(supRet.status).toBe(200);
+    expect(supRet.body.order.status).toBe("RETURNED");
+    assertNoMoneyLeak(supRet.body, "SALES_SUPERVISOR PATCH status=RETURNED");
+    expect(await qtyNow()).toBe(before); // عاد للمخزون
+
+    const supBack = await api(supervisor).patch(`/api/sales/orders/${stId}`).send({ status: "REGISTERED" });
+    expect(supBack.status).toBe(200);
+    expect(supBack.body.order.status).toBe("REGISTERED");
   });
 });
 
