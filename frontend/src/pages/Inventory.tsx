@@ -29,6 +29,7 @@ import { AppLayout } from "../components/layout/AppLayout";
 import { Header } from "../components/header/Header";
 import { CategoriesModal } from "../components/inventory/CategoriesModal";
 import { CategoryOptions } from "../components/inventory/CategoryOptions";
+import { isValidCategoryFilter, matchesCategoryFilter } from "../components/inventory/groupCategories";
 import { ItemDetailsModal } from "../components/inventory/ItemDetailsModal";
 import { ItemModal } from "../components/inventory/ItemModal";
 import { MovementModal } from "../components/inventory/MovementModal";
@@ -89,14 +90,14 @@ export default function InventoryPage() {
   const { data, loading, error, reload, retry } = useResource<InventoryData>(loadInventory, EMPTY_INVENTORY_DATA);
   const { items, categories, groups, stats, units } = data;
 
-  const activeCategory = categoryFilter === "all" || categories.some((c) => c.id === categoryFilter) ? categoryFilter : "all";
+  const activeCategory = isValidCategoryFilter(categoryFilter, categories) ? categoryFilter : "all";
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     const dir = sortDir === "desc" ? -1 : 1;
     const list = items
       .filter((i) => showInactive || i.isActive)
-      .filter((i) => activeCategory === "all" || i.categoryId === activeCategory)
+      .filter((i) => matchesCategoryFilter(i.categoryId, activeCategory, categories))
       .filter((i) => {
         if (statusFilter === "ALL") return true;
         if (statusFilter === "SHORTAGE") return i.isShortage || i.quantity <= i.minQuantity || i.quantity === 0;
@@ -381,7 +382,7 @@ export default function InventoryPage() {
               className="pp-input pp-input--select cursor-pointer sm:w-44"
             >
               <option value="all">كل التصنيفات</option>
-              <CategoryOptions categories={categories} />
+              <CategoryOptions categories={categories} selectableGroups />
             </select>
 
             <select

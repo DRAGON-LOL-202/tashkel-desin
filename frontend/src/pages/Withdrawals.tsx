@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { CategoryOptions } from "../components/inventory/CategoryOptions";
+import { matchesCategoryFilter } from "../components/inventory/groupCategories";
 import { Minus, Package, PackageMinus, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
 import { AppLayout } from "../components/layout/AppLayout";
 import { Header } from "../components/header/Header";
@@ -51,9 +52,9 @@ export default function WithdrawalsPage() {
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items
-      .filter((i) => categoryFilter === "all" || i.categoryId === categoryFilter)
+      .filter((i) => matchesCategoryFilter(i.categoryId, categoryFilter, categories))
       .filter((i) => !q || `${i.name} ${i.sku ?? ""}`.toLowerCase().includes(q));
-  }, [items, search, categoryFilter]);
+  }, [items, search, categoryFilter, categories]);
 
   const add = (item: InventoryItem) => {
     const wanted = quickQty[item.id]?.trim();
@@ -156,7 +157,7 @@ export default function WithdrawalsPage() {
                   className="pp-input pp-input--select cursor-pointer sm:w-40"
                 >
                   <option value="all">كل التصنيفات</option>
-                  <CategoryOptions categories={categories} />
+                  <CategoryOptions categories={categories} selectableGroups />
                 </select>
               </div>
 

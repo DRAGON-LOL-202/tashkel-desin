@@ -17,6 +17,7 @@ import { MovementModal } from "../components/inventory/MovementModal";
 import { MovementsModal } from "../components/inventory/MovementsModal";
 import { ItemDetailsModal } from "../components/inventory/ItemDetailsModal";
 import { CategoryOptions } from "../components/inventory/CategoryOptions";
+import { matchesCategoryFilter } from "../components/inventory/groupCategories";
 import { ItemModal } from "../components/inventory/ItemModal";
 import { StocktakeModal } from "../components/inventory/StocktakeModal";
 import { ReturnModal } from "../components/inventory/ReturnModal";
@@ -73,10 +74,10 @@ export default function LowStockPage() {
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     return shortages
-      .filter((i) => categoryFilter === "all" || i.categoryId === categoryFilter)
+      .filter((i) => matchesCategoryFilter(i.categoryId, categoryFilter, categories))
       .filter((i) => statusFilter === "ALL" || i.status === statusFilter)
       .filter((i) => !q || `${i.name} ${i.sku ?? ""}`.toLowerCase().includes(q));
-  }, [shortages, categoryFilter, statusFilter, search]);
+  }, [shortages, categoryFilter, statusFilter, search, categories]);
 
   const live = (i: InventoryItem | null) => (i ? (items.find((x) => x.id === i.id) ?? i) : null);
 
@@ -209,7 +210,7 @@ export default function LowStockPage() {
               className="pp-input pp-input--select cursor-pointer sm:w-48"
             >
               <option value="all">كل التصنيفات</option>
-              <CategoryOptions categories={categories} />
+              <CategoryOptions categories={categories} selectableGroups />
             </select>
             <select
               value={statusFilter}
