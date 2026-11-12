@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { AlertTriangle, Bell, CalendarRange, ClipboardList, Factory, Home, LogOut, MessageSquare, PanelRightClose, PanelRightOpen, Tag, Warehouse, PackageMinus, ShoppingBag, Target, UserCog, UserRound, Users } from "lucide-react";
+import { AlertTriangle, Bell, CalendarRange, ClipboardList, Calculator, ListChecks, Wallet, Factory, Home, LogOut, MessageSquare, PanelRightClose, PanelRightOpen, Tag, Warehouse, PackageMinus, ShoppingBag, Target, UserCog, UserRound, Users } from "lucide-react";
 import { useAuth } from "../auth/AuthProvider";
 import { isSalesRole, pagesFor, type AppPage } from "../../lib/permissions";
 import { useResource } from "../../hooks/useResource";
@@ -19,6 +19,9 @@ const navItems = [
   { to: "/withdrawals", label: "السحب", icon: PackageMinus, page: "withdrawals" as AppPage },
   { to: "/sales", label: "مبيعات إلكترونية", icon: ShoppingBag, page: "sales" as AppPage },
   { to: "/sales-orders", label: "أوردرات مبيعات إلكترونية", icon: ClipboardList, page: "salesOrders" as AppPage },
+  { to: "/sales-follow-up", label: "متابعة أوردرات المبيعات", icon: ListChecks, page: "salesFollowUp" as AppPage },
+  { to: "/agent-accounts", label: "حسابات الفتيات", icon: Wallet, page: "agentAccounts" as AppPage },
+  { to: "/general-accounts", label: "الحسابات العامة", icon: Calculator, page: "generalAccounts" as AppPage },
   { to: "/manage-users", label: "إدارة المستخدمين", icon: UserCog, page: "manageUsers" as AppPage },
 ];
 
@@ -28,6 +31,10 @@ const memberItems = [
   { to: "/production-tasks", label: "مهام إنتاج", icon: Factory, page: "productionTasks" as AppPage },
   { to: "/notifications", label: "الإشعارات", icon: Bell, page: "notifications" as AppPage },
   { to: "/feedback", label: "Feedback", icon: MessageSquare, page: "feedback" as AppPage },
+  { to: "/agent-orders", label: "أوردراتي", icon: ClipboardList, page: "agentOrders" as AppPage },
+  { to: "/sales-follow-up", label: "متابعة أوردرات المبيعات", icon: ListChecks, page: "salesFollowUp" as AppPage },
+  { to: "/agent-accounts", label: "حسابات الفتيات", icon: Wallet, page: "agentAccounts" as AppPage },
+  { to: "/general-accounts", label: "الحسابات العامة", icon: Calculator, page: "generalAccounts" as AppPage },
   { to: "/sales-orders", label: "أوردرات مبيعات إلكترونية", icon: ClipboardList, page: "salesOrders" as AppPage },
   { to: "/inventory", label: "المخزون", icon: Warehouse, end: true, page: "inventory" as AppPage },
   { to: "/inventory/shortages", label: "نواقص المخزون", icon: AlertTriangle, page: "inventory" as AppPage },

@@ -25,9 +25,10 @@ const roleColor: Record<UserRole, string> = {
   designer: "#3FA796",
   packer: "#7C6BD6",
   operator: "#4F8FE0",
-  sales_flagger: "#E07A5F",
+  sales_accountant: "#E07A5F",
   sales_editor: "#2A9D8F",
   sales_supervisor: "#3D5A80",
+  sales_agent: "#C0709B",
 };
 
 /** شارة مجموعات السحب: اسم المجموعة، أو «الاثنتان» عند منح كل المجموعات */

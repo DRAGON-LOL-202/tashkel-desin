@@ -6,7 +6,7 @@ export const RESTRICTED_ROLES: readonly Role[] = ["PACKER", "OPERATOR"];
 export const isRestrictedRole = (u: { role: Role }) => RESTRICTED_ROLES.includes(u.role);
 
 // أدوار المبيعات الإلكترونية المحصورة
-export const SALES_ROLES: readonly Role[] = ["SALES_FLAGGER", "SALES_EDITOR", "SALES_SUPERVISOR"];
+export const SALES_ROLES: readonly Role[] = ["SALES_ACCOUNTANT", "SALES_EDITOR", "SALES_SUPERVISOR", "SALES_AGENT"];
 export const isSalesRole = (u: { role: Role }) => SALES_ROLES.includes(u.role);
 
 export function effectiveInventoryAccess(u: { role: Role; inventoryAccess: InventoryAccess }): InventoryAccess {
@@ -57,7 +57,7 @@ function isPlainRecord(v: unknown): v is Record<string, unknown> {
 export function isSalesRouteAllowed(role: Role, method: string, path: string, body?: unknown): boolean {
   const p = path.length > 1 ? path.replace(/\/+$/, "") : path;
 
-  if (role === "SALES_FLAGGER") {
+  if (role === "SALES_ACCOUNTANT") {
     if (method === "GET" && p === "/orders") return true;
     if (method === "PATCH" && /^\/orders\/[^/]+$/.test(p)) {
       if (!isPlainRecord(body)) return false;
@@ -75,6 +75,8 @@ export function isSalesRouteAllowed(role: Role, method: string, path: string, bo
     if (method === "PATCH" && /^\/orders\/[^/]+$/.test(p)) {
       // تغيير الحالة (status / damagedComponentIds): لمشرف المبيعات فقط، أما منفّذ الأوردرات فممنوع
       if (role === "SALES_EDITOR" && isPlainRecord(body) && ("status" in body || "damagedComponentIds" in body)) return false;
+      // الشحن والتسليم لمحاسب المبيعات (والإدارة) فقط
+      if (role === "SALES_SUPERVISOR" && isPlainRecord(body) && (body.status === "SHIPPED" || body.status === "DELIVERED")) return false;
       return true;
     }
     if (method === "DELETE" && /^\/orders\/[^/]+$/.test(p)) return true;
@@ -133,6 +135,9 @@ export function isSalesRoleAllowed(role: Role, method: string, path: string, bod
   if (p === "/inventory" || p.startsWith("/inventory/")) {
     return isSalesInventoryAllowed(role, method, p.slice("/inventory".length) || "/", body);
   }
+  // نظام الفتيات: مساحة الفتاة لها وحدها، ومتابعة/حسابات المبيعات لمحاسب المبيعات وحده (فحص الدور يتكرر داخل الراوترات)
+  if (role === "SALES_AGENT") return p === "/agent" || p.startsWith("/agent/");
+  if (role === "SALES_ACCOUNTANT") return p === "/accounting" || p.startsWith("/accounting/");
   return false;
 }
 

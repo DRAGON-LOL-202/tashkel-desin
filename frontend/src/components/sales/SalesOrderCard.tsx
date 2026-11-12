@@ -42,6 +42,8 @@ interface SalesOrderCardProps {
   canEditOrder?: boolean;
   /** صلاحية تغيير حالة الأوردر (تنفيذ/شحن/تسليم/مرتجع فعلي) */
   canChangeStatus?: boolean;
+  /** زرا «شحن» و«تم التسليم»: للإدارة فقط (المحاسب من صفحة المتابعة)؛ المشرف والمنفّذ بدونهما */
+  canShipDeliver?: boolean;
 }
 
 // أيقونة كل حالة على زر الحالة
@@ -59,7 +61,12 @@ const GREEN_SHADOW = "0 10px 18px -10px rgba(10, 90, 51, 0.7)";
 const PREVIEW_CHIPS = 3;
 
 // كرت أوردر: رقم وحالة ومن أضافه، ثم رقم البوليصة والمقفل، شريط المنتجات، التكلفة وسعر البيع والربح، وأزرار الحالة.
-export function SalesOrderCard({ order, index, showDate, products, closers, onPatch, onStatus, onReturn, onMove, onDelete, onAddLine, onSetLineQty, onRemoveLine, items, onAddComponent, onSetComponentQty, onRemoveComponent, hideMoney, canFlagReturn = true, canEditOrder = true, canChangeStatus = true }: SalesOrderCardProps) {
+export function SalesOrderCard({ order, index, showDate, products, closers, onPatch, onStatus, onReturn, onMove, onDelete, onAddLine, onSetLineQty, onRemoveLine, items, onAddComponent, onSetComponentQty, onRemoveComponent, hideMoney, canFlagReturn: canFlagReturnProp = true, canEditOrder: canEditOrderProp = true, canChangeStatus: canChangeStatusProp = true, canShipDeliver = true }: SalesOrderCardProps) {
+  // أوردر فتاة ملغي بعد التصدير: عرض فقط (الباكند يرفض أي تعديل/تنفيذ/تغيير حالة أيضاً)
+  const cancelled = order.cancelled === true;
+  const canFlagReturn = canFlagReturnProp && !cancelled;
+  const canEditOrder = canEditOrderProp && !cancelled;
+  const canChangeStatus = canChangeStatusProp && !cancelled;
   const meta = SALES_STATUS_META[order.status];
   const [waybill, setWaybill] = useState(order.waybill);
   const [closer, setCloser] = useState(order.closerName);
@@ -172,6 +179,15 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
           أضافه: {order.createdByName}
         </span>
       </div>
+
+      {cancelled && (
+        <div className="flex items-start gap-2 rounded-xl border border-problem/50 bg-problem/10 px-3 py-1.5 text-xs text-problem" role="status">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          <span className="font-semibold">
+            أوردر ملغي من حساب الفتاة{order.cancelReason ? ` — السبب: ${order.cancelReason}` : ""}. لا يمكن تعديله أو تنفيذه، ولم يتغير المخزون بسبب الإلغاء.
+          </span>
+        </div>
+      )}
 
       {order.returnFlagged && order.status !== "RETURNED" && (
         <div className="flex items-center gap-2 rounded-xl border border-problem/40 bg-problem/10 px-3 py-1.5 text-xs text-problem" role="status">
@@ -403,6 +419,7 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
             SALES_STATUS_ORDER.map((s) => {
               const m = SALES_STATUS_META[s];
               const active = s === order.status;
+              if (!canShipDeliver && !active && (s === "SHIPPED" || s === "DELIVERED")) return null;
               return (
                 <button
                   key={s}
