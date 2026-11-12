@@ -110,7 +110,7 @@ export const agentAdminService = {
     return agents;
   },
 
-  async setPrefix(userId: string, prefix: number): Promise<void> {
-    await api(`/sales-agents/${userId}/prefix`, { method: "PUT", body: { prefix } });
+  async setPrefix(userId: string, prefix: number, startSeq?: number): Promise<void> {
+    await api(`/sales-agents/${userId}/prefix`, { method: "PUT", body: startSeq === undefined ? { prefix } : { prefix, startSeq } });
   },
 };

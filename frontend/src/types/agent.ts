@@ -163,6 +163,7 @@ export interface AgentAdminRow {
   isActive: boolean;
   prefix: number | null;
   nextSeq: number | null;
+  hasOrders: boolean;
   nextWaybill: number | null;
   maxWaybill: number | null;
 }

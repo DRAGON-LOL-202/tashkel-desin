@@ -60,6 +60,8 @@ export const cancelOrderSchema = z.object({
 
 export const setPrefixSchema = z.object({
   prefix: z.number({ message: "Prefix يجب أن يكون رقماً" }).int("Prefix يجب أن يكون عدداً صحيحاً").min(1, "Prefix لا يقل عن 1").max(9_999_999, "Prefix كبير جداً"),
+  // رقم البدء: أول رقم تسلسلي (رقم البوليصة = Prefix × 100 + رقم البدء). اختياري؛ يُضبط قبل إنشاء أي أوردر فقط
+  startSeq: z.number({ message: "رقم البدء يجب أن يكون رقماً" }).int("رقم البدء يجب أن يكون عدداً صحيحاً").min(1, "رقم البدء لا يقل عن 1").max(9_999_999, "رقم البدء كبير جداً").optional(),
 });
 
 export const accountantStatusSchema = z.object({ status: z.enum(["SHIPPED", "DELIVERED"], { message: "الحالة المسموحة: شحن أو تم التسليم" }) });

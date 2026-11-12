@@ -125,7 +125,7 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
     };
   }, [open, editingAgent, editing]);
   // لا يتغير Prefix بعد حجز أي رقم (الباكند يرفض ذلك أيضاً)
-  const prefixLocked = !!agentRow && agentRow.nextSeq !== null && agentRow.nextSeq > 1;
+  const prefixLocked = !!agentRow && agentRow.hasOrders;
 
   const toggleGroup = (id: string) => setGroupIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
 

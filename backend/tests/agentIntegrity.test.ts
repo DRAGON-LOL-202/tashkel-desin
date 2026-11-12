@@ -375,4 +375,18 @@ describe("متابعة أوردرات المبيعات: كل أوردر «تم �
     expect(r.body.order.waybill).toBe("MAN-1003-B");
     expect(r.body.order.fromAgent).toBe(false);
   });
+  it("رقم البدء: يُضبط قبل أول أوردر فقط، وتبدأ أول بوليصة منه، ويُرفض خارج النطاق", async () => {
+    const u = await makeUser("agent_start_seq", "SALES_AGENT");
+    const put = (body: object) => api(admin).put(`/api/sales-agents/${u.id}/prefix`).send(body);
+    expect((await put({ prefix: 820, startSeq: 50 })).status).toBe(200);
+    expect((await put({ prefix: 820, startSeq: 120 })).status).toBe(200); // قابل للتصحيح قبل أي أوردر
+    expect((await put({ prefix: 820, startSeq: 0 })).status).toBe(400);
+    const list = (await api(admin).get("/api/sales-agents")).body.agents.find((a: { id: string }) => a.id === u.id);
+    expect(list).toMatchObject({ nextSeq: 120, nextWaybill: 82120, hasOrders: false });
+    const t = await login("agent_start_seq");
+    const o = await mk(t);
+    expect(o.waybill).toBe("82120");
+    expect((await put({ prefix: 820, startSeq: 200 })).status).toBe(409); // بعد أول أوردر
+    expect((await put({ prefix: 830 })).status).toBe(409);
+  });
 });

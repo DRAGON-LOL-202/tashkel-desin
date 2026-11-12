@@ -19,17 +19,19 @@ function PrefixRow({ agent, onSaved }: { agent: AgentAdminRow; onSaved: () => Pr
   const { show } = useToast();
   const run = useSafeAction();
   // لا يتغير Prefix بعد حجز أي رقم (الباكند يرفض ذلك أيضاً)
-  const locked = agent.nextSeq !== null && agent.nextSeq > 1;
+  const locked = agent.hasOrders;
+  const [startValue, setStartValue] = useState(String(agent.nextSeq ?? 1));
   const n = Number(value);
-  const valid = Number.isInteger(n) && n >= 1;
-  const dirty = value.trim() !== (agent.prefix === null ? "" : String(agent.prefix));
+  const s = Number(startValue);
+  const valid = Number.isInteger(n) && n >= 1 && Number.isInteger(s) && s >= 1;
+  const dirty = value.trim() !== (agent.prefix === null ? "" : String(agent.prefix)) || startValue.trim() !== String(agent.nextSeq ?? 1);
 
   const save = async () => {
     if (!valid) return;
     setBusy(true);
     try {
-      const r = await run(() => agentAdminService.setPrefix(agent.id, n));
-      if (r.ok) show(`تم حفظ Prefix ${agent.name}`);
+      const r = await run(() => agentAdminService.setPrefix(agent.id, n, s));
+      if (r.ok) show(`تم حفظ ترقيم ${agent.name}`);
       await onSaved();
     } finally {
       setBusy(false);
@@ -41,6 +43,7 @@ function PrefixRow({ agent, onSaved }: { agent: AgentAdminRow; onSaved: () => Pr
       <span className="min-w-[120px] flex-1 font-medium text-text">{agent.name}</span>
       {!agent.isActive && <Badge color="#8A8F98">معطّل</Badge>}
       <Input dir="ltr" inputMode="numeric" aria-label={`Prefix ${agent.name}`} value={value} disabled={locked || busy} onChange={(e) => setValue(e.target.value)} placeholder="Prefix" className="!w-24 !px-2 !py-1.5 text-center tabular-nums" />
+      <Input dir="ltr" inputMode="numeric" aria-label={`رقم البدء ${agent.name}`} title="رقم البدء (أول تسلسل)" value={startValue} disabled={locked || busy} onChange={(e) => setStartValue(e.target.value)} placeholder="رقم البدء" className="!w-24 !px-2 !py-1.5 text-center tabular-nums" />
       {!locked && dirty && (
         <Button size="sm" icon={<Check size={13} />} disabled={!valid || busy} onClick={() => void save()}>
           حفظ
@@ -49,7 +52,7 @@ function PrefixRow({ agent, onSaved }: { agent: AgentAdminRow; onSaved: () => Pr
       <span className="text-xs text-muted tabular-nums">
         {agent.prefix === null ? "لم يُحدَّد" : `الرقم التالي ${agent.nextWaybill}${agent.maxWaybill !== null ? ` • الحد الأقصى ${agent.maxWaybill}` : ""}`}
       </span>
-      {locked && <span className="text-xs text-muted">مثبّت بعد حجز أرقام</span>}
+      {locked && <span className="text-xs text-muted">مثبّت بعد إنشاء أوردرات</span>}
     </div>
   );
 }
@@ -61,7 +64,7 @@ export function PrefixManager() {
     <Card className="mb-6 overflow-hidden">
       <div className="border-b border-border px-3 py-2.5">
         <h2 className="text-sm font-semibold text-text">Prefix الفتيات وترقيم البوليصات</h2>
-        <p className="text-xs text-muted">رقم البوليصة = Prefix × 100 + الرقم التسلسلي (مثال: 500 ← 50001). أنشئ حساب الفتاة من «إدارة المستخدمين» بدور «فتاة مبيعات» ثم حدد Prefix هنا.</p>
+        <p className="text-xs text-muted">رقم البوليصة = Prefix × 100 + الرقم التسلسلي (مثال: Prefix 500 ورقم البدء 1 ← 50001). رقم البدء يُضبط قبل أول أوردر فقط. أنشئ حساب الفتاة من «إدارة المستخدمين» بدور «فتاة مبيعات» ثم حدد Prefix هنا.</p>
       </div>
       {agents.loading ? (
         <LoadingState />
@@ -70,7 +73,7 @@ export function PrefixManager() {
       ) : agents.data.length === 0 ? (
         <p className="px-3 py-5 text-center text-sm text-muted">لا توجد حسابات فتيات بعد.</p>
       ) : (
-        agents.data.map((a) => <PrefixRow key={`${a.id}:${a.prefix}`} agent={a} onSaved={agents.reload} />)
+        agents.data.map((a) => <PrefixRow key={`${a.id}:${a.prefix}:${a.nextSeq}`} agent={a} onSaved={agents.reload} />)
       )}
     </Card>
   );

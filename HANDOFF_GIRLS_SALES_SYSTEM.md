@@ -168,3 +168,10 @@
 - **لم تُشغَّل** الاختبارات ولا `tsc` ولا `vite build` (بيئة بلا شبكة ولا `node_modules`). نتائج التحقق الفعلية الأخيرة هي نقطة 6 فقط، وتعديلات نقاط 8 و9 غير مختبرة آلياً.
 - **قرار مؤجل عمداً:** `GET /api/agent/dashboard` ما زال يعيد أرقاماً للفتاة. تركتُه لأن 6 اختبارات (`agentOrders.test.ts` و`agentIntegrity.test.ts`) تعتمد عليه كعدّاد، وحذفه دون تشغيل الاختبارات مخاطرة. إن أردت منعها كلياً: قيّده للإدارة/المحاسب وانقل الاختبارات لمسار المحاسب.
 - **أمر البدء:** `cd backend && npm ci && npx prisma generate && npm test` ثم `cd ../frontend && npm ci && npx tsc -b && npx vite build && npx oxlint`.
+
+## نقطة تفتيش 11 — حقل «رقم البدء» للفتاة
+طلب المستخدم: خانة لرقم البدء بجانب Prefix في «حسابات الفتيات». رقم البوليصة = Prefix × 100 + رقم البدء (ثم يزيد العداد).
+- **الباكند:** `setPrefixSchema` فيه `startSeq` اختياري (عدد صحيح ≥ 1). `PUT /api/sales-agents/:id/prefix` يضبط `nextSeq = startSeq`. القفل صار «وجود أي AgentOrder للفتاة» (بدل `nextSeq > 1`) حتى لا يُقفل الحساب بمجرد ضبط رقم بدء. يُرفض رقم البدء الذي يتجاوز نطاق الفتاة (قبل Prefix الأكبر التالي) بـ 409. القائمة `GET /api/sales-agents` تعيد `hasOrders`.
+- **الواجهة:** `PrefixManager.tsx` فيه حقل «رقم البدء» بجانب Prefix، ويُحفظان معاً. `UserModal.tsx` يستخدم `hasOrders` للقفل (حقل رقم البدء في نافذة المستخدم لم يُضف؛ يُضبط من «حسابات الفتيات»). `types/agent.ts` و`agentService.setPrefix(userId, prefix, startSeq?)`.
+- **اختبار جديد** في آخر `tests/agentIntegrity.test.ts` («رقم البدء …»).
+- **لم تُشغَّل** الاختبارات ولا `tsc` ولا `vite build` (لا شبكة ولا `node_modules`)؛ فُحصت الصياغة فقط. انتبه: اختبارات قديمة في `agentOrders.test.ts` تفترض أن القفل بعد حجز أرقام؛ تأكد أنها ما زالت تمر بعد تغيير معيار القفل.

@@ -333,6 +333,7 @@ salesAgentsAdminRouter.get(
       select: { id: true, name: true, username: true, isActive: true, agentProfile: { select: { prefix: true, nextSeq: true } } },
     });
     const prefixes = (await prisma().salesAgentProfile.findMany({ select: { prefix: true }, orderBy: { prefix: "asc" } })).map((p) => p.prefix);
+    const withOrders = new Set((await prisma().agentOrder.groupBy({ by: ["agentId"] })).map((g) => g.agentId));
     res.json({
       agents: users.map((u) => {
         const higher = u.agentProfile ? prefixes.find((p) => p > u.agentProfile!.prefix) ?? null : null;
@@ -343,6 +344,7 @@ salesAgentsAdminRouter.get(
           isActive: u.isActive,
           prefix: u.agentProfile?.prefix ?? null,
           nextSeq: u.agentProfile?.nextSeq ?? null,
+          hasOrders: withOrders.has(u.id),
           nextWaybill: u.agentProfile ? waybillNumber(u.agentProfile.prefix, u.agentProfile.nextSeq) : null,
           maxWaybill: u.agentProfile ? (higher === null ? null : waybillUpperBound(u.agentProfile.prefix, higher)) : null,
         };
@@ -351,11 +353,11 @@ salesAgentsAdminRouter.get(
   })
 );
 
-// تحديد/تعديل Prefix. لا يتغير بعد حجز أي رقم (حتى لا تتأثر الأرقام القديمة)، ولا يتعارض نطاقه مع نطاق فتاة أخرى.
+// تحديد/تعديل Prefix ورقم البدء. لا يتغيران بعد إنشاء أي أوردر بهذا الحساب (حتى لا تتأثر الأرقام القديمة)، ولا يتعارض النطاق مع فتاة أخرى.
 salesAgentsAdminRouter.put(
   "/:userId/prefix",
   asyncHandler(async (req, res) => {
-    const { prefix } = setPrefixSchema.parse(req.body);
+    const { prefix, startSeq } = setPrefixSchema.parse(req.body);
     const userId = idOf(req.params.userId);
     const profile = await prisma().$transaction(async (tx) => {
       const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true, role: true } });
@@ -363,17 +365,28 @@ salesAgentsAdminRouter.put(
       // قفل جدول البروفايلات لمنع سباق إنشاء Prefixes متداخلة بالتزامن
       await tx.$executeRaw`LOCK TABLE "SalesAgentProfile" IN SHARE ROW EXCLUSIVE MODE`;
       const current = await tx.salesAgentProfile.findUnique({ where: { userId } });
-      if (current && current.prefix === prefix) return current;
-      if (current && current.nextSeq > 1) throw conflict("لا يمكن تغيير Prefix بعد إنشاء أوردرات بهذا الحساب");
-      const same = await tx.salesAgentProfile.findFirst({ where: { prefix, NOT: { userId } }, select: { userId: true } });
-      if (same) throw conflict("هذا الـ Prefix مستخدم لفتاة أخرى");
-      const lower = await tx.salesAgentProfile.findFirst({ where: { prefix: { lt: prefix }, NOT: { userId } }, orderBy: { prefix: "desc" } });
-      if (lower && waybillNumber(lower.prefix, lower.nextSeq - 1) >= prefix * 100) {
-        throw conflict(`النطاق يتعارض مع الفتاة ذات Prefix ${lower.prefix} (وصلت لرقم ${waybillNumber(lower.prefix, lower.nextSeq - 1)})`);
+      const prefixChanged = !current || current.prefix !== prefix;
+      const startChanged = startSeq !== undefined && (!current || current.nextSeq !== startSeq);
+      if (!prefixChanged && !startChanged) return current!;
+      if (current && (await tx.agentOrder.count({ where: { agentId: userId } })) > 0) {
+        throw conflict("لا يمكن تغيير Prefix أو رقم البدء بعد إنشاء أوردرات بهذا الحساب");
       }
+      if (prefixChanged) {
+        const same = await tx.salesAgentProfile.findFirst({ where: { prefix, NOT: { userId } }, select: { userId: true } });
+        if (same) throw conflict("هذا الـ Prefix مستخدم لفتاة أخرى");
+        const lower = await tx.salesAgentProfile.findFirst({ where: { prefix: { lt: prefix }, NOT: { userId } }, orderBy: { prefix: "desc" } });
+        if (lower && waybillNumber(lower.prefix, lower.nextSeq - 1) >= prefix * 100) {
+          throw conflict(`النطاق يتعارض مع الفتاة ذات Prefix ${lower.prefix} (وصلت لرقم ${waybillNumber(lower.prefix, lower.nextSeq - 1)})`);
+        }
+      }
+      const nextSeq = startSeq ?? current?.nextSeq ?? 1;
+      // رقم البدء لا يتجاوز نطاق الفتاة (قبل Prefix التالي الأكبر)
+      const higher = await tx.salesAgentProfile.findFirst({ where: { prefix: { gt: prefix }, NOT: { userId } }, orderBy: { prefix: "asc" }, select: { prefix: true } });
+      const upper = waybillUpperBound(prefix, higher?.prefix ?? null);
+      if (waybillNumber(prefix, nextSeq) > upper) throw conflict(`رقم البدء خارج نطاق هذا الحساب (الحد الأقصى للبوليصة ${upper})`);
       return current
-        ? tx.salesAgentProfile.update({ where: { userId }, data: { prefix } })
-        : tx.salesAgentProfile.create({ data: { userId, prefix, nextSeq: 1 } });
+        ? tx.salesAgentProfile.update({ where: { userId }, data: { prefix, nextSeq } })
+        : tx.salesAgentProfile.create({ data: { userId, prefix, nextSeq } });
     });
     res.json({ profile: { userId: profile.userId, prefix: profile.prefix, nextSeq: profile.nextSeq } });
   })
