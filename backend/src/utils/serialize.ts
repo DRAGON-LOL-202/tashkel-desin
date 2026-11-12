@@ -14,10 +14,9 @@ export function publicUser(u: User, allowedGroupIds?: string[]) {
       | "designer"
       | "packer"
       | "operator"
-      | "sales_accountant"
+      | "sales_flagger"
       | "sales_editor"
-      | "sales_supervisor"
-      | "sales_agent",
+      | "sales_supervisor",
     inventoryAccess: effectiveInventoryAccess(u).toLowerCase() as "none" | "withdraw" | "full",
     jobTitle: u.jobTitle,
     showTaskCard: u.showTaskCard,

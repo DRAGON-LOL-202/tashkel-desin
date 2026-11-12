@@ -13,10 +13,9 @@ enum Role {
   DESIGNER
   PACKER
   OPERATOR
-  SALES_ACCOUNTANT
+  SALES_FLAGGER
   SALES_EDITOR
   SALES_SUPERVISOR
-  SALES_AGENT
 }
 
 // وصول المستخدم للمخزون (يخص المصمم؛ الإدارة كاملة دائماً، وتعبئة/مشغل سحب فقط بتصنيفات محددة)
@@ -111,13 +110,6 @@ model User {
   inventoryMovements    InventoryMovement[]
   inventoryGroups       UserInventoryGroup[]
   salesOrders           SalesOrder[]
-  // نظام أوردرات الفتيات (migration 0022)
-  agentProfile          SalesAgentProfile?
-  agentOrders           AgentOrder[]         @relation("AgentOrderOwner")
-  agentOrdersExported   AgentOrder[]         @relation("AgentOrderExporter")
-  agentOrdersCancelled  AgentOrder[]         @relation("AgentOrderCanceller")
-  salesOrdersOfAgent    SalesOrder[]         @relation("SalesOrderAgent")
-  salesStatusLogs       SalesOrderStatusLog[]
 }
 
 // المهام الفرعية = Task بـ parentId (قرار موثّق في HANDOFF: الفرعية لها تايمر وتعليقات ومسؤول).
@@ -480,7 +472,6 @@ model SalesProduct {
 
   components SalesProductComponent[]
   orderLines SalesOrderLine[]
-  agentOrderLines AgentOrderLine[]
 
   @@index([isActive])
 }
@@ -517,32 +508,12 @@ model SalesOrder {
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 
-  // ===== نظام الفتيات (migration 0022) — كلها اختيارية فلا تتأثر الأوردرات القديمة =====
-  // الفتاة صاحبة الأوردر الأصلي (null = أوردر عادي قديم/يدوي)
-  agentId       String?
-  // مصدر الأوردر: MANUAL (الافتراضي) أو AGENT
-  source        String           @default("MANUAL") @db.VarChar(16)
-  // سعر البيع الذي أدخلته الفتاة (يُنسخ عند التصدير؛ الحسابات تقرأه من هنا لا من الواجهة)
-  agentSellPrice Decimal?        @db.Decimal(12, 2)
-  // سعر الشحن: يدخله المحاسب يدوياً ولا قيمة افتراضية له
-  shippingPrice Decimal?         @db.Decimal(12, 2)
-  shippedAt     DateTime?
-  deliveredAt   DateTime?
-  // إلغاء أوردر فتاة بعد التصدير (migration 0023): يظهر في المبيعات الرئيسية ويمنع أي تعديل/تنفيذ. لا حركة مخزون.
-  cancelledAt   DateTime?
-  cancelReason  String?
-  cancelledById String?
-
   createdBy User             @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  agent     User?            @relation("SalesOrderAgent", fields: [agentId], references: [id], onDelete: Restrict)
   lines     SalesOrderLine[]
-  agentOrder AgentOrder?
-  statusLogs SalesOrderStatusLog[]
 
   @@index([date])
   @@index([status])
   @@index([waybill])
-  @@index([agentId])
 }
 
 model SalesOrderLine {
@@ -577,85 +548,4 @@ model SalesOrderComponent {
 
   @@index([lineId])
   @@index([itemId])
-}
-
-
-// ===== نظام أوردرات الفتيات (migration 0022) =====
-enum AgentOrderStatus {
-  DRAFT      // في مساحة الفتاة ولم يُصدَّر
-  EXPORTED   // صُدِّر إلى نظام المبيعات الإلكترونية
-  CANCELLED  // أُلغي بعد التصدير (بسبب إلزامي)، يبقى محفوظاً
-}
-
-// Prefix وعداد تسلسلي دائم لكل فتاة. رقم البوليصة = prefix × 100 + seq. العداد لا يرجع للخلف أبداً.
-model SalesAgentProfile {
-  userId    String   @id
-  prefix    Int      @unique
-  nextSeq   Int      @default(1)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-// أوردر الفتاة في مساحة عملها. لا يظهر في المبيعات الإلكترونية قبل التصدير المؤكد.
-model AgentOrder {
-  id            String           @id @default(cuid())
-  agentId       String
-  seq           Int
-  // رقم البوليصة المولَّد تلقائياً (فريد عالمياً، لا يعاد استخدامه)
-  waybill       String           @unique @db.VarChar(20)
-  date          String           @db.VarChar(10)
-  customerName  String           @default("")
-  customerPhone String           @default("")
-  customerAddress String         @default("")
-  notes         String           @default("")
-  sellPrice     Decimal          @db.Decimal(12, 2)
-  status        AgentOrderStatus @default(DRAFT)
-  exportedAt    DateTime?
-  exportedById  String?
-  salesOrderId  String?          @unique
-  cancelledAt   DateTime?
-  cancelReason  String?
-  cancelledById String?
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-
-  agent       User         @relation("AgentOrderOwner", fields: [agentId], references: [id], onDelete: Restrict)
-  exportedBy  User?        @relation("AgentOrderExporter", fields: [exportedById], references: [id], onDelete: Restrict)
-  cancelledBy User?        @relation("AgentOrderCanceller", fields: [cancelledById], references: [id], onDelete: Restrict)
-  salesOrder  SalesOrder?  @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
-  lines       AgentOrderLine[]
-
-  @@unique([agentId, seq])
-  @@index([agentId, status])
-}
-
-model AgentOrderLine {
-  id          String   @id @default(cuid())
-  orderId     String
-  productId   String?
-  productName String
-  quantity    Int      @default(1)
-
-  order   AgentOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product SalesProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
-
-  @@index([orderId])
-}
-
-// سجل تغييرات حالة أوردر المبيعات (الشحن/التسليم/علامة المرتجع/سعر الشحن/الحالات الأخرى)
-model SalesOrderStatusLog {
-  id         String   @id @default(cuid())
-  orderId    String
-  event      String   @db.VarChar(24)  // STATUS | RETURN_FLAG | SHIPPING_PRICE | EXPORT | CANCEL
-  fromValue  String?
-  toValue    String?
-  byId       String
-  createdAt  DateTime @default(now())
-
-  order SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  by    User       @relation(fields: [byId], references: [id], onDelete: Restrict)
-
-  @@index([orderId, createdAt])
 }

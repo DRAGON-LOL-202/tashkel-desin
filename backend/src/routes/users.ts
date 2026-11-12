@@ -23,20 +23,18 @@ const ROLE_LABEL: Record<Role, string> = {
   DESIGNER: "مصمم",
   PACKER: "تعبئة",
   OPERATOR: "مشغل",
-  SALES_ACCOUNTANT: "محاسب مبيعات",
+  SALES_FLAGGER: "مراجع مرتجعات",
   SALES_EDITOR: "منفّذ أوردرات",
   SALES_SUPERVISOR: "مشرف مبيعات",
-  SALES_AGENT: "فتاة مبيعات",
 };
 // المسمى الوظيفي الافتراضي لدوري تعبئة/مشغل وأدوار المبيعات (المصمم يأخذ افتراضي الـ schema)
 const DEFAULT_TITLE: Partial<Record<Role, string>> = {
   PACKER: "تعبئة",
   OPERATOR: "مشغل",
   DESIGNER: "مصمم",
-  SALES_ACCOUNTANT: "محاسب مبيعات",
+  SALES_FLAGGER: "مراجع مرتجعات",
   SALES_EDITOR: "منفّذ أوردرات",
   SALES_SUPERVISOR: "مشرف مبيعات",
-  SALES_AGENT: "فتاة مبيعات",
 };
 
 /** مستوى وصول المخزون المخزَّن: تعبئة/مشغل = سحب فقط، الإدارة = كامل، أدوار المبيعات = تحكّم خاص بالدور، والمصمم حسب اختيار المدير (الافتراضي بلا وصول). */

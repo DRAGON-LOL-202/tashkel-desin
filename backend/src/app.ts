@@ -17,8 +17,6 @@ import { internalRouter } from "./routes/internal.js";
 import { pushRouter } from "./routes/push.js";
 import { inventoryRouter } from "./routes/inventory.js";
 import { salesRouter } from "./routes/sales.js";
-import { agentRouter, salesAgentsAdminRouter } from "./routes/agent.js";
-import { accountingRouter } from "./routes/accounting.js";
 import { bumpDataVersion } from "./utils/syncVersion.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
 import { restrictedRoleGate } from "./middleware/auth.js";
@@ -55,9 +53,6 @@ export function createApp() {
   app.use("/api/products", productsRouter);
   app.use("/api/inventory", inventoryRouter);
   app.use("/api/sales", salesRouter);
-  app.use("/api/agent", agentRouter);
-  app.use("/api/sales-agents", salesAgentsAdminRouter);
-  app.use("/api/accounting", accountingRouter);
   app.use("/api/calendar-events", calendarEventsRouter);
   app.use("/api/files", filesRouter);
   app.use("/api/attendance", attendanceRouter);

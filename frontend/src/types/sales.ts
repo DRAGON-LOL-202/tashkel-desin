@@ -58,8 +58,6 @@ export interface SalesOrder {
   date: string;
   /** رقم البوليصة */
   waybill: string;
-  /** أوردر فتاة مصدَّر: بوليصته من تسلسلها ولا تُدخَل يدوياً */
-  fromAgent: boolean;
   /** اسم المقفل */
   closerName: string;
   status: SalesOrderStatus;
@@ -79,10 +77,6 @@ export interface SalesOrder {
   /** الشركة علّمت الأوردر «مرتجع» ليراجعه الموظف ويسجله (لا أثر على المخزون) */
   returnFlagged: boolean;
   returnFlaggedAt: string | null;
-  /** أوردر فتاة أُلغي بعد التصدير: يبقى ظاهراً بسبب الإلغاء ولا يقبل تعديلاً ولا تنفيذاً */
-  cancelled?: boolean;
-  cancelledAt?: string | null;
-  cancelReason?: string | null;
   /** نقص الرصيد قبل التنفيذ */
   shortages: SalesShortage[];
   /** مكونات مؤرشفة في المخزون (تمنع التنفيذ) */
