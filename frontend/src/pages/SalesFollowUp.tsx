@@ -18,7 +18,7 @@ const NO_ORDERS: FollowList = { orders: [], total: 0, hasMore: false };
 const NO_AGENTS: { agents: AgentAccountRow[]; totals: AgentAccountTotals | null } = { agents: [], totals: null };
 const STATUS_TABS = ["", "EXECUTED", "SHIPPED", "DELIVERED", "RETURNED"] as const;
 
-// متابعة أوردرات المبيعات: أوردرات الفتيات التي وصلت «تم التنفيذ» فما بعد، كقائمة أسطر.
+// متابعة أوردرات المبيعات: كل أوردر وصل «تم التنفيذ» فما بعد في أوردرات مبيعات إلكترونية (يدوي أو من الفتيات)، كقائمة أسطر.
 // المحاسب يغيّر الحالة (شحن/تسليم) ويعلّم المرتجع ويدخل سعر الشحن — بلا خصم مخزون ولا تعديل لمحتوى الأوردر.
 export default function SalesFollowUpPage() {
   const [status, setStatus] = useState<(typeof STATUS_TABS)[number]>("");
@@ -59,7 +59,7 @@ export default function SalesFollowUpPage() {
   }, [orders.data.orders]);
 
   return (
-    <AppLayout headerSlot={(openMobileNav) => <Header title="متابعة أوردرات المبيعات" description="أوردرات الفتيات بعد «تم التنفيذ»: شحن، تسليم، مرتجع، وسعر الشحن" onOpenMobileNav={openMobileNav} />}>
+    <AppLayout headerSlot={(openMobileNav) => <Header title="متابعة أوردرات المبيعات" description="كل أوردر بعد «تم التنفيذ»: شحن، تسليم، مرتجع، وسعر الشحن" onOpenMobileNav={openMobileNav} />}>
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="حالة الأوردر">
           {STATUS_TABS.map((s) => (

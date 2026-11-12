@@ -452,6 +452,10 @@ salesRouter.patch(
         throw conflict("لا يمكن شحن أو تسليم أوردر لم يُنفَّذ بعد. اضغط «تم التنفيذ» أولاً.");
       }
     }
+    // بوليصة أوردر الفتاة مخصَّصة بتسلسلها: لا يعدّلها أحد (حتى الإدارة) من أي مسار
+    if (body.waybill !== undefined && body.waybill !== existing.waybill && existing.agentId) {
+      throw conflict("رقم بوليصة أوردر الفتاة مخصَّص بتسلسلها ولا يمكن تعديله");
+    }
     if (body.waybill !== undefined && body.waybill !== existing.waybill) await assertWaybillFree(body.waybill, existing.id);
     if (body.returnFlagged === true && (existing.status === "RETURNED" || body.status === "RETURNED")) throw badRequest("الأوردر مسجل كمرتجع بالفعل");
 

@@ -154,6 +154,8 @@ export function serializeSalesOrder(o: SalesOrderRow, opts?: { hideMoney?: boole
     id: o.id,
     date: o.date,
     waybill: o.waybill,
+    /** أوردر فتاة مصدَّر: بوليصته من تسلسلها ولا تُدخَل يدوياً */
+    fromAgent: o.agentId != null,
     closerName: o.closerName,
     status: o.status,
     stockDeducted: o.stockDeducted,

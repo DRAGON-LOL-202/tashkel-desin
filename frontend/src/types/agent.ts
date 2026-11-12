@@ -83,6 +83,9 @@ export interface FollowOrder {
   boxName: string;
   agentId: string | null;
   agentName: string;
+  /** AGENT: أوردر فتاة مصدَّر، MANUAL: أوردر يدوي من صفحة المبيعات */
+  source: "AGENT" | "MANUAL";
+  closerName: string;
   date: string;
   sellPrice: number | null;
   shippingPrice: number | null;

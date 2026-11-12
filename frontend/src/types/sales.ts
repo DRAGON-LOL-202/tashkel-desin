@@ -58,6 +58,8 @@ export interface SalesOrder {
   date: string;
   /** رقم البوليصة */
   waybill: string;
+  /** أوردر فتاة مصدَّر: بوليصته من تسلسلها ولا تُدخَل يدوياً */
+  fromAgent: boolean;
   /** اسم المقفل */
   closerName: string;
   status: SalesOrderStatus;

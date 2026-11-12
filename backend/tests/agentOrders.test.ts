@@ -312,7 +312,7 @@ describe("علامة المرتجع والإلغاء وسعر الشحن وال�
     expect((await api(acct).post(`/api/sales/orders/${so}/lines`).send({ productId: box.id, quantity: 1 })).status).toBe(403);
     const r = await api(acct).get("/api/accounting/orders");
     expect(r.status).toBe(200);
-    expect(r.body.orders.every((x: any) => x.agentName)).toBe(true);
+    expect(r.body.orders.every((x: any) => x.source === "MANUAL" || x.agentName)).toBe(true);
   });
 });
 

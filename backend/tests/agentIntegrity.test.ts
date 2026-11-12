@@ -303,3 +303,76 @@ describe("4 دورة المخزون: قبل/بعد لكل حالة (أوردر �
     expect(await stock()).toBe(gBefore);
   });
 });
+
+describe("متابعة أوردرات المبيعات: كل أوردر «تم التنفيذ» (يدوي + فتيات)، وقفل بوليصة الفتاة", () => {
+  const mkManual = async (waybill: string) => {
+    const r = await api(admin).post("/api/sales/orders").send({ date: D, waybill, closerName: "عبدالرحمن", lines: [{ productId: box.id, quantity: 1 }] });
+    expect(r.status).toBe(201);
+    return r.body.order.id as string;
+  };
+  const followIds = async (token = acct) => {
+    const r = await api(token).get("/api/accounting/orders");
+    expect(r.status).toBe(200);
+    return r.body.orders as { id: string; source: string; status: string; counted: boolean }[];
+  };
+
+  it("الأوردر اليدوي يظهر في المتابعة بعد «تم التنفيذ» فقط، ويشحنه المحاسب دون خصم ثانٍ", async () => {
+    const id = await mkManual("MAN-1001");
+    expect((await followIds()).some((x) => x.id === id)).toBe(false);
+    const s0 = await stock();
+    expect((await execute(id)).status).toBe(200);
+    expect(await stock()).toBe(s0 - 1);
+
+    const row = (await followIds()).find((x) => x.id === id);
+    expect(row?.source).toBe("MANUAL");
+    expect(row?.status).toBe("EXECUTED");
+    expect(row?.counted).toBe(false); // لا فتاة ← لا يدخل في مستحقاتها
+
+    expect((await acctStatus(id, "SHIPPED")).status).toBe(200);
+    expect((await acctStatus(id, "DELIVERED")).status).toBe(200);
+    expect((await api(acct).put(`/api/accounting/orders/${id}/shipping`).send({ shippingPrice: 30 })).body.order.shippingPrice).toBe(30);
+    expect((await api(acct).patch(`/api/accounting/orders/${id}/return-flag`).send({ flagged: true })).status).toBe(200);
+    expect(await stock()).toBe(s0 - 1); // لا خصم ولا إرجاع إضافي
+    expect((await prisma().inventoryMovement.count({ where: { type: "RETURN" } }))).toBe(0);
+  });
+
+  it("الأوردر اليدوي لا يدخل في حسابات الفتيات ولا الإجمالي العام", async () => {
+    const before = (await api(acct).get("/api/accounting/general")).body.general;
+    const id = await mkManual("MAN-1002");
+    await execute(id);
+    await acctStatus(id, "DELIVERED");
+    const after = (await api(acct).get("/api/accounting/general")).body.general;
+    expect(after).toEqual(before);
+  });
+
+  it("أوردر الفتاة المؤكَّد يذهب لصفحة المبيعات «مسجل»، ويظهر في المتابعة بعد التنفيذ، وبوليصته مقفلة", async () => {
+    const o = await exported(ag2);
+    // في المبيعات الرئيسية بحالة مسجل وبوليصة من تسلسل الفتاة
+    const list = await api(admin).get(`/api/sales/orders?date=${D}`);
+    const row = (list.body.orders as { id: string; status: string; waybill: string; fromAgent: boolean }[]).find((x) => x.id === o.soId);
+    expect(row?.status).toBe("REGISTERED");
+    expect(row?.fromAgent).toBe(true);
+    expect(row?.waybill).toBe(o.waybill);
+    expect((await followIds()).some((x) => x.id === o.soId)).toBe(false);
+
+    // لا أحد يدخل/يعدّل البوليصة يدوياً (الإدارة، المشرف) — فرض من الباكند
+    expect((await api(admin).patch(`/api/sales/orders/${o.soId}`).send({ waybill: "999999" })).status).toBe(409);
+    expect((await api(admin).patch(`/api/sales/orders/${o.soId}`).send({ waybill: "" })).status).toBe(409);
+    expect((await prisma().salesOrder.findUniqueOrThrow({ where: { id: o.soId } })).waybill).toBe(o.waybill);
+    // إرسال نفس الرقم (بلا تغيير) لا يُرفض، وبقية الحقول قابلة للتعديل
+    expect((await api(admin).patch(`/api/sales/orders/${o.soId}`).send({ waybill: o.waybill, notes: "ملاحظة" })).status).toBe(200);
+
+    expect((await execute(o.soId)).status).toBe(200);
+    const f = (await followIds()).find((x) => x.id === o.soId);
+    expect(f?.source).toBe("AGENT");
+    expect(f?.counted).toBe(false); // مُنفَّذ فقط ولم يُسلَّم بعد
+  });
+
+  it("بوليصة الأوردر اليدوي تبقى قابلة للإدخال والتعديل", async () => {
+    const id = await mkManual("MAN-1003");
+    const r = await api(admin).patch(`/api/sales/orders/${id}`).send({ waybill: "MAN-1003-B" });
+    expect(r.status).toBe(200);
+    expect(r.body.order.waybill).toBe("MAN-1003-B");
+    expect(r.body.order.fromAgent).toBe(false);
+  });
+});

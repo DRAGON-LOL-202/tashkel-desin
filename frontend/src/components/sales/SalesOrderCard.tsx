@@ -208,11 +208,12 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
           </span>
           <input
             value={waybill}
-            readOnly={!canEditOrder}
-            onChange={(e) => canEditOrder && setWaybill(e.target.value)}
-            onBlur={() => canEditOrder && saveField("waybill", waybill, order.waybill, setWaybill)}
+            readOnly={!canEditOrder || order.fromAgent}
+            title={order.fromAgent ? "بوليصة أوردر الفتاة من تسلسلها ولا تُعدَّل" : undefined}
+            onChange={(e) => canEditOrder && !order.fromAgent && setWaybill(e.target.value)}
+            onBlur={() => canEditOrder && !order.fromAgent && saveField("waybill", waybill, order.waybill, setWaybill)}
             onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-            placeholder={canEditOrder ? "أدخل رقم البوليصة" : "—"}
+            placeholder={canEditOrder && !order.fromAgent ? "أدخل رقم البوليصة" : "—"}
             maxLength={60}
             className="w-full min-w-0 bg-transparent text-sm font-bold text-text outline-none placeholder:text-text/70"
           />

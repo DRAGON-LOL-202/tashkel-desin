@@ -41,6 +41,9 @@ function serialize(o: Row) {
     boxName: o.lines.map((l) => (l.quantity > 1 ? `${l.productName} × ${l.quantity}` : l.productName)).join("، "),
     agentId: o.agentId,
     agentName: o.agent?.name ?? "",
+    // أوردر يدوي من صفحة المبيعات (بلا فتاة) أم أوردر فتاة مصدَّر
+    source: o.agentId ? ("AGENT" as const) : ("MANUAL" as const),
+    closerName: o.closerName,
     date: o.date,
     sellPrice: fromCents(orderSellCents(o.lines)),
     shippingPrice: o.shippingPrice === null ? null : Number(o.shippingPrice.toString()),
@@ -51,7 +54,7 @@ function serialize(o: Row) {
     shippedAt: o.shippedAt?.toISOString() ?? null,
     deliveredAt: o.deliveredAt?.toISOString() ?? null,
     // هل يدخل في حساب المستحقات حالياً؟ (مسلَّم وغير مرتجع وغير ملغي)
-    counted: matchesBucket(rowOf(o), "delivered"),
+    counted: o.agentId != null && matchesBucket(rowOf(o), "delivered"),
   };
 }
 
@@ -67,11 +70,12 @@ const dateFilter = (q: Record<string, unknown>) => {
  * الحسابات والعدّادات تُبنى على كل السجلات؛ لا نحتفظ إلا بما تحتاجه كل دالة (صفوف خفيفة).
  */
 const SCAN_BATCH = 1000;
-async function scanAgentRows(where: Prisma.SalesOrderWhereInput, visit: (o: Row) => void) {
+async function scanAgentRows(where: Prisma.SalesOrderWhereInput, visit: (o: Row) => void, scope: "agent" | "all" = "agent") {
   let cursor: string | undefined;
   for (;;) {
     const batch = await prisma().salesOrder.findMany({
-      where: { agentId: { not: null }, agentOrder: { isNot: null }, ...where },
+      // الحسابات والعدّادات: أوردرات الفتيات فقط. صفحة المتابعة (scope = all): كل الأوردرات بما فيها اليدوية.
+      where: scope === "agent" ? { agentId: { not: null }, agentOrder: { isNot: null }, ...where } : where,
       include,
       orderBy: [{ date: "desc" }, { waybill: "desc" }, { id: "desc" }],
       take: SCAN_BATCH,
@@ -92,22 +96,23 @@ async function loadAccountingRows(where: Prisma.SalesOrderWhereInput) {
 
 /** قائمة معروضة: العدد الكلي المطابق دقيق دائماً، والمعروض محدود بـ limit مع hasMore */
 const LIST_LIMIT = 500;
-async function listAgentRows(where: Prisma.SalesOrderWhereInput, match: (r: AccountingRow) => boolean, limit = LIST_LIMIT) {
+async function listAgentRows(where: Prisma.SalesOrderWhereInput, match: (r: AccountingRow) => boolean, limit = LIST_LIMIT, scope: "agent" | "all" = "agent") {
   const orders: ReturnType<typeof serialize>[] = [];
   let total = 0;
   await scanAgentRows(where, (o) => {
     if (!match(rowOf(o))) return;
     total += 1;
     if (orders.length < limit) orders.push(serialize(o));
-  });
+  }, scope);
   return { orders, total, hasMore: total > orders.length };
 }
 
+// يعمل على أوردرات الفتيات المصدَّرة وعلى الأوردرات اليدوية؛ المرفوض فقط: الملغي.
 async function lockAgentOrder(tx: Tx, id: string) {
   await tx.$queryRaw`SELECT "id" FROM "SalesOrder" WHERE "id" = ${id} FOR UPDATE`;
-  const o = await tx.salesOrder.findFirst({ where: { id, agentId: { not: null } }, include });
+  const o = await tx.salesOrder.findFirst({ where: { id }, include });
   if (!o) throw notFound("الأوردر غير موجود");
-  if (o.agentOrder?.status !== "EXPORTED") throw conflict("هذا الأوردر ملغي ولا يمكن تعديل حالته");
+  if (o.cancelledAt || (o.agentOrder && o.agentOrder.status !== "EXPORTED")) throw conflict("هذا الأوردر ملغي ولا يمكن تعديل حالته");
   return o;
 }
 
@@ -118,15 +123,28 @@ accountingRouter.get(
     const agentId = typeof req.query.agentId === "string" ? idOf(req.query.agentId) : "";
     const q = typeof req.query.q === "string" ? req.query.q.trim().slice(0, 80) : "";
     const statusQ = typeof req.query.status === "string" ? req.query.status : "";
+    // كل أوردر وصل «تم التنفيذ» فما بعد في أوردرات مبيعات إلكترونية: يدوي، أو أوردر فتاة مصدَّر غير ملغي
+    const and: Prisma.SalesOrderWhereInput[] = [{ OR: [{ agentOrder: { is: null } }, { agentOrder: { is: { status: "EXPORTED" } } }] }];
+    if (q) {
+      and.push({
+        OR: [
+          { waybill: { contains: q, mode: "insensitive" } },
+          { closerName: { contains: q, mode: "insensitive" } },
+          { agent: { name: { contains: q, mode: "insensitive" as const } } },
+        ],
+      });
+    }
     const result = await listAgentRows(
       {
         status: { in: (FOLLOW_STATUSES as readonly string[]).includes(statusQ) ? [statusQ as (typeof FOLLOW_STATUSES)[number]] : [...FOLLOW_STATUSES] },
-        agentOrder: { is: { status: { in: ["EXPORTED"] } } },
+        cancelledAt: null,
+        AND: and,
         ...(agentId ? { agentId } : {}),
-        ...(q ? { OR: [{ waybill: { contains: q } }, { agent: { name: { contains: q, mode: "insensitive" as const } } }] } : {}),
         ...dateFilter(req.query),
       },
-      () => true
+      () => true,
+      LIST_LIMIT,
+      "all"
     );
     res.json(result);
   })
@@ -201,7 +219,7 @@ accountingRouter.get(
   "/orders/:id/log",
   asyncHandler(async (req, res) => {
     const id = idOf(req.params.id);
-    const exists = await prisma().salesOrder.findFirst({ where: { id, agentId: { not: null } }, select: { id: true } });
+    const exists = await prisma().salesOrder.findFirst({ where: { id }, select: { id: true } });
     if (!exists) throw notFound("الأوردر غير موجود");
     const logs = await prisma().salesOrderStatusLog.findMany({ where: { orderId: id }, orderBy: { createdAt: "asc" }, include: { by: { select: { name: true } } } });
     res.json({ logs: logs.map((l) => ({ id: l.id, event: l.event, from: l.fromValue, to: l.toValue, by: l.by.name, at: l.createdAt.toISOString() })) });

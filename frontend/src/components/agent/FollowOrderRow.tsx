@@ -36,11 +36,11 @@ export function FollowOrderRow({ order: o, canAct, onStatus, onFlag, onShipping,
 
   return (
     <div className={`flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-3 py-2.5 text-sm last:border-b-0 ${o.counted ? "" : "opacity-90"}`}>
-      <span className="w-20 shrink-0 font-bold tabular-nums text-text">{o.waybill}</span>
+      <span className="w-20 shrink-0 font-bold tabular-nums text-text">{o.waybill || "—"}</span>
       <span className="min-w-[140px] flex-1 truncate text-text" title={o.boxName}>
         {o.boxName}
       </span>
-      {showAgent && <span className="w-28 shrink-0 truncate text-muted">{o.agentName}</span>}
+      {showAgent && <span className="w-28 shrink-0 truncate text-muted">{o.source === "MANUAL" ? `يدوي${o.closerName ? ` — ${o.closerName}` : ""}` : o.agentName}</span>}
       <span className="w-24 shrink-0 text-xs text-muted">{formatArabicDate(o.date, "d MMM yyyy")}</span>
       <span className="w-24 shrink-0 text-end font-semibold tabular-nums">{o.sellPrice === null ? "—" : fmtMoney(o.sellPrice)}</span>
       {canAct ? (
