@@ -12,18 +12,16 @@ import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { useToast } from "../components/ui/ToastProvider";
 import { AgentOrderModal } from "../components/agent/AgentOrderModal";
 import { CancelModal, ExportModal } from "../components/agent/ExportCancelModals";
-import { StatTile } from "../components/agent/StatTile";
 import { BUCKET_LABEL, BUCKET_ORDER, agentOrderBadge } from "../components/agent/meta";
 import { fmtMoney } from "../components/inventory/format";
 import { formatArabicDate } from "../lib/date";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
 import { agentService } from "../services/agentService";
-import type { AgentBucket, AgentOrder, AgentOrderInput, AgentProduct, AgentProfile, AgentSummary } from "../types";
+import type { AgentBucket, AgentOrder, AgentOrderInput, AgentProduct, AgentProfile } from "../types";
 
 const NO_ORDERS: AgentOrder[] = [];
 const NO_PRODUCTS: AgentProduct[] = [];
-const EMPTY_SUMMARY: AgentSummary = { total: 0, unexported: 0, exported: 0, executed: 0, shipped: 0, delivered: 0, returned: 0, cancelled: 0, deliveredSales: 0, deliveredCount: 0, fixedFee: 0, commission: 0, totalDue: 0 };
 
 // أوردراتي: مساحة الفتاة. ترى أوردراتها وحسابها فقط (العزل في الباكند). الأوردر يبقى هنا حتى تصدّره بعد التأكيد.
 export default function AgentOrdersPage() {
@@ -41,17 +39,15 @@ export default function AgentOrdersPage() {
   const q = search.trim();
   const ordersLoader = useCallback(() => agentService.orders(bucket, q), [bucket, q]);
   const orders = useResource<AgentOrder[]>(ordersLoader, NO_ORDERS);
-  const summary = useResource<AgentSummary>(agentService.dashboard, EMPTY_SUMMARY);
   const products = useResource<AgentProduct[]>(agentService.products, NO_PRODUCTS);
   const profile = useResource<AgentProfile | null>(agentService.me, null);
 
   const refresh = useCallback(async () => {
-    await Promise.all([orders.reload(), summary.reload(), profile.reload()]);
-  }, [orders, summary, profile]);
+    await Promise.all([orders.reload(), profile.reload()]);
+  }, [orders, profile]);
 
   const drafts = useMemo(() => orders.data.filter((o) => o.status === "DRAFT"), [orders.data]);
   const selectedDrafts = useMemo(() => drafts.filter((o) => selected.has(o.id)), [drafts, selected]);
-  const s = summary.data;
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -96,10 +92,6 @@ export default function AgentOrdersPage() {
     return r.ok;
   };
 
-  const tile = (label: string, value: number, b: AgentBucket, color?: string) => (
-    <StatTile key={b} label={label} value={value} color={color} onClick={() => setBucket(b)} active={bucket === b} />
-  );
-
   return (
     <AppLayout
       headerSlot={(openMobileNav) => (
@@ -120,27 +112,6 @@ export default function AgentOrdersPage() {
           لم تحدد الإدارة Prefix لحسابك بعد، لذلك لا يمكن إضافة أوردرات. تواصل مع الإدارة.
         </p>
       )}
-
-      {/* إحصائيات الأوردرات: كل رقم يفتح قائمة الأوردرات التي تكوّنه */}
-      <section aria-label="إحصائيات الأوردرات" className="mb-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-        {tile("إجمالي الأوردرات", s.total, "all")}
-        {tile("غير مصدّرة", s.unexported, "draft", "#6B7C93")}
-        {tile("مصدّرة", s.exported, "exported", "#2E8BC0")}
-        {tile("تم تنفيذها", s.executed, "executed", "#2E8BC0")}
-        {tile("مشحونة", s.shipped, "shipped", "#D97706")}
-        {tile("مسلّمة", s.delivered, "delivered", "#1E8E5A")}
-        {tile("مرتجعة", s.returned, "returned", "#D64545")}
-        {tile("ملغاة", s.cancelled, "cancelled", "#8A8F98")}
-      </section>
-
-      {/* الإحصائيات المالية: تُحسب في الباكند من الأوردرات المسلّمة فقط */}
-      <section aria-label="مستحقاتي" className="mb-5 grid grid-cols-2 gap-2.5 sm:grid-cols-5">
-        <StatTile label="قيمة الأوردرات المسلّمة" value={fmtMoney(s.deliveredSales)} onClick={() => setBucket("delivered")} active={false} />
-        <StatTile label="عدد المسلّمة" value={s.deliveredCount} onClick={() => setBucket("delivered")} active={false} />
-        <StatTile label="المقابل الثابت (7 ج × مسلّم)" value={fmtMoney(s.fixedFee)} />
-        <StatTile label="عمولة 3%" value={fmtMoney(s.commission)} />
-        <StatTile label="إجمالي المستحقات" value={fmtMoney(s.totalDue)} color="#1E8E5A" />
-      </section>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="تصفية الأوردرات">
