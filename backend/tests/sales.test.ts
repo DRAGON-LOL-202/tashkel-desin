@@ -454,7 +454,7 @@ describe("sales roles: الأدوار الثلاثة المحصورة في ال�
   let supervisor: string;
 
   beforeAll(async () => {
-    await makeUser("s_flagger", "SALES_FLAGGER");
+    await makeUser("s_flagger", "SALES_ACCOUNTANT");
     await makeUser("s_editor", "SALES_EDITOR");
     await makeUser("s_supervisor", "SALES_SUPERVISOR");
     flagger = await login("s_flagger");
@@ -468,11 +468,11 @@ describe("sales roles: الأدوار الثلاثة المحصورة في ال�
       username: "u_flagger",
       email: "u_flagger@e.test",
       password: process.env.ADMIN_PASSWORD!,
-      role: "sales_flagger",
+      role: "sales_accountant",
     });
     expect(r1.status).toBe(201);
-    expect(r1.body.user.role).toBe("sales_flagger");
-    expect(r1.body.user.jobTitle).toBe("مراجع مرتجعات");
+    expect(r1.body.user.role).toBe("sales_accountant");
+    expect(r1.body.user.jobTitle).toBe("محاسب مبيعات");
     expect(r1.body.user.showTaskCard).toBe(false);
 
     const r2 = await api(admin).post("/api/users").send({
@@ -518,7 +518,7 @@ describe("sales roles: الأدوار الثلاثة المحصورة في ال�
     ];
 
     for (const [label, token] of [
-      ["SALES_FLAGGER", flagger],
+      ["SALES_ACCOUNTANT", flagger],
       ["SALES_EDITOR", editor],
       ["SALES_SUPERVISOR", supervisor],
     ] as const) {
@@ -534,25 +534,25 @@ describe("sales roles: الأدوار الثلاثة المحصورة في ال�
     }
   });
 
-  it("الدور 1 (SALES_FLAGGER): يقرأ الأوردرات بلا مبالغ ويعدّل returnFlagged فقط؛ أي حقل أو مسار آخر ← 403", async () => {
+  it("الدور 1 (SALES_ACCOUNTANT): يقرأ الأوردرات بلا مبالغ ويعدّل returnFlagged فقط؛ أي حقل أو مسار آخر ← 403", async () => {
     const o = await mkOrder({ date: "2026-06-15", waybill: "FLG-ONLY-1" });
 
     // قراءة الأوردرات مسموحة وخالية تماماً من أي حقل مالي
     const list = await api(flagger).get("/api/sales/orders?date=2026-06-15");
     expect(list.status).toBe(200);
     expect(list.body.orders.length).toBeGreaterThan(0);
-    assertNoMoneyLeak(list.body, "SALES_FLAGGER GET /orders");
+    assertNoMoneyLeak(list.body, "SALES_ACCOUNTANT GET /orders");
 
     // تعليم وإلغاء علامة المرتجع مسموح وخالٍ من المبالغ
     const flagOn = await api(flagger).patch(`/api/sales/orders/${o.id}`).send({ returnFlagged: true });
     expect(flagOn.status).toBe(200);
     expect(flagOn.body.order.returnFlagged).toBe(true);
-    assertNoMoneyLeak(flagOn.body, "SALES_FLAGGER PATCH returnFlagged=true");
+    assertNoMoneyLeak(flagOn.body, "SALES_ACCOUNTANT PATCH returnFlagged=true");
 
     const flagOff = await api(flagger).patch(`/api/sales/orders/${o.id}`).send({ returnFlagged: false });
     expect(flagOff.status).toBe(200);
     expect(flagOff.body.order.returnFlagged).toBe(false);
-    assertNoMoneyLeak(flagOff.body, "SALES_FLAGGER PATCH returnFlagged=false");
+    assertNoMoneyLeak(flagOff.body, "SALES_ACCOUNTANT PATCH returnFlagged=false");
 
     // أي حقل آخر في PATCH /orders/:id (حتى لو معه returnFlagged) ← 403
     for (const badBody of [
@@ -567,7 +567,7 @@ describe("sales roles: الأدوار الثلاثة المحصورة في ال�
       { returnFlagged: true, status: "RETURNED" },
     ]) {
       const r = await api(flagger).patch(`/api/sales/orders/${o.id}`).send(badBody);
-      expect(r.status, `SALES_FLAGGER body=${JSON.stringify(badBody)}`).toBe(403);
+      expect(r.status, `SALES_ACCOUNTANT body=${JSON.stringify(badBody)}`).toBe(403);
     }
 
     // منع الإضافة والحذف وتعديل البنود والمكوّنات والمنتجات الثابتة والمخزون
@@ -648,10 +648,20 @@ describe("sales roles: الأدوار الثلاثة المحصورة في ال�
     expect((await api(editor).patch(`/api/sales/orders/${orderId}`).send({ damagedComponentIds: [] })).status).toBe(403);
 
     // إضافة وتعديل وحذف البنود والمكوّنات بلا تسريب مبالغ
-    const addL = await api(editor).post(`/api/sales/orders/${orderId}/lines`).send({ productId: prodId, quantity: 2 });
+    // المنتج الأول حُذف أعلاه، فنُنشئ منتجاً جديداً لإضافة بند
+    const newProd2 = await api(editor).post("/api/sales/products").send({
+      name: "بوكس منفذ الأوردرات 2",
+      components: [
+        { itemId: watch.id, quantity: 1 },
+        { itemId: rose.id, quantity: 2 },
+      ],
+    });
+    expect(newProd2.status).toBe(201);
+    const prodId2 = newProd2.body.product.id as string;
+    const addL = await api(editor).post(`/api/sales/orders/${orderId}/lines`).send({ productId: prodId2, quantity: 2 });
     expect(addL.status).toBe(201);
     assertNoMoneyLeak(addL.body, "SALES_EDITOR POST line");
-    const addedLine = addL.body.order.lines.find((l: any) => l.productId === prodId);
+    const addedLine = addL.body.order.lines.find((l: any) => l.productId === prodId2);
 
     const updL = await api(editor).patch(`/api/sales/orders/${orderId}/lines/${addedLine.id}`).send({ quantity: 3 });
     expect(updL.status).toBe(200);
@@ -813,9 +823,14 @@ describe("sales roles: الأدوار الثلاثة المحصورة في ال�
     assertNoMoneyLeak(supExec.body, "SALES_SUPERVISOR PATCH status=EXECUTED");
     expect(await qtyNow()).toBe(before - 1);
 
-    const supShip = await api(supervisor).patch(`/api/sales/orders/${stId}`).send({ status: "SHIPPED" });
-    expect(supShip.status).toBe(200);
-    assertNoMoneyLeak(supShip.body, "SALES_SUPERVISOR PATCH status=SHIPPED");
+    // الشحن والتسليم لم يعودا من صلاحيات المشرف (محاسب المبيعات والإدارة فقط) — يُفرض في الباكند
+    for (const st of ["SHIPPED", "DELIVERED"]) {
+      expect((await api(supervisor).patch(`/api/sales/orders/${stId}`).send({ status: st })).status, `supervisor status=${st}`).toBe(403);
+    }
+    expect(await qtyNow()).toBe(before - 1);
+    // الإدارة ما زالت تستطيع الشحن (سلوك قديم) ولا خصم مزدوج
+    const adminShip = await api(admin).patch(`/api/sales/orders/${stId}`).send({ status: "SHIPPED" });
+    expect(adminShip.status).toBe(200);
     expect(await qtyNow()).toBe(before - 1); // لا خصم مزدوج
 
     const supRet = await api(supervisor).patch(`/api/sales/orders/${stId}`).send({ status: "RETURNED", damagedComponentIds: [] });

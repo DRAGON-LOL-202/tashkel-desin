@@ -13,6 +13,10 @@ import LowStockPage from "./pages/LowStock";
 import WithdrawalsPage from "./pages/Withdrawals";
 import SalesPage from "./pages/Sales";
 import SalesOrdersPage from "./pages/SalesOrders";
+import AgentOrdersPage from "./pages/AgentOrders";
+import SalesFollowUpPage from "./pages/SalesFollowUp";
+import AgentAccountsPage from "./pages/AgentAccounts";
+import GeneralAccountsPage from "./pages/GeneralAccounts";
 import SchedulePage from "./pages/Schedule";
 import TeamDashboardPage from "./pages/TeamDashboard";
 import ManageUsersPage from "./pages/ManageUsers";
@@ -58,6 +62,10 @@ export default function App() {
             <Route path="/withdrawals" element={<ProtectedRoute page="withdrawals"><WithdrawalsPage /></ProtectedRoute>} />
             <Route path="/sales" element={<ProtectedRoute page="sales"><SalesPage /></ProtectedRoute>} />
             <Route path="/sales-orders" element={<ProtectedRoute page="salesOrders"><SalesOrdersPage /></ProtectedRoute>} />
+            <Route path="/agent-orders" element={<ProtectedRoute page="agentOrders"><AgentOrdersPage /></ProtectedRoute>} />
+            <Route path="/sales-follow-up" element={<ProtectedRoute page="salesFollowUp"><SalesFollowUpPage /></ProtectedRoute>} />
+            <Route path="/agent-accounts" element={<ProtectedRoute page="agentAccounts"><AgentAccountsPage /></ProtectedRoute>} />
+            <Route path="/general-accounts" element={<ProtectedRoute page="generalAccounts"><GeneralAccountsPage /></ProtectedRoute>} />
             <Route path="/manage-users" element={<ProtectedRoute page="manageUsers"><ManageUsersPage /></ProtectedRoute>} />
             <Route path="/dashboard" element={<Navigate to="/users" replace />} />
             <Route path="/profile" element={<ProtectedRoute page="profile"><ProfilePage /></ProtectedRoute>} />

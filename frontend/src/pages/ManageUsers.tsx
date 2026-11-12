@@ -17,6 +17,7 @@ import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
 import { inventoryAccessLabel, roleLabel, usersService } from "../services/usersService";
 import { inventoryService } from "../services/inventoryService";
+import { agentAdminService } from "../services/agentService";
 import type { CreateUserInput, TeamMember, UpdateUserInput, UserRole } from "../types";
 
 const roleColor: Record<UserRole, string> = {
@@ -25,9 +26,10 @@ const roleColor: Record<UserRole, string> = {
   designer: "#3FA796",
   packer: "#7C6BD6",
   operator: "#4F8FE0",
-  sales_flagger: "#E07A5F",
+  sales_accountant: "#E07A5F",
   sales_editor: "#2A9D8F",
   sales_supervisor: "#3D5A80",
+  sales_agent: "#C0709B",
 };
 
 /** شارة مجموعات السحب: اسم المجموعة، أو «الاثنتان» عند منح كل المجموعات */
@@ -72,12 +74,31 @@ export default function ManageUsersPage() {
   // المدير لا يعدّل حساب المدير العام (الـ backend يرفض أيضاً؛ هذا للعرض فقط)
   const canModify = (target: TeamMember) => actor.accessRole === "admin" || target.accessRole !== "admin";
 
-  const handleSubmit = async (input: CreateUserInput | UpdateUserInput): Promise<boolean> => {
+  const handleSubmit = async (input: CreateUserInput | UpdateUserInput, extra?: { agentPrefix?: number }): Promise<boolean> => {
     const editing = modalTarget && modalTarget !== "new" ? modalTarget : null;
-    const result = await safe(() =>
-      editing ? usersService.update(editing.id, input as UpdateUserInput) : usersService.create(input as CreateUserInput)
-    );
-    if (!result.ok) return false;
+    const prefix = extra?.agentPrefix;
+    // فتاة قائمة: نحفظ Prefix أولاً (إن رُفض لا يُحفظ شيء والنافذة تبقى مفتوحة). حساب جديد/تغيير دور: بعد الحساب.
+    const prefixFirst = !!editing && editing.accessRole === "sales_agent";
+    if (prefix !== undefined && editing && prefixFirst) {
+      const p = await safe(() => agentAdminService.setPrefix(editing.id, prefix));
+      if (!p.ok) return false;
+    }
+    let userId = editing?.id;
+    if (!editing || Object.keys(input).length > 0) {
+      const result = await safe(() =>
+        editing ? usersService.update(editing.id, input as UpdateUserInput) : usersService.create(input as CreateUserInput)
+      );
+      if (!result.ok) return false;
+      userId = result.value.id;
+    }
+    if (prefix !== undefined && userId && !prefixFirst) {
+      const p = await safe(() => agentAdminService.setPrefix(userId!, prefix));
+      // الحساب حُفظ فعلاً؛ تظهر رسالة الخطأ ويمكن ضبط Prefix بتعديل المستخدم أو من صفحة حسابات الفتيات
+      if (!p.ok) {
+        await reload();
+        return !editing;
+      }
+    }
     show(editing ? "تم حفظ التعديلات" : "تمت إضافة المستخدم");
     await reload();
     return true;

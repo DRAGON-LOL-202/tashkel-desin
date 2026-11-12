@@ -4,8 +4,9 @@ import { FieldWrap, Input, Select } from "../ui/Field";
 import { Button } from "../ui/Button";
 import { inventoryAccessLabel, roleLabel } from "../../services/usersService";
 import { inventoryService } from "../../services/inventoryService";
+import { agentAdminService } from "../../services/agentService";
 import { isRestrictedRole, isSalesRole } from "../../lib/permissions";
-import type { CreateUserInput, InventoryAccessLevel, InventoryGroup, TeamMember, UpdateUserInput, UserRole } from "../../types";
+import type { AgentAdminRow, CreateUserInput, InventoryAccessLevel, InventoryGroup, TeamMember, UpdateUserInput, UserRole } from "../../types";
 
 interface UserModalProps {
   open: boolean;
@@ -14,14 +15,14 @@ interface UserModalProps {
   editing: TeamMember | null;
   /** المستخدم الحالي: يحدد الأدوار المسموحة وقيود تعديل الذات */
   actor: TeamMember;
-  /** تُرجع false عند فشل الحفظ لإبقاء النافذة مفتوحة */
-  onSubmit: (input: CreateUserInput | UpdateUserInput) => Promise<boolean>;
+  /** تُرجع false عند فشل الحفظ لإبقاء النافذة مفتوحة. agentPrefix: Prefix تسلسل بوليصات «فتاة مبيعات» إن تغيّر */
+  onSubmit: (input: CreateUserInput | UpdateUserInput, extra?: { agentPrefix?: number }) => Promise<boolean>;
 }
 
 const USERNAME_RE = /^[a-zA-Z0-9._-]+$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-type Errors = Partial<Record<"name" | "username" | "email" | "password", string>>;
+type Errors = Partial<Record<"name" | "username" | "email" | "password" | "prefix", string>>;
 
 const ACCESS_OPTIONS: InventoryAccessLevel[] = ["none", "withdraw", "full"];
 
@@ -67,13 +68,17 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
   const [categoryNames, setCategoryNames] = useState<Record<string, string[]>>({});
   const [errors, setErrors] = useState<Errors>({});
   const [submitting, setSubmitting] = useState(false);
+  // فتاة مبيعات: Prefix تسلسل البوليصات (رقم البوليصة = Prefix × 100 + التسلسل). يُحفظ عبر مسار الإدارة المخصص.
+  const [agentRow, setAgentRow] = useState<AgentAdminRow | null>(null);
+  const [prefixText, setPrefixText] = useState("");
+  const [prefixLoading, setPrefixLoading] = useState(false);
 
   const isAdminActor = actor.accessRole === "admin";
   // دور ADMIN لا يُمنح إلا من ADMIN؛ ولا يُغيَّر دور الذات ولا دور مستخدم النظام (يرفضه الـ backend أيضاً)
   const roleLocked = !!editing && (editing.id === actor.id || editing.isSystemUser);
   const roleOptions: UserRole[] = isAdminActor
-    ? ["designer", "packer", "operator", "sales_flagger", "sales_editor", "sales_supervisor", "manager", "admin"]
-    : ["designer", "packer", "operator", "sales_flagger", "sales_editor", "sales_supervisor", "manager"];
+    ? ["designer", "packer", "operator", "sales_accountant", "sales_editor", "sales_supervisor", "sales_agent", "manager", "admin"]
+    : ["designer", "packer", "operator", "sales_accountant", "sales_editor", "sales_supervisor", "sales_agent", "manager"];
   const restricted = isRestrictedRole(role);
 
   // المجموعتان وتصنيفاتهما تُجلبان عند الحاجة فقط (اختيار تعبئة/مشغل)
@@ -97,6 +102,31 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
     };
   }, [open, restricted, groups.length]);
 
+  const isAgent = role === "sales_agent";
+  const editingAgent = !!editing && editing.accessRole === "sales_agent";
+  useEffect(() => {
+    if (!open || !editingAgent || !editing) return;
+    let cancelled = false;
+    setPrefixLoading(true);
+    agentAdminService
+      .list()
+      .then((rows) => {
+        if (cancelled) return;
+        const row = rows.find((r) => r.id === editing.id) ?? null;
+        setAgentRow(row);
+        setPrefixText(row?.prefix == null ? "" : String(row.prefix));
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setPrefixLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, editingAgent, editing]);
+  // لا يتغير Prefix بعد حجز أي رقم (الباكند يرفض ذلك أيضاً)
+  const prefixLocked = !!agentRow && agentRow.hasOrders;
+
   const toggleGroup = (id: string) => setGroupIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
 
   const validate = (): Errors => {
@@ -108,6 +138,10 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
     if (!EMAIL_RE.test(email.trim())) next.email = "بريد إلكتروني غير صالح";
     if (!editing && password.length < 8) next.password = "كلمة المرور 8 أحرف على الأقل";
     if (editing && password && password.length < 8) next.password = "كلمة المرور 8 أحرف على الأقل";
+    if (isAgent && prefixText.trim() !== "") {
+      const n = Number(prefixText);
+      if (!Number.isInteger(n) || n < 1 || n > 9_999_999) next.prefix = "Prefix رقم صحيح من 1 إلى 9999999";
+    }
     return next;
   };
 
@@ -116,6 +150,10 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
     const found = validate();
     setErrors(found);
     if (Object.keys(found).length > 0) return;
+
+    const prefixN = prefixText.trim() === "" ? null : Number(prefixText);
+    const currentPrefix = agentRow?.prefix ?? null;
+    const agentPrefix = isAgent && prefixN !== null && !prefixLocked && prefixN !== currentPrefix ? prefixN : undefined;
 
     let input: CreateUserInput | UpdateUserInput;
     if (!editing) {
@@ -145,7 +183,7 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
       if (role === "designer" && (inventoryAccess !== initialAccess || editing.accessRole !== "designer")) patch.inventoryAccess = inventoryAccess;
       // عند التحويل إلى تعبئة/مشغل نرسل المجموعات دائماً؛ وإلا عند تغيّرها فقط
       if (restricted && (editing.accessRole !== role || !sameSet(groupIds, initialGroupIds))) patch.allowedGroupIds = groupIds;
-      if (Object.keys(patch).length === 0) {
+      if (Object.keys(patch).length === 0 && agentPrefix === undefined) {
         onClose();
         return;
       }
@@ -154,7 +192,7 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
 
     setSubmitting(true);
     try {
-      const saved = await onSubmit(input);
+      const saved = await onSubmit(input, agentPrefix !== undefined ? { agentPrefix } : undefined);
       if (saved) onClose();
     } finally {
       setSubmitting(false);
@@ -221,6 +259,29 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
             ))}
           </Select>
         </FieldWrap>
+        {isAgent && (
+          <div className="sm:col-span-2">
+            <FieldWrap label="Prefix تسلسل البوليصات" htmlFor="user-prefix" error={errors.prefix}>
+            <Input
+              id="user-prefix"
+              dir="ltr"
+              inputMode="numeric"
+              value={prefixText}
+              onChange={(event) => setPrefixText(event.target.value)}
+              disabled={prefixLocked || prefixLoading}
+              placeholder="مثال: 500"
+              data-testid="agent-prefix"
+            />
+            <p className="mt-1 text-xs text-muted">
+              {prefixLocked
+                ? `مثبّت بعد إنشاء أوردرات بهذا الحساب. الرقم التالي ${agentRow?.nextWaybill ?? ""}`
+                : prefixText.trim() === ""
+                  ? "رقم البوليصة = Prefix × 100 + التسلسل (مثال: 500 ← 50001). بدون Prefix لا تستطيع الفتاة إضافة أوردرات."
+                  : `أول بوليصة لها: ${Number(prefixText) * 100 + 1}. رقم البوليصة = Prefix × 100 + التسلسل.`}
+            </p>
+            </FieldWrap>
+          </div>
+        )}
       </div>
 
       <fieldset className="mb-4 rounded-control border border-border p-3" data-testid="task-card-mode">

@@ -277,7 +277,7 @@ describe("صاحب الكرت من أي دور يصل لمساراته (مثل �
   });
   it("مشغل/مبيعات بلا كرت ← مهام وحضور وإشعارات 403", async () => {
     await makeUser("acc_nocard_op", "OPERATOR");
-    await makeUser("acc_nocard_sales", "SALES_FLAGGER");
+    await makeUser("acc_nocard_sales", "SALES_ACCOUNTANT");
     for (const name of ["acc_nocard_op", "acc_nocard_sales"]) {
       const token = await login(name);
       for (const url of ["/api/tasks", "/api/attendance/today", "/api/notifications"]) expect((await api(token).get(url)).status, `${name} ${url}`).toBe(403);
@@ -287,7 +287,7 @@ describe("صاحب الكرت من أي دور يصل لمساراته (مثل �
     await makeUser("acc_card_sales", "SALES_EDITOR", { showTaskCard: true });
     const token = await login("acc_card_sales");
     expect((await api(token).get("/api/tasks").query({ date: "2026-11-08" })).status).toBe(200);
-    expect((await api(token).get("/api/sales/orders")).status).toBe(200);
+    expect((await api(token).get("/api/sales/orders").query({ date: "2026-11-08" })).status).toBe(200);
     expect((await api(token).get("/api/goals")).status).toBe(403);
   });
 });

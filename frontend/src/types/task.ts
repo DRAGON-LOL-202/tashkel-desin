@@ -10,9 +10,10 @@ export type UserRole =
   | "designer"
   | "packer"
   | "operator"
-  | "sales_flagger"
+  | "sales_accountant"
   | "sales_editor"
-  | "sales_supervisor";
+  | "sales_supervisor"
+  | "sales_agent";
 /** وصول المستخدم للمخزون: بلا وصول / السحب فقط / كامل (الإدارة كامل دائماً، وتعبئة/مشغل سحب فقط) */
 export type InventoryAccessLevel = "none" | "withdraw" | "full";
 

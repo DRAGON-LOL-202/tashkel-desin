@@ -7,9 +7,10 @@ export const roleLabel: Record<UserRole, string> = {
   designer: "مصمم",
   packer: "تعبئة",
   operator: "مشغل",
-  sales_flagger: "مراجع مرتجعات",
+  sales_accountant: "محاسب مبيعات",
   sales_editor: "منفّذ أوردرات",
   sales_supervisor: "مشرف مبيعات",
+  sales_agent: "فتاة مبيعات",
 };
 
 export const inventoryAccessLabel = {

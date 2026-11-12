@@ -1,7 +1,7 @@
 import type { Prisma } from "../generated/prisma/client.ts";
 import { calcTotalValue, num2, num3 } from "./inventorySerialize.js";
 
-const itemSelect = { id: true, name: true, unit: true, unitPrice: true, sellPrice: true, quantity: true, isActive: true } as const;
+export const itemSelect = { id: true, name: true, unit: true, unitPrice: true, sellPrice: true, quantity: true, isActive: true } as const;
 
 export const salesProductInclude = {
   components: { include: { item: { select: itemSelect } }, orderBy: { id: "asc" } },
@@ -63,6 +63,13 @@ function sumUnits(components: ReturnType<typeof serializeComponent>[]) {
 function stripComponentMoney<T extends { unitCost: number; unitSell: number }>(c: T): Omit<T, "unitCost" | "unitSell"> {
   const { unitCost: _uc, unitSell: _us, ...rest } = c;
   return rest;
+}
+
+/** مجموع سعر بيع أوردر بالقروش بنفس معادلة نظام المبيعات: حيّ من المخزون قبل التنفيذ، ومثبَّت بعده (unitSellSnapshot) */
+export function orderSellCents(lines: { quantity: number; components: ComponentLike[] }[]): number {
+  let total = 0;
+  for (const l of lines) total += sumUnits(l.components.map(serializeComponent)).sellCents * l.quantity;
+  return total;
 }
 
 export function serializeSalesProduct(p: SalesProductRow, opts?: { hideMoney?: boolean }) {
@@ -147,6 +154,8 @@ export function serializeSalesOrder(o: SalesOrderRow, opts?: { hideMoney?: boole
     id: o.id,
     date: o.date,
     waybill: o.waybill,
+    /** أوردر فتاة مصدَّر: بوليصته من تسلسلها ولا تُدخَل يدوياً */
+    fromAgent: o.agentId != null,
     closerName: o.closerName,
     status: o.status,
     stockDeducted: o.stockDeducted,
@@ -159,6 +168,9 @@ export function serializeSalesOrder(o: SalesOrderRow, opts?: { hideMoney?: boole
     /** الشركة علّمت الأوردر «مرتجع» ليراجعه الموظف ويسجله (لا أثر على المخزون) */
     returnFlagged: o.returnFlagged,
     returnFlaggedAt: o.returnFlaggedAt ? o.returnFlaggedAt.toISOString() : null,
+    cancelled: o.cancelledAt != null,
+    cancelledAt: o.cancelledAt ? o.cancelledAt.toISOString() : null,
+    cancelReason: o.cancelReason ?? null,
     shortages,
     archivedItems,
   };

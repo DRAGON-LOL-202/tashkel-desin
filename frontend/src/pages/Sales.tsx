@@ -55,7 +55,7 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
 
   const { show } = useToast();
   const run = useSafeAction();
-  const { isStaff, canFlagReturn, canEditSalesOrders, canChangeSalesOrderStatus, canManageSalesProducts } = usePermissions();
+  const { isStaff, canFlagReturn, canEditSalesOrders, canChangeSalesOrderStatus, canShipDeliver, canManageSalesProducts } = usePermissions();
 
   useEffect(() => {
     const t = setTimeout(() => setQ(searchInput.trim()), 300);
@@ -429,6 +429,7 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
                   canFlagReturn={canFlagReturn}
                   canEditOrder={canEditSalesOrders}
                   canChangeStatus={canChangeSalesOrderStatus}
+                  canShipDeliver={canShipDeliver}
                 />
               ))}
             </div>

@@ -9,3 +9,4 @@ export * from "./season";
 export * from "./user";
 export * from "./attendance";
 export * from "./notification";
+export * from "./agent";

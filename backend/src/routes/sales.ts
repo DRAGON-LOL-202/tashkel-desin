@@ -26,7 +26,7 @@ import { round3 } from "../validators/inventory.js";
 // - «تم التنفيذ/شحن/تم التسليم» تخصم مكونات الأوردر من المخزون مرة واحدة فقط (stockDeducted)؛
 //   والرجوع إلى «مسجل» أو «مرتجع» أو حذف الأوردر بعد الخصم يعيد الكميات للمخزون بحركة RETURN.
 // - الخصم كله أو لا شيء داخل معاملة واحدة مع قفل صفوف الأصناف مرتبة بالمعرّف (يمنع الجمود وتجاوز الرصيد).
-const requireSalesRead = requireRole("ADMIN", "MANAGER", "SALES_FLAGGER", "SALES_EDITOR", "SALES_SUPERVISOR");
+const requireSalesRead = requireRole("ADMIN", "MANAGER", "SALES_ACCOUNTANT", "SALES_EDITOR", "SALES_SUPERVISOR");
 const requireSalesEdit = requireRole("ADMIN", "MANAGER", "SALES_EDITOR", "SALES_SUPERVISOR");
 
 export const salesRouter = Router();
@@ -68,6 +68,21 @@ async function assertWaybillFree(waybill: string, exceptId?: string) {
     select: { date: true },
   });
   if (dup) throw conflict(`رقم البوليصة «${waybill}» مستخدم في أوردر آخر بتاريخ ${dup.date}`);
+  // رقم سبق تخصيصه لفتاة (حتى لو حُذفت مسودته أو أُلغي أوردره) لا يُعاد استخدامه يدوياً
+  if (/^\d{1,18}$/.test(waybill)) {
+    const n = BigInt(waybill);
+    const profiles = await prisma().salesAgentProfile.findMany({ select: { prefix: true, nextSeq: true } });
+    for (const p of profiles) {
+      const base = BigInt(p.prefix) * 100n;
+      if (n > base && n < base + BigInt(p.nextSeq)) throw conflict(`رقم البوليصة «${waybill}» محجوز لحساب إحدى الفتيات`);
+    }
+  }
+}
+
+/** القيد الفريد في قاعدة البيانات هو الضمان النهائي (يغطي التزامن)؛ نحوّل مخالفته إلى 409 مفهوم */
+function mapWaybillViolation(e: unknown): never {
+  if ((e as { code?: string })?.code === "P2002") throw conflict("رقم البوليصة مستخدم في أوردر آخر");
+  throw e;
 }
 
 /** المكوّنات المطلوبة من المخزون لأوردر (مجمّعة لكل صنف) بالألف من الوحدة لتفادي أخطاء الفاصلة العائمة */
@@ -387,17 +402,19 @@ salesRouter.post(
     const body = createOrderSchema.parse(req.body);
     await assertWaybillFree(body.waybill);
     const products = await loadActiveProducts(body.lines.map((l) => l.productId));
-    const created = await prisma().salesOrder.create({
-      data: {
-        date: body.date,
-        waybill: body.waybill,
-        closerName: body.closerName,
-        notes: body.notes,
-        createdById: req.user!.id,
-        lines: { create: body.lines.map((l) => lineCreateData(products.get(l.productId)!, l.quantity)) },
-      },
-      include: salesOrderInclude,
-    });
+    const created = await prisma()
+      .salesOrder.create({
+        data: {
+          date: body.date,
+          waybill: body.waybill,
+          closerName: body.closerName,
+          notes: body.notes,
+          createdById: req.user!.id,
+          lines: { create: body.lines.map((l) => lineCreateData(products.get(l.productId)!, l.quantity)) },
+        },
+        include: salesOrderInclude,
+      })
+      .catch(mapWaybillViolation);
     res.status(201).json({ order: serializeOrderForUser(req, created) });
   })
 );
@@ -406,7 +423,7 @@ salesRouter.patch(
   "/orders/:id",
   asyncHandler(async (req, res) => {
     const role = req.user!.role;
-    if (role === "SALES_FLAGGER") {
+    if (role === "SALES_ACCOUNTANT") {
       if (typeof req.body !== "object" || req.body === null || Array.isArray(req.body)) throw forbidden();
       const keys = Object.keys(req.body as Record<string, unknown>);
       if (keys.length !== 1 || keys[0] !== "returnFlagged") throw forbidden();
@@ -417,17 +434,45 @@ salesRouter.patch(
     }
     const existing = await getOrder(req.params.id);
     const body = updateOrderSchema.parse(req.body);
+    // أوردر فتاة ملغي بعد التصدير: لا تعديل ولا تنفيذ ولا تغيير حالة من أي مسار
+    if (existing.cancelledAt) throw conflict("هذا الأوردر ملغي ولا يمكن تعديله أو تنفيذه");
     // تغيير الحالة (تنفيذ/شحن/تسليم/مرتجع) مسموح للإدارة ومشرف المبيعات فقط
     if (!isStaff(req.user!) && role !== "SALES_SUPERVISOR" && (body.status !== undefined || body.damagedComponentIds !== undefined)) {
       throw forbidden();
+    }
+    // الشحن والتسليم صار لمحاسب المبيعات (عبر /api/accounting) والإدارة فقط؛ يُفرض هنا في الباكند لا في الواجهة وحدها
+    if (role === "SALES_SUPERVISOR" && (body.status === "SHIPPED" || body.status === "DELIVERED")) {
+      throw forbidden("الشحن والتسليم من صلاحيات محاسب المبيعات");
+    }
+    // أوردرات الفتيات: لا شحن ولا تسليم قبل «تم التنفيذ» (حتى لا يحدث الخصم عند الشحن/التسليم)، ولا تغيير حالة لأوردر مُلغى
+    if (body.status !== undefined) {
+      const link = await prisma().agentOrder.findFirst({ where: { salesOrderId: existing.id }, select: { status: true } });
+      if (link?.status === "CANCELLED") throw conflict("هذا الأوردر ملغي ولا يمكن تغيير حالته");
+      if (link && (body.status === "SHIPPED" || body.status === "DELIVERED") && !existing.stockDeducted) {
+        throw conflict("لا يمكن شحن أو تسليم أوردر لم يُنفَّذ بعد. اضغط «تم التنفيذ» أولاً.");
+      }
+    }
+    // بوليصة أوردر الفتاة مخصَّصة بتسلسلها: لا يعدّلها أحد (حتى الإدارة) من أي مسار
+    if (body.waybill !== undefined && body.waybill !== existing.waybill && existing.agentId) {
+      throw conflict("رقم بوليصة أوردر الفتاة مخصَّص بتسلسلها ولا يمكن تعديله");
     }
     if (body.waybill !== undefined && body.waybill !== existing.waybill) await assertWaybillFree(body.waybill, existing.id);
     if (body.returnFlagged === true && (existing.status === "RETURNED" || body.status === "RETURNED")) throw badRequest("الأوردر مسجل كمرتجع بالفعل");
 
     const { order, transitions } = await prisma().$transaction(async (tx) => {
       await lockOrder(tx, existing.id);
+      // إعادة فحص بعد القفل: إلغاء متزامن لا يتسلل بين الفحص الأول والكتابة
+      const lockedState = await tx.salesOrder.findUniqueOrThrow({ where: { id: existing.id }, select: { cancelledAt: true } });
+      if (lockedState.cancelledAt) throw conflict("هذا الأوردر ملغي ولا يمكن تعديله أو تنفيذه");
       let moved: LowStockTransition[] = [];
-      if (body.status !== undefined) moved = await applyStatus(tx, existing.id, body.status, req.user!.id, body.damagedComponentIds);
+      if (body.status !== undefined) {
+        moved = await applyStatus(tx, existing.id, body.status, req.user!.id, body.damagedComponentIds);
+        if (body.status !== existing.status) {
+          await tx.salesOrderStatusLog.create({
+            data: { orderId: existing.id, event: "STATUS", fromValue: existing.status, toValue: body.status, byId: req.user!.id },
+          });
+        }
+      }
       await tx.salesOrder.update({
         where: { id: existing.id },
         data: {
@@ -445,7 +490,7 @@ salesRouter.patch(
       });
       const fresh = await tx.salesOrder.findUniqueOrThrow({ where: { id: existing.id }, include: salesOrderInclude });
       return { order: fresh, transitions: moved };
-    });
+    }).catch(mapWaybillViolation);
     await handleLowStockTransition(transitions);
     res.json({ order: serializeOrderForUser(req, order) });
   })
@@ -456,6 +501,9 @@ salesRouter.delete(
   requireSalesEdit,
   asyncHandler(async (req, res) => {
     const existing = await getOrder(req.params.id);
+    // أوردر مصدَّر من فتاة لا يُحذف أبداً (يُلغى من مساحة الفتاة بسبب مسجّل)
+    const linked = await prisma().agentOrder.findFirst({ where: { salesOrderId: existing.id }, select: { id: true } });
+    if (linked) throw conflict("هذا أوردر مصدَّر من حساب فتاة ولا يمكن حذفه. يمكن إلغاؤه من حسابها مع ذكر السبب.");
     const transitions = await prisma().$transaction(async (tx) => {
       await lockOrder(tx, existing.id);
       const order = await tx.salesOrder.findUniqueOrThrow({ where: { id: existing.id }, include: salesOrderInclude });
@@ -473,7 +521,8 @@ async function withEditableOrder<T>(rawId: unknown, fn: (tx: Tx, orderId: string
   const existing = await getOrder(rawId);
   return prisma().$transaction(async (tx) => {
     await lockOrder(tx, existing.id);
-    const cur = await tx.salesOrder.findUniqueOrThrow({ where: { id: existing.id }, select: { status: true, stockDeducted: true } });
+    const cur = await tx.salesOrder.findUniqueOrThrow({ where: { id: existing.id }, select: { status: true, stockDeducted: true, cancelledAt: true } });
+    if (cur.cancelledAt) throw conflict("هذا الأوردر ملغي ولا يمكن تعديله");
     if (cur.stockDeducted || cur.status !== "REGISTERED") {
       throw conflict("لا يمكن تعديل منتجات أوردر بعد تنفيذه. أعده إلى «مسجل» أولاً.");
     }
