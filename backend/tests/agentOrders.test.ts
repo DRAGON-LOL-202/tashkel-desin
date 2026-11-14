@@ -348,3 +348,120 @@ describe("سعر البيع محسوب تلقائياً من مكونات الأ
     expect(res.status).toBe(400); // لا حقول صالحة للتعديل
   });
 });
+
+describe("تعديل محتويات البوكس داخل أوردر الفتاة", () => {
+  let strap: { id: string };
+  let retired: { id: string };
+  const lineBody = (components?: { itemId: string; quantity: number }[], quantity = 1) => ({ productId: box.id, quantity, ...(components ? { components } : {}) });
+  const create = (token: string, lines: unknown[]) => api(token).post("/api/agent/orders").send({ date: D, customerName: "عميلة", lines });
+  const sellOf = async (id: string) => Number((await prisma().agentOrder.findUniqueOrThrow({ where: { id } })).sellPrice);
+
+  beforeAll(async () => {
+    const cat = (await prisma().inventoryCategory.findFirstOrThrow()).id;
+    strap = (await api(admin).post("/api/inventory").send({ unit: "قطعة", categoryId: cat, name: "سوار", initialQuantity: 50, unitPrice: 20, sellPrice: 50 })).body.item;
+    retired = (await api(admin).post("/api/inventory").send({ unit: "قطعة", categoryId: cat, name: "صنف مؤرشف", initialQuantity: 5, unitPrice: 1, sellPrice: 1 })).body.item;
+    await prisma().inventoryItem.update({ where: { id: retired.id }, data: { isActive: false } });
+  });
+
+  it("بلا تعديل تُنسخ محتويات المنتج الثابت، وتظهر للفتاة (اسم وكمية بلا أسعار)", async () => {
+    const r = await create(ag1, [lineBody()]);
+    expect(r.status).toBe(201);
+    const comps = r.body.order.lines[0].components;
+    expect(comps).toEqual([{ itemId: watch.id, itemName: "ساعة", unit: "قطعة", quantity: 1 }]);
+    expect(JSON.stringify(r.body.order)).not.toMatch(/unitCost|unitSell|unitPrice/);
+    expect(JSON.stringify(r.body.order.lines)).not.toMatch(/sellPrice|price/i);
+    expect(r.body.order.sellPrice).toBe(180);
+  });
+
+  it("الفتاة تعدّل كمية مكوّن وتضيف صنفاً وتحذف آخر، والسعر يُعاد حسابه، والمنتج الثابت لا يتغير", async () => {
+    const r = await create(ag1, [lineBody([{ itemId: watch.id, quantity: 2 }, { itemId: strap.id, quantity: 1 }])]);
+    expect(r.status).toBe(201);
+    expect(r.body.order.sellPrice).toBe(2 * 180 + 50);
+    expect(r.body.order.lines[0].components.map((c: { itemName: string; quantity: number }) => [c.itemName, c.quantity]).sort()).toEqual([["ساعة", 2], ["سوار", 1]]);
+    // المنتج الثابت كما هو
+    const def = await prisma().salesProductComponent.findMany({ where: { productId: box.id } });
+    expect(def.map((c) => [c.itemId, Number(c.quantity)])).toEqual([[watch.id, 1]]);
+    // حذف الساعة والإبقاء على السوار فقط
+    const up = await api(ag1).patch(`/api/agent/orders/${r.body.order.id}`).send({ lines: [lineBody([{ itemId: strap.id, quantity: 3 }])] });
+    expect(up.status).toBe(200);
+    expect(up.body.order.sellPrice).toBe(150);
+    expect(up.body.order.lines[0].components).toHaveLength(1);
+    expect(await sellOf(r.body.order.id)).toBe(150);
+  });
+
+  it("الكمية تُضرب في عدد البوكسات، والتعديل لا يتحوّل إلى أوردرات أخرى", async () => {
+    const r = await create(ag1, [lineBody([{ itemId: watch.id, quantity: 1.5 }], 4)]);
+    expect(r.body.order.sellPrice).toBe(Math.round(1.5 * 180 * 4 * 100) / 100);
+    const other = await create(ag1, [lineBody()]);
+    expect(other.body.order.lines[0].components[0].quantity).toBe(1);
+  });
+
+  it("بوكسان من نفس المنتج بمحتويات مختلفة يبقيان بندين، وبنفس المحتويات يندمجان", async () => {
+    const r = await create(ag1, [lineBody([{ itemId: watch.id, quantity: 2 }]), lineBody([{ itemId: strap.id, quantity: 1 }]), lineBody([{ itemId: watch.id, quantity: 2 }])]);
+    expect(r.status).toBe(201);
+    expect(r.body.order.lines).toHaveLength(2);
+    expect(r.body.order.lines.map((l: { quantity: number }) => l.quantity).sort()).toEqual([1, 2]);
+  });
+
+  it("تحقق المدخلات: صنف غير موجود/مؤرشف، كمية صفر أو سالبة، أكثر من 3 خانات، محتوى فارغ", async () => {
+    expect((await create(ag1, [lineBody([{ itemId: "nope", quantity: 1 }])])).status).toBe(404);
+    expect((await create(ag1, [lineBody([{ itemId: retired.id, quantity: 1 }])])).status).toBe(400);
+    expect((await create(ag1, [lineBody([{ itemId: watch.id, quantity: 0 }])])).status).toBe(400);
+    expect((await create(ag1, [lineBody([{ itemId: watch.id, quantity: -1 }])])).status).toBe(400);
+    expect((await create(ag1, [lineBody([{ itemId: watch.id, quantity: 0.0001 }])])).status).toBe(400);
+    expect((await create(ag1, [lineBody([])])).status).toBe(400);
+  });
+
+  it("التصدير ينسخ المحتويات المعدَّلة إلى أوردر المبيعات، والتنفيذ يخصم المعدَّل فقط", async () => {
+    const before = await stock();
+    const r = await create(ag1, [lineBody([{ itemId: watch.id, quantity: 3 }, { itemId: strap.id, quantity: 2 }], 2)]);
+    const ex = await exportIds(ag1, [r.body.order.id]);
+    expect(ex.body.results[0].result).toBe("EXPORTED");
+    const so = await prisma().salesOrder.findUniqueOrThrow({ where: { id: await salesOrderOf(r.body.order.id) }, include: { lines: { include: { components: true } } } });
+    expect(so.lines[0].quantity).toBe(2);
+    expect(so.lines[0].components.map((c) => [c.itemId, Number(c.quantity)]).sort()).toEqual([[watch.id, 3], [strap.id, 2]].sort());
+    expect(await stock()).toBe(before); // لا خصم قبل التنفيذ
+    expect((await execute(so.id)).status).toBe(200);
+    expect(await stock()).toBe(before - 3 * 2); // 3 ساعات × بوكسين
+    const st = Number((await prisma().inventoryItem.findUniqueOrThrow({ where: { id: strap.id } })).quantity);
+    expect(st).toBe(50 - 2 * 2);
+    // سعر البيع بعد التصدير يتبع أوردر المبيعات
+    const view = await api(ag1).get("/api/agent/orders");
+    expect(view.body.orders.find((o: { id: string }) => o.id === r.body.order.id).sellPrice).toBe((3 * 180 + 2 * 50) * 2);
+  });
+
+  it("لا تعديل للمحتويات بعد التصدير (409) ولا على أوردر فتاة أخرى (404)", async () => {
+    const r = await create(ag1, [lineBody()]);
+    expect((await api(ag2).patch(`/api/agent/orders/${r.body.order.id}`).send({ lines: [lineBody([{ itemId: strap.id, quantity: 1 }])] })).status).toBe(404);
+    await exportIds(ag1, [r.body.order.id]);
+    expect((await api(ag1).patch(`/api/agent/orders/${r.body.order.id}`).send({ lines: [lineBody([{ itemId: strap.id, quantity: 1 }])] })).status).toBe(409);
+  });
+
+  it("سطر قديم بلا صفوف محتويات (قبل الميزة) يُقرأ من المنتج الثابت ويُصدَّر سليماً", async () => {
+    const r = await create(ag1, [lineBody()]);
+    await prisma().agentOrderLineComponent.deleteMany({ where: { line: { orderId: r.body.order.id } } });
+    const list = await api(ag1).get("/api/agent/orders");
+    expect(list.body.orders.find((o: { id: string }) => o.id === r.body.order.id).lines[0].components).toHaveLength(1);
+    const up = await api(ag1).patch(`/api/agent/orders/${r.body.order.id}`).send({ notes: "تعديل ملاحظات فقط" });
+    expect(up.body.order.sellPrice).toBe(180);
+    const ex = await exportIds(ag1, [r.body.order.id]);
+    expect(ex.body.results[0].result).toBe("EXPORTED");
+    const so = await prisma().salesOrder.findUniqueOrThrow({ where: { id: await salesOrderOf(r.body.order.id) }, include: { lines: { include: { components: true } } } });
+    expect(so.lines[0].components).toHaveLength(1);
+  });
+
+  it("مساران جديدان للفتاة فقط: /products بمحتوياتها و/items بلا أسعار، ولا يصل لهما غير الفتاة", async () => {
+    const p = await api(ag1).get("/api/agent/products");
+    expect(p.status).toBe(200);
+    const b = p.body.products.find((x: { id: string }) => x.id === box.id);
+    expect(b.components[0]).toEqual({ itemId: watch.id, itemName: "ساعة", unit: "قطعة", quantity: 1 });
+    const it = await api(ag1).get("/api/agent/items");
+    expect(it.status).toBe(200);
+    expect(it.body.items.some((x: { id: string }) => x.id === retired.id)).toBe(false); // المؤرشف لا يظهر
+    expect(Object.keys(it.body.items[0]).sort()).toEqual(["id", "name", "unit"]);
+    expect(JSON.stringify(p.body)).not.toMatch(/unitPrice|sellPrice|quantity":\d+,"available/);
+    for (const t of [acct, sup, edit]) {
+      expect((await api(t).get("/api/agent/items")).status).toBe(403);
+    }
+  });
+});

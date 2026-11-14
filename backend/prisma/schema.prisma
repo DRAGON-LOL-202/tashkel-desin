@@ -429,6 +429,7 @@ model InventoryItem {
   movements InventoryMovement[]
   salesProductComponents SalesProductComponent[]
   salesOrderComponents   SalesOrderComponent[]
+  agentOrderLineComponents AgentOrderLineComponent[]
 
   @@index([categoryId])
   @@index([isActive])
@@ -640,8 +641,23 @@ model AgentOrderLine {
 
   order   AgentOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product SalesProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  // محتويات هذا البوكس في هذا الأوردر (كمية الوحدة الواحدة) — تُنسخ من المنتج الثابت وتستطيع الفتاة تعديلها (migration 0024)
+  components AgentOrderLineComponent[]
 
   @@index([orderId])
+}
+
+model AgentOrderLineComponent {
+  id       String  @id @default(cuid())
+  lineId   String
+  itemId   String
+  quantity Decimal @db.Decimal(14, 3)
+
+  line AgentOrderLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  item InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@unique([lineId, itemId])
+  @@index([itemId])
 }
 
 // سجل تغييرات حالة أوردر المبيعات (الشحن/التسليم/علامة المرتجع/سعر الشحن/الحالات الأخرى)

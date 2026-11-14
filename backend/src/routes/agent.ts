@@ -6,6 +6,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { badRequest, conflict, notFound } from "../utils/httpError.js";
 import { BUCKETS, centsToDecimalString, fromCents, matchesBucket, summarize, toCents, waybillNumber, waybillUpperBound, type AccountingRow, type Bucket } from "../utils/agentMath.js";
 import { itemSelect, orderSellCents } from "../utils/salesSerialize.js";
+import { num3 } from "../utils/inventorySerialize.js";
 import { cancelOrderSchema, createAgentOrderSchema, exportOrdersSchema, setPrefixSchema, updateAgentOrderSchema } from "../validators/agent.js";
 
 // نظام أوردرات الفتيات — مساحة الفتاة. كل استعلام هنا مقيَّد بـ agentId = المستخدم الحالي من التوكن (لا يُقبل معرّف فتاة من الجسم/المسار)،
@@ -18,8 +19,14 @@ agentRouter.use(requireAuth, requireAgent);
 type Tx = Prisma.TransactionClient;
 const idOf = (v: unknown) => (typeof v === "string" && v.length > 0 && v.length <= 64 ? v : "");
 
+const lineInclude = {
+  // محتويات البوكس المعدَّلة لهذا الأوردر؛ ومحتويات المنتج الثابت كاحتياطي للأسطر القديمة التي لا صفوف لها
+  components: { include: { item: { select: itemSelect } }, orderBy: { id: "asc" } },
+  product: { select: { components: { include: { item: { select: itemSelect } }, orderBy: { id: "asc" } } } },
+} satisfies Prisma.AgentOrderLineInclude;
+
 const agentOrderInclude = {
-  lines: { orderBy: { id: "asc" } },
+  lines: { orderBy: { id: "asc" }, include: lineInclude },
   // الأسطر والمكونات لحساب سعر البيع تلقائياً (ثابت بعد التنفيذ، وحيّ قبله) — لا تُرسل للفتاة
   salesOrder: { select: { id: true, status: true, returnFlagged: true, stockDeducted: true, lines: { include: { components: { include: { item: { select: itemSelect } } } } } } },
 } satisfies Prisma.AgentOrderInclude;
@@ -27,6 +34,10 @@ type AgentOrderRow = Prisma.AgentOrderGetPayload<{ include: typeof agentOrderInc
 
 /** سعر بيع الأوردر بالقروش: لا تدخله الفتاة. بعد التصدير يُقرأ من أوردر المبيعات (مثبَّت بعد التنفيذ)، وللمسودة من آخر حساب محفوظ. */
 const agentSellCents = (o: AgentOrderRow) => (o.salesOrder ? orderSellCents(o.salesOrder.lines) : toCents(o.sellPrice));
+
+type LineRow = AgentOrderRow["lines"][number];
+/** محتويات البند الفعلية: المعدَّلة إن وُجدت، وإلا محتويات المنتج الثابت (أسطر أُنشئت قبل ميزة التعديل) */
+const effectiveComponents = (l: LineRow) => (l.components.length > 0 ? l.components : (l.product?.components ?? []));
 
 /** الفتاة لا ترى سعر الشحن ولا أي بيانات داخلية للمبيعات؛ ترى حالة أوردرها فقط */
 export function serializeAgentOrder(o: AgentOrderRow) {
@@ -47,7 +58,14 @@ export function serializeAgentOrder(o: AgentOrderRow) {
     cancelledAt: o.cancelledAt?.toISOString() ?? null,
     cancelReason: o.cancelReason,
     createdAt: o.createdAt.toISOString(),
-    lines: o.lines.map((l) => ({ id: l.id, productId: l.productId, productName: l.productName, quantity: l.quantity })),
+    lines: o.lines.map((l) => ({
+      id: l.id,
+      productId: l.productId,
+      productName: l.productName,
+      quantity: l.quantity,
+      // محتويات الوحدة الواحدة من البوكس (اسم وكمية فقط — بلا أي سعر)
+      components: effectiveComponents(l).map((c) => ({ itemId: c.itemId, itemName: c.item.name, unit: c.item.unit, quantity: num3(c.quantity) })),
+    })),
   };
 }
 
@@ -59,7 +77,8 @@ export const toAccountingRow = (o: AgentOrderRow): AccountingRow => ({
   shippingCents: 0, // سعر الشحن لا يظهر ولا يدخل حسابات الفتاة
 });
 
-async function loadActiveProducts(db: Pick<Tx, "salesProduct">, productIds: string[]) {
+async function loadActiveProducts(db: Pick<Tx, "salesProduct">, rawProductIds: string[]) {
+  const productIds = [...new Set(rawProductIds)]; // نفس البوكس قد يظهر في أكثر من بند بمحتويات مختلفة
   const products = await db.salesProduct.findMany({ where: { id: { in: productIds } }, include: { components: { include: { item: { select: itemSelect } } } } });
   if (products.length !== productIds.length) throw notFound("أحد المنتجات غير موجود");
   for (const p of products) {
@@ -70,9 +89,54 @@ async function loadActiveProducts(db: Pick<Tx, "salesProduct">, productIds: stri
 }
 
 type LoadedProducts = Awaited<ReturnType<typeof loadActiveProducts>>;
-/** سعر بيع بوكسات الأوردر (الكمية × مجموع مكونات البوكس × سعر بيع المكوّن الحالي) بالقروش */
-const draftSellCents = (products: LoadedProducts, lines: { productId: string | null; quantity: number }[]) =>
-  orderSellCents(lines.map((l) => ({ quantity: l.quantity, components: products.get(l.productId!)!.components })));
+type ItemRow = Prisma.InventoryItemGetPayload<{ select: typeof itemSelect }>;
+interface ResolvedLine {
+  productId: string;
+  productName: string;
+  quantity: number;
+  /** كمية الوحدة الواحدة من كل صنف في هذا البوكس */
+  components: { itemId: string; quantity: number | string }[];
+}
+interface LineInput {
+  productId: string;
+  quantity: number;
+  components?: { itemId: string; quantity: number }[];
+}
+
+/** سعر بيع البنود بالقروش (الكمية × مجموع مكونات البوكس × سعر بيع المكوّن الحالي) */
+const resolvedSellCents = (lines: { quantity: number; components: { itemId: string; quantity: number | string }[] }[], items: Map<string, ItemRow>) =>
+  orderSellCents(lines.map((l) => ({ quantity: l.quantity, components: l.components.map((c) => ({ id: c.itemId, itemId: c.itemId, quantity: c.quantity, item: items.get(c.itemId)! })) })));
+
+/**
+ * يحوّل بنود الطلب إلى بنود جاهزة للحفظ: المحتويات المرسلة (تعديل الفتاة) بعد التحقق من الأصناف، وإلا نسخة من المنتج الثابت.
+ * الفتاة تضيف/تغيّر/تحذف أصنافاً من محتويات بوكسها فقط؛ المنتج الثابت نفسه لا يتغير أبداً.
+ */
+async function resolveLines(tx: Tx, products: LoadedProducts, input: LineInput[]) {
+  const wanted = new Set<string>();
+  for (const l of input) for (const c of l.components ?? products.get(l.productId)!.components) wanted.add(c.itemId);
+  const rows = await tx.inventoryItem.findMany({ where: { id: { in: [...wanted] } }, select: itemSelect });
+  const items = new Map(rows.map((i) => [i.id, i]));
+  const lines: ResolvedLine[] = input.map((l) => {
+    const p = products.get(l.productId)!;
+    const components: ResolvedLine["components"] = l.components
+      ? l.components.map((c) => ({ itemId: c.itemId, quantity: c.quantity }))
+      : p.components.map((c) => ({ itemId: c.itemId, quantity: c.quantity.toString() }));
+    for (const c of components) {
+      const item = items.get(c.itemId);
+      if (!item) throw notFound(`أحد أصناف «${p.name}» غير موجود`);
+      // الأصناف المؤرشفة تُرفض فقط إذا أضافتها الفتاة؛ نسخة المنتج الثابت الأصلية تمر كما كانت
+      if (l.components && !item.isActive) throw badRequest(`الصنف «${item.name}» غير مفعّل`);
+    }
+    return { productId: p.id, productName: p.name, quantity: l.quantity, components };
+  });
+  return { lines, items, sellCents: resolvedSellCents(lines, items) };
+}
+
+const linesCreate = (lines: ResolvedLine[]) =>
+  lines.map((l) => ({ productId: l.productId, productName: l.productName, quantity: l.quantity, components: { create: l.components.map((c) => ({ itemId: c.itemId, quantity: c.quantity })) } }));
+
+/** سعر بيع الأوردر المحفوظ حالياً (بنود الأوردر في قاعدة البيانات) بالقروش */
+const storedLinesSellCents = (lines: LineRow[]) => orderSellCents(lines.map((l) => ({ quantity: l.quantity, components: effectiveComponents(l) })));
 
 async function getOwnOrder(agentId: string, rawId: unknown) {
   const o = await prisma().agentOrder.findFirst({ where: { id: idOf(rawId), agentId }, include: agentOrderInclude });
@@ -113,16 +177,31 @@ agentRouter.get(
   })
 );
 
-// البوكسات المتاحة للاختيار (الاسم فقط: بلا أسعار ولا مكونات مخزنية)
+// البوكسات المتاحة للاختيار: الاسم ومحتوياته (صنف + كمية) لتعديلها؛ بلا أي سعر ولا رصيد مخزون
 agentRouter.get(
   "/products",
   asyncHandler(async (_req, res) => {
     const products = await prisma().salesProduct.findMany({
       where: { isActive: true, components: { some: {} } },
       orderBy: { name: "asc" },
-      select: { id: true, name: true },
+      select: { id: true, name: true, components: { orderBy: { id: "asc" }, select: { itemId: true, quantity: true, item: { select: { name: true, unit: true } } } } },
     });
-    res.json({ products });
+    res.json({
+      products: products.map((p) => ({
+        id: p.id,
+        name: p.name,
+        components: p.components.map((c) => ({ itemId: c.itemId, itemName: c.item.name, unit: c.item.unit, quantity: num3(c.quantity) })),
+      })),
+    });
+  })
+);
+
+// أصناف المخزون المفعّلة لإضافتها إلى محتويات بوكس (الاسم والوحدة فقط: بلا أسعار ولا أرصدة)
+agentRouter.get(
+  "/items",
+  asyncHandler(async (_req, res) => {
+    const items = await prisma().inventoryItem.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, unit: true } });
+    res.json({ items });
   })
 );
 
@@ -162,6 +241,7 @@ agentRouter.post(
     const agentId = req.user!.id;
     const created = await prisma().$transaction(async (tx) => {
       const products = await loadActiveProducts(tx, body.lines.map((l) => l.productId));
+      const resolved = await resolveLines(tx, products, body.lines);
       const { seq, waybill } = await allocateWaybill(tx, agentId);
       return tx.agentOrder.create({
         data: {
@@ -173,8 +253,8 @@ agentRouter.post(
           customerPhone: body.customerPhone,
           customerAddress: body.customerAddress,
           notes: body.notes,
-          sellPrice: centsToDecimalString(draftSellCents(products, body.lines)),
-          lines: { create: body.lines.map((l) => ({ productId: l.productId, productName: products.get(l.productId)!.name, quantity: l.quantity })) },
+          sellPrice: centsToDecimalString(resolved.sellCents),
+          lines: { create: linesCreate(resolved.lines) },
         },
         include: agentOrderInclude,
       });
@@ -194,10 +274,9 @@ agentRouter.patch(
       if (locked.status !== "DRAFT") throw conflict("لا يمكن تعديل أوردر بعد تصديره. يمكنك إلغاؤه مع ذكر السبب.");
       if (body.lines) {
         const products = await loadActiveProducts(tx, body.lines.map((l) => l.productId));
-        await tx.agentOrderLine.deleteMany({ where: { orderId: own.id } });
-        await tx.agentOrderLine.createMany({
-          data: body.lines.map((l) => ({ orderId: own.id, productId: l.productId, productName: products.get(l.productId)!.name, quantity: l.quantity })),
-        });
+        const resolved = await resolveLines(tx, products, body.lines);
+        await tx.agentOrderLine.deleteMany({ where: { orderId: own.id } }); // المحتويات تُحذف معها (cascade)
+        for (const l of linesCreate(resolved.lines)) await tx.agentOrderLine.create({ data: { orderId: own.id, ...l } });
       }
       await tx.agentOrder.update({
         where: { id: own.id },
@@ -210,9 +289,8 @@ agentRouter.patch(
         },
       });
       // السعر محسوب تلقائياً: يُعاد حسابه من البوكسات الحالية عند كل تعديل للمسودة
-      const current = await tx.agentOrderLine.findMany({ where: { orderId: own.id } });
-      const products = await loadActiveProducts(tx, current.map((l) => l.productId).filter((v): v is string => v !== null));
-      await tx.agentOrder.update({ where: { id: own.id }, data: { sellPrice: centsToDecimalString(draftSellCents(products, current)) } });
+      const current = await tx.agentOrderLine.findMany({ where: { orderId: own.id }, include: lineInclude });
+      await tx.agentOrder.update({ where: { id: own.id }, data: { sellPrice: centsToDecimalString(storedLinesSellCents(current)) } });
       return tx.agentOrder.findUniqueOrThrow({ where: { id: own.id }, include: agentOrderInclude });
     });
     res.json({ order: serializeAgentOrder(updated) });
@@ -240,13 +318,13 @@ async function exportOne(agentId: string, agentName: string, orderId: string) {
     const locked = await lockOwnOrder(tx, agentId, orderId);
     if (locked.status === "EXPORTED") return { id: orderId, result: "ALREADY_EXPORTED" as const };
     if (locked.status === "CANCELLED") return { id: orderId, result: "CANCELLED" as const };
-    const order = await tx.agentOrder.findUniqueOrThrow({ where: { id: orderId }, include: { lines: true } });
+    const order = await tx.agentOrder.findUniqueOrThrow({ where: { id: orderId }, include: { lines: { orderBy: { id: "asc" }, include: lineInclude } } });
     if (order.lines.length === 0) throw badRequest(`الأوردر ${order.waybill} بلا منتجات`);
     const products = await loadActiveProducts(tx, order.lines.map((l) => l.productId).filter((v): v is string => v !== null));
     if (order.lines.some((l) => l.productId === null)) throw badRequest(`الأوردر ${order.waybill} يحتوي منتجاً لم يعد موجوداً`);
     const dup = await tx.salesOrder.findFirst({ where: { waybill: { equals: order.waybill, mode: "insensitive" } }, select: { id: true } });
     if (dup) throw conflict(`رقم البوليصة ${order.waybill} مستخدم في أوردر آخر`);
-    const sellCents = draftSellCents(products, order.lines);
+    const sellCents = storedLinesSellCents(order.lines);
     const customer = [order.customerName, order.customerPhone, order.customerAddress].filter(Boolean).join(" — ");
     const salesOrder = await tx.salesOrder.create({
       data: {
@@ -261,7 +339,8 @@ async function exportOne(agentId: string, agentName: string, orderId: string) {
         lines: {
           create: order.lines.map((l) => {
             const p = products.get(l.productId!)!;
-            return { productId: p.id, productName: p.name, quantity: l.quantity, components: { create: p.components.map((c) => ({ itemId: c.itemId, quantity: c.quantity })) } };
+            // تُنسخ محتويات البوكس كما عدّلتها الفتاة (أو محتويات المنتج الثابت إن لم تُعدَّل)
+            return { productId: p.id, productName: p.name, quantity: l.quantity, components: { create: effectiveComponents(l).map((c) => ({ itemId: c.itemId, quantity: c.quantity })) } };
           }),
         },
       },

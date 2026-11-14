@@ -10,14 +10,42 @@ const money = z
   .refine((v) => Math.abs(v * 100 - Math.round(v * 100)) < 1e-6, "المبلغ بحد أقصى خانتين عشريتين");
 const lineQty = z.number({ message: "العدد يجب أن يكون رقماً" }).int("العدد يجب أن يكون عدداً صحيحاً").min(1, "العدد لا يقل عن 1").max(1000, "العدد كبير جداً");
 
+// كمية المكوّن للبوكس الواحد (تعديل الفتاة لمحتويات البوكس): > 0 وبحد أقصى 3 خانات عشرية مثل المخزون
+const componentQty = z
+  .number({ message: "كمية المحتوى يجب أن تكون رقماً" })
+  .finite()
+  .gt(0, "كمية المحتوى يجب أن تكون أكبر من صفر")
+  .max(100_000, "كمية المحتوى كبيرة جداً")
+  .refine((v) => Math.abs(v * 1000 - Math.round(v * 1000)) < 1e-6, "كمية المحتوى بحد أقصى 3 خانات عشرية");
+
 const lines = z
-  .array(z.object({ productId: id, quantity: lineQty.default(1) }), { message: "أضف منتجاً واحداً على الأقل" })
+  .array(
+    z.object({
+      productId: id,
+      quantity: lineQty.default(1),
+      // اختياري: محتويات هذا البوكس بعد تعديل الفتاة. إن غابت تُنسخ محتويات المنتج الثابت كما هي.
+      components: z.array(z.object({ itemId: id, quantity: componentQty }), { message: "محتويات البوكس غير صالحة" }).min(1, "البوكس يحتاج محتوى واحداً على الأقل").max(60, "محتويات البوكس كثيرة جداً").optional(),
+    }),
+    { message: "أضف منتجاً واحداً على الأقل" }
+  )
   .min(1, "أضف منتجاً واحداً على الأقل")
   .max(20, "عدد المنتجات كبير جداً")
   .transform((list) => {
-    const merged = new Map<string, number>();
-    for (const l of list) merged.set(l.productId, (merged.get(l.productId) ?? 0) + l.quantity);
-    return [...merged].map(([productId, quantity]) => ({ productId, quantity: Math.min(quantity, 1000) }));
+    // نفس الصنف مكرر داخل بوكس واحد: تُجمع كمياته. ونفس البوكس بنفس المحتويات يُدمج في بند واحد؛ البوكسات المختلفة المحتوى تبقى بنوداً منفصلة.
+    const merged = new Map<string, { productId: string; quantity: number; components?: { itemId: string; quantity: number }[] }>();
+    for (const l of list) {
+      let components: { itemId: string; quantity: number }[] | undefined;
+      if (l.components) {
+        const byItem = new Map<string, number>();
+        for (const c of l.components) byItem.set(c.itemId, Math.round(((byItem.get(c.itemId) ?? 0) + c.quantity) * 1000) / 1000);
+        components = [...byItem].map(([itemId, quantity]) => ({ itemId, quantity })).sort((a, b) => (a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : 0));
+      }
+      const key = `${l.productId}|${components ? components.map((c) => `${c.itemId}:${c.quantity}`).join(",") : "default"}`;
+      const cur = merged.get(key);
+      if (cur) cur.quantity = Math.min(cur.quantity + l.quantity, 1000);
+      else merged.set(key, { productId: l.productId, quantity: l.quantity, ...(components ? { components } : {}) });
+    }
+    return [...merged.values()];
   });
 
 const customer = {

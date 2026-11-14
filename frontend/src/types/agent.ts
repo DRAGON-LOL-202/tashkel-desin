@@ -6,9 +6,26 @@ export type AgentOrderStatus = "DRAFT" | "EXPORTED" | "CANCELLED";
 /** فلاتر التصنيف (تطابق BUCKETS في الباكند) */
 export type AgentBucket = "all" | "draft" | "exported" | "executed" | "shipped" | "delivered" | "returned" | "cancelled";
 
+/** محتوى بوكس: صنف وكمية الوحدة الواحدة (بلا أي سعر) */
+export interface AgentComponent {
+  itemId: string;
+  itemName: string;
+  unit: string;
+  quantity: number;
+}
+
 export interface AgentProduct {
   id: string;
   name: string;
+  /** محتويات المنتج الثابت الافتراضية */
+  components: AgentComponent[];
+}
+
+/** صنف مخزون يمكن إضافته إلى محتويات بوكس (اسم ووحدة فقط) */
+export interface AgentItem {
+  id: string;
+  name: string;
+  unit: string;
 }
 
 export interface AgentOrderLine {
@@ -16,6 +33,8 @@ export interface AgentOrderLine {
   productId: string | null;
   productName: string;
   quantity: number;
+  /** محتويات الوحدة الواحدة من البوكس في هذا الأوردر */
+  components: AgentComponent[];
 }
 
 export interface AgentOrder {
@@ -46,7 +65,7 @@ export interface AgentOrderInput {
   customerPhone: string;
   customerAddress: string;
   notes: string;
-  lines: { productId: string; quantity: number }[];
+  lines: { productId: string; quantity: number; components: { itemId: string; quantity: number }[] }[];
 }
 
 export interface AgentProfile {

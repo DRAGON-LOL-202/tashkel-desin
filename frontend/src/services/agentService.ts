@@ -5,6 +5,7 @@ import type {
   AgentAccountTotals,
   AgentAdminRow,
   AgentBucket,
+  AgentItem,
   AgentOrder,
   AgentOrderInput,
   AgentProduct,
@@ -27,6 +28,11 @@ export const agentService = {
   async products(): Promise<AgentProduct[]> {
     const { products } = await api<{ products: AgentProduct[] }>("/agent/products");
     return products;
+  },
+
+  async items(): Promise<AgentItem[]> {
+    const { items } = await api<{ items: AgentItem[] }>("/agent/items");
+    return items;
   },
 
   async orders(bucket: AgentBucket, q: string): Promise<AgentOrder[]> {

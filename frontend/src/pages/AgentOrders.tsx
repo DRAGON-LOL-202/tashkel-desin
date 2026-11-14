@@ -18,10 +18,11 @@ import { formatArabicDate } from "../lib/date";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
 import { agentService } from "../services/agentService";
-import type { AgentBucket, AgentOrder, AgentOrderInput, AgentProduct, AgentProfile } from "../types";
+import type { AgentBucket, AgentItem, AgentOrder, AgentOrderInput, AgentProduct, AgentProfile } from "../types";
 
 const NO_ORDERS: AgentOrder[] = [];
 const NO_PRODUCTS: AgentProduct[] = [];
+const NO_ITEMS: AgentItem[] = [];
 
 // أوردراتي: مساحة الفتاة. ترى أوردراتها وحسابها فقط (العزل في الباكند). الأوردر يبقى هنا حتى تصدّره بعد التأكيد.
 export default function AgentOrdersPage() {
@@ -40,6 +41,7 @@ export default function AgentOrdersPage() {
   const ordersLoader = useCallback(() => agentService.orders(bucket, q), [bucket, q]);
   const orders = useResource<AgentOrder[]>(ordersLoader, NO_ORDERS);
   const products = useResource<AgentProduct[]>(agentService.products, NO_PRODUCTS);
+  const items = useResource<AgentItem[]>(agentService.items, NO_ITEMS);
   const profile = useResource<AgentProfile | null>(agentService.me, null);
 
   const refresh = useCallback(async () => {
@@ -207,7 +209,7 @@ export default function AgentOrdersPage() {
         </div>
       )}
 
-      {editing && <AgentOrderModal key={editing === "new" ? "new" : editing.id} open products={products.data} editing={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} onSubmit={save} />}
+      {editing && <AgentOrderModal key={editing === "new" ? "new" : editing.id} open products={products.data} items={items.data} editing={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} onSubmit={save} />}
       {exporting && <ExportModal open orders={exporting} onClose={() => setExporting(null)} onConfirm={() => doExport(exporting)} />}
       {cancelling && <CancelModal open order={cancelling} onClose={() => setCancelling(null)} onConfirm={(reason) => doCancel(cancelling, reason)} />}
       <ConfirmDialog open={!!deleting} onClose={() => setDeleting(null)} onConfirm={() => deleting && void doDelete(deleting)} title="حذف المسودة؟" description={deleting ? `سيُحذف الأوردر ${deleting.waybill} نهائياً قبل التصدير، ولن يُعاد استخدام رقمه.` : undefined} confirmLabel="حذف" />
