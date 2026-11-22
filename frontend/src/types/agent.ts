@@ -95,6 +95,21 @@ export interface ExportResult {
   message?: string;
 }
 
+export interface FollowOrderLine {
+  id: string;
+  productName: string;
+  quantity: number;
+  components: AgentComponent[];
+}
+
+export interface FollowStatusCounts {
+  all: number;
+  EXECUTED: number;
+  SHIPPED: number;
+  DELIVERED: number;
+  RETURNED: number;
+}
+
 /** صف في صفحة متابعة المحاسب / تفاصيل حساب فتاة */
 export interface FollowOrder {
   id: string;
@@ -106,12 +121,20 @@ export interface FollowOrder {
   source: "AGENT" | "MANUAL";
   closerName: string;
   date: string;
+  customerName: string;
+  customerPhone: string;
+  customerAddress: string;
+  notes: string;
+  lines: FollowOrderLine[];
   sellPrice: number | null;
   shippingPrice: number | null;
   status: SalesOrderStatus;
   returnFlagged: boolean;
+  returnFlaggedAt: string | null;
   cancelled: boolean;
   cancelReason: string | null;
+  createdAt: string;
+  exportedAt: string | null;
   shippedAt: string | null;
   deliveredAt: string | null;
   /** يدخل حالياً في حساب المستحقات */
@@ -151,6 +174,7 @@ export interface FollowList {
   /** العدد الكلي المطابق للفلاتر (دقيق دائماً، حتى لو المعروض أقل) */
   total: number;
   hasMore: boolean;
+  counts?: FollowStatusCounts;
 }
 
 export interface AgentAccountDetail {

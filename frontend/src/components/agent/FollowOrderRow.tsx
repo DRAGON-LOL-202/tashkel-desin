@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { History, Truck, PackageCheck, Flag } from "lucide-react";
+import { Eye, History, Truck, PackageCheck, Flag } from "lucide-react";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { fmtMoney } from "../inventory/format";
@@ -7,6 +7,7 @@ import { formatArabicDate } from "../../lib/date";
 import { rowBadge } from "./meta";
 import { ShippingCell } from "./ShippingCell";
 import { OrderLogModal } from "./OrderLogModal";
+import { OrderDetailsModal } from "./OrderDetailsModal";
 import type { FollowOrder } from "../../types";
 
 interface FollowOrderRowProps {
@@ -19,9 +20,10 @@ interface FollowOrderRowProps {
   showAgent?: boolean;
 }
 
-// سطر في قائمة المتابعة (ليس كرتاً كبيراً): بوليصة، بوكس، فتاة، تاريخ، سعر بيع، شحن، حالة، إجراءات
+// سطر في قائمة المتابعة / نافذة تفاصيل حساب فتاة: بوليصة، عميل، بوكس، تاريخ، سعر بيع، شحن، حالة، إجراءات
 export function FollowOrderRow({ order: o, canAct, onStatus, onFlag, onShipping, showAgent = true }: FollowOrderRowProps) {
   const [busy, setBusy] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const badge = rowBadge(o.status, o.returnFlagged, o.cancelled);
   const locked = o.cancelled || o.status === "RETURNED";
@@ -38,7 +40,7 @@ export function FollowOrderRow({ order: o, canAct, onStatus, onFlag, onShipping,
     <div className={`flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-3 py-2.5 text-sm last:border-b-0 ${o.counted ? "" : "opacity-90"}`}>
       <span className="w-20 shrink-0 font-bold tabular-nums text-text">{o.waybill || "—"}</span>
       <span className="min-w-[140px] flex-1 truncate text-text" title={o.boxName}>
-        {o.boxName}
+        {o.customerName ? `${o.customerName} — ${o.boxName}` : o.boxName}
       </span>
       {showAgent && <span className="w-28 shrink-0 truncate text-muted">{o.source === "MANUAL" ? `يدوي${o.closerName ? ` — ${o.closerName}` : ""}` : o.agentName}</span>}
       <span className="w-24 shrink-0 text-xs text-muted">{formatArabicDate(o.date, "d MMM yyyy")}</span>
@@ -69,10 +71,26 @@ export function FollowOrderRow({ order: o, canAct, onStatus, onFlag, onShipping,
             {o.returnFlagged ? "إزالة علامة المرتجع" : "تعليم كمرتجع"}
           </Button>
         )}
+        <button type="button" aria-label="تفاصيل الأوردر" title="تفاصيل الأوردر" onClick={() => setDetailsOpen(true)} className="flex h-8 w-8 items-center justify-center rounded-control text-muted hover:bg-border/50 hover:text-text">
+          <Eye size={15} />
+        </button>
         <button type="button" aria-label="سجل التغييرات" title="سجل التغييرات" onClick={() => setLogOpen(true)} className="flex h-8 w-8 items-center justify-center rounded-control text-muted hover:bg-border/50 hover:text-text">
           <History size={15} />
         </button>
       </div>
+      {detailsOpen && (
+        <OrderDetailsModal
+          open
+          order={o}
+          canAct={canAct}
+          onClose={() => setDetailsOpen(false)}
+          onFlag={onFlag}
+          onOpenLog={() => {
+            setDetailsOpen(false);
+            setLogOpen(true);
+          }}
+        />
+      )}
       {logOpen && <OrderLogModal open orderId={o.id} waybill={o.waybill} onClose={() => setLogOpen(false)} />}
     </div>
   );

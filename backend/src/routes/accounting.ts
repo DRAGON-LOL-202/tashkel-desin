@@ -5,6 +5,7 @@ import { requireAuth, requireRole } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { badRequest, conflict, notFound } from "../utils/httpError.js";
 import { centsToDecimalString, fromCents, generalAccounts, matchesBucket, summarize, toCents, BUCKETS, type AccountingRow, type Bucket } from "../utils/agentMath.js";
+import { num3 } from "../utils/inventorySerialize.js";
 import { itemSelect, orderSellCents } from "../utils/salesSerialize.js";
 import { accountantStatusSchema, returnFlagSchema, shippingPriceSchema } from "../validators/agent.js";
 
@@ -18,9 +19,31 @@ const idOf = (v: unknown) => (typeof v === "string" && v.length > 0 && v.length 
 
 const include = {
   agent: { select: { id: true, name: true } },
-  agentOrder: { select: { id: true, status: true, customerName: true, cancelReason: true, cancelledAt: true } },
-  // المكونات لحساب سعر البيع (مثبَّت بعد التنفيذ)؛ لا تُعرض للمحاسب
-  lines: { select: { id: true, productName: true, quantity: true, components: { include: { item: { select: itemSelect } } } }, orderBy: { id: "asc" } },
+  agentOrder: {
+    select: {
+      id: true,
+      seq: true,
+      status: true,
+      customerName: true,
+      customerPhone: true,
+      customerAddress: true,
+      notes: true,
+      exportedAt: true,
+      createdAt: true,
+      cancelReason: true,
+      cancelledAt: true,
+    },
+  },
+  // المكونات لحساب سعر البيع (مثبَّت بعد التنفيذ)؛ تفاصيل الكميات والأسماء فقط للمحاسب بلا أسعار مكونات أو تكاليف
+  lines: {
+    select: {
+      id: true,
+      productName: true,
+      quantity: true,
+      components: { include: { item: { select: itemSelect } }, orderBy: { id: "asc" } },
+    },
+    orderBy: { id: "asc" },
+  },
 } satisfies Prisma.SalesOrderInclude;
 type Row = Prisma.SalesOrderGetPayload<{ include: typeof include }>;
 
@@ -45,12 +68,30 @@ function serialize(o: Row) {
     source: o.agentId ? ("AGENT" as const) : ("MANUAL" as const),
     closerName: o.closerName,
     date: o.date,
+    customerName: o.agentOrder?.customerName ?? "",
+    customerPhone: o.agentOrder?.customerPhone ?? "",
+    customerAddress: o.agentOrder?.customerAddress ?? "",
+    notes: o.agentOrder?.notes || o.notes || "",
+    lines: o.lines.map((l) => ({
+      id: l.id,
+      productName: l.productName,
+      quantity: l.quantity,
+      components: l.components.map((c) => ({
+        itemId: c.itemId,
+        itemName: c.item.name,
+        unit: c.item.unit,
+        quantity: num3(c.quantity),
+      })),
+    })),
     sellPrice: fromCents(orderSellCents(o.lines)),
     shippingPrice: o.shippingPrice === null ? null : Number(o.shippingPrice.toString()),
     status: o.status,
     returnFlagged: o.returnFlagged,
+    returnFlaggedAt: o.returnFlaggedAt?.toISOString() ?? null,
     cancelled: o.agentOrder?.status === "CANCELLED" || o.cancelledAt != null,
-    cancelReason: o.agentOrder?.cancelReason ?? null,
+    cancelReason: o.agentOrder?.cancelReason ?? o.cancelReason ?? null,
+    createdAt: (o.agentOrder?.createdAt ?? o.createdAt).toISOString(),
+    exportedAt: o.agentOrder?.exportedAt?.toISOString() ?? null,
     shippedAt: o.shippedAt?.toISOString() ?? null,
     deliveredAt: o.deliveredAt?.toISOString() ?? null,
     // هل يدخل في حساب المستحقات حالياً؟ (مسلَّم وغير مرتجع وغير ملغي)
@@ -131,22 +172,36 @@ accountingRouter.get(
           { waybill: { contains: q, mode: "insensitive" } },
           { closerName: { contains: q, mode: "insensitive" } },
           { agent: { name: { contains: q, mode: "insensitive" as const } } },
+          { agentOrder: { is: { customerName: { contains: q, mode: "insensitive" as const } } } },
+          { agentOrder: { is: { customerPhone: { contains: q, mode: "insensitive" as const } } } },
         ],
       });
     }
-    const result = await listAgentRows(
-      {
-        status: { in: (FOLLOW_STATUSES as readonly string[]).includes(statusQ) ? [statusQ as (typeof FOLLOW_STATUSES)[number]] : [...FOLLOW_STATUSES] },
-        cancelledAt: null,
-        AND: and,
-        ...(agentId ? { agentId } : {}),
-        ...dateFilter(req.query),
-      },
-      () => true,
-      LIST_LIMIT,
-      "all"
-    );
-    res.json(result);
+    const baseWhere: Prisma.SalesOrderWhereInput = {
+      status: { in: [...FOLLOW_STATUSES] },
+      cancelledAt: null,
+      AND: and,
+      ...(agentId ? { agentId } : {}),
+      ...dateFilter(req.query),
+    };
+    const [result, grouped] = await Promise.all([
+      listAgentRows(
+        {
+          ...baseWhere,
+          status: { in: (FOLLOW_STATUSES as readonly string[]).includes(statusQ) ? [statusQ as (typeof FOLLOW_STATUSES)[number]] : [...FOLLOW_STATUSES] },
+        },
+        () => true,
+        LIST_LIMIT,
+        "all"
+      ),
+      prisma().salesOrder.groupBy({ by: ["status"], where: baseWhere, _count: { _all: true } }),
+    ]);
+    const counts = { all: 0, EXECUTED: 0, SHIPPED: 0, DELIVERED: 0, RETURNED: 0 };
+    for (const g of grouped) {
+      if (g.status in counts) counts[g.status as (typeof FOLLOW_STATUSES)[number]] = g._count._all;
+      counts.all += g._count._all;
+    }
+    res.json({ ...result, counts });
   })
 );
 

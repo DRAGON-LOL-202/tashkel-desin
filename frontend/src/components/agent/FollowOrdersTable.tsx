@@ -1,0 +1,274 @@
+import { useState } from "react";
+import { ChevronDown, Eye, Flag, History, Phone } from "lucide-react";
+import { Badge } from "../ui/Badge";
+import { fmtMoney } from "../inventory/format";
+import { formatArabicDate } from "../../lib/date";
+import { SALES_STATUS_META } from "../sales/status";
+import { rowBadge } from "./meta";
+import { ShippingCell } from "./ShippingCell";
+import { OrderLogModal } from "./OrderLogModal";
+import { OrderDetailsModal } from "./OrderDetailsModal";
+import type { FollowOrder } from "../../types";
+
+interface FollowOrdersTableProps {
+  orders: FollowOrder[];
+  canAct: boolean;
+  onStatus: (o: FollowOrder, status: "SHIPPED" | "DELIVERED") => Promise<void>;
+  onFlag: (o: FollowOrder, flagged: boolean) => Promise<void>;
+  onShipping: (o: FollowOrder, price: number | null) => Promise<boolean>;
+}
+
+function initialChar(name: string): string {
+  const clean = name.trim();
+  return clean ? clean[0] : "؟";
+}
+
+// جدول متابعة أوردرات المبيعات: التاريخ، اسم العميل، رقم البوليصة، الحالة (قائمة منسدلة)، الفتاة، الشحن، وزر التفاصيل
+export function FollowOrdersTable({ orders, canAct, onStatus, onFlag, onShipping }: FollowOrdersTableProps) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
+  const [logOrder, setLogOrder] = useState<FollowOrder | null>(null);
+
+  // نربط النافذة بأحدث نسخة من الصف بعد أي تحديث (شحن/مرتجع/سعر شحن)
+  const detailOrder = detailOrderId ? orders.find((x) => x.id === detailOrderId) ?? null : null;
+
+  const runRow = async (id: string, fn: () => Promise<void>) => {
+    setBusyId(id);
+    try {
+      await fn();
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[920px] border-collapse text-right text-sm">
+          <thead>
+            <tr className="border-b border-border bg-primary/10 text-xs font-semibold text-muted dark:bg-[#0c2720]">
+              <th className="whitespace-nowrap px-4 py-3">رقم البوليصة</th>
+              <th className="whitespace-nowrap px-4 py-3">اسم العميل</th>
+              <th className="whitespace-nowrap px-4 py-3">الأوردر والقيمة</th>
+              <th className="whitespace-nowrap px-4 py-3">التاريخ</th>
+              <th className="whitespace-nowrap px-4 py-3">الحالة</th>
+              <th className="whitespace-nowrap px-4 py-3">الفتاة</th>
+              <th className="whitespace-nowrap px-4 py-3">سعر الشحن</th>
+              <th className="whitespace-nowrap px-4 py-3">الإجراء</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border/70">
+            {orders.map((o) => {
+              const badge = rowBadge(o.status, o.returnFlagged, o.cancelled);
+              const locked = o.cancelled || o.status === "RETURNED";
+              const isBusy = busyId === o.id;
+              const statusColor = SALES_STATUS_META[o.status].color;
+              const displayCustomer =
+                o.customerName || (o.source === "MANUAL" ? o.closerName || "أوردر يدوي" : "—");
+              const showPhone = Boolean(o.customerPhone);
+              const agentLabel =
+                o.source === "MANUAL"
+                  ? `يدوي${o.closerName ? ` — ${o.closerName}` : ""}`
+                  : o.agentName || "—";
+
+              return (
+                <tr
+                  key={o.id}
+                  className={`transition-colors hover:bg-primary/5 dark:hover:bg-[#103027]/70 ${
+                    o.returnFlagged && o.status !== "RETURNED" ? "bg-problem/[0.04]" : ""
+                  }`}
+                >
+                  {/* رقم البوليصة */}
+                  <td className="whitespace-nowrap px-4 py-3 align-middle">
+                    <div className="flex flex-col items-start gap-0.5">
+                      <span className="font-bold tabular-nums text-primary-deep">{o.waybill || "—"}</span>
+                      {o.source === "MANUAL" && (
+                        <span className="rounded bg-border/60 px-1.5 py-0.5 text-[10px] font-medium text-muted">
+                          يدوي
+                        </span>
+                      )}
+                    </div>
+                  </td>
+
+                  {/* اسم العميل */}
+                  <td className="px-4 py-3 align-middle">
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        aria-hidden="true"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-primary-deep/25 bg-primary/15 text-xs font-bold text-primary-deep"
+                      >
+                        {initialChar(displayCustomer)}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-text" title={displayCustomer}>
+                          {displayCustomer}
+                        </p>
+                        {showPhone && (
+                          <p dir="ltr" className="mt-0.5 flex items-center justify-end gap-1 text-[11px] tabular-nums text-muted">
+                            <Phone size={10} />
+                            <span>{o.customerPhone}</span>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+
+                  {/* البوكس والقيمة */}
+                  <td className="max-w-[230px] px-4 py-3 align-middle">
+                    <p className="truncate font-medium text-text" title={o.boxName}>
+                      {o.boxName || "—"}
+                    </p>
+                    <p className="mt-0.5 text-xs font-semibold tabular-nums text-muted">
+                      {o.sellPrice === null ? "—" : fmtMoney(o.sellPrice)}
+                    </p>
+                  </td>
+
+                  {/* التاريخ */}
+                  <td className="whitespace-nowrap px-4 py-3 align-middle text-xs text-muted">
+                    {formatArabicDate(o.date, "EEEE، d MMMM yyyy")}
+                  </td>
+
+                  {/* الحالة: قائمة منسدلة لتغيير الحالة للشحن/التسليم (مع الحفاظ على صلاحيات المحاسب) */}
+                  <td className="whitespace-nowrap px-4 py-3 align-middle">
+                    <div className="flex flex-col items-start gap-1">
+                      {canAct && !locked ? (
+                        <div className="relative inline-flex items-center">
+                          <select
+                            aria-label={`حالة الأوردر ${o.waybill || o.id}`}
+                            disabled={isBusy}
+                            value={o.status}
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              if ((next === "SHIPPED" || next === "DELIVERED") && next !== o.status) {
+                                void runRow(o.id, () => onStatus(o, next));
+                              }
+                            }}
+                            style={{
+                              backgroundColor: `${statusColor}1f`,
+                              color: statusColor,
+                              borderColor: `${statusColor}55`,
+                            }}
+                            className="h-8 cursor-pointer appearance-none rounded-full border pl-7 pr-3 text-xs font-semibold outline-none transition-opacity focus:ring-2 focus:ring-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {o.status === "EXECUTED" && (
+                              <option value="EXECUTED" disabled className="bg-surface text-muted">
+                                تم التنفيذ
+                              </option>
+                            )}
+                            <option value="SHIPPED" className="bg-surface text-text">
+                              شحن
+                            </option>
+                            <option value="DELIVERED" className="bg-surface text-text">
+                              تم التسليم
+                            </option>
+                          </select>
+                          <ChevronDown
+                            size={13}
+                            style={{ color: statusColor }}
+                            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2"
+                            aria-hidden="true"
+                          />
+                        </div>
+                      ) : (
+                        <Badge color={badge.color}>{badge.label}</Badge>
+                      )}
+                      {o.returnFlagged && o.status !== "RETURNED" && !o.cancelled && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-problem/40 bg-problem/10 px-2 py-0.5 text-[10px] font-semibold text-problem">
+                          <Flag size={10} />
+                          <span>مرتجع للمراجعة</span>
+                        </span>
+                      )}
+                    </div>
+                  </td>
+
+                  {/* الفتاة */}
+                  <td className="whitespace-nowrap px-4 py-3 align-middle text-xs font-medium text-text">
+                    {agentLabel}
+                  </td>
+
+                  {/* سعر الشحن */}
+                  <td className="whitespace-nowrap px-4 py-3 align-middle">
+                    {canAct ? (
+                      <ShippingCell
+                        value={o.shippingPrice}
+                        disabled={o.cancelled || o.status === "REGISTERED"}
+                        onSave={(v) => onShipping(o, v)}
+                      />
+                    ) : (
+                      <span className="tabular-nums text-muted">
+                        {o.shippingPrice === null ? "—" : fmtMoney(o.shippingPrice)}
+                      </span>
+                    )}
+                  </td>
+
+                  {/* الإجراء: زر التفاصيل + علامة المرتجع + سجل التغييرات */}
+                  <td className="whitespace-nowrap px-4 py-3 align-middle">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setDetailOrderId(o.id)}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-control border border-primary-deep/30 bg-primary/10 px-2.5 text-xs font-semibold text-primary-deep transition-colors hover:bg-primary/20"
+                      >
+                        <Eye size={13} />
+                        <span>التفاصيل</span>
+                      </button>
+                      {canAct && !o.cancelled && o.status !== "RETURNED" && (
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => void runRow(o.id, () => onFlag(o, !o.returnFlagged))}
+                          aria-label={o.returnFlagged ? "إزالة علامة المرتجع" : "تعليم كمرتجع"}
+                          title={o.returnFlagged ? "إزالة علامة المرتجع" : "تعليم كمرتجع"}
+                          className={`flex h-8 w-8 items-center justify-center rounded-control border transition-colors ${
+                            o.returnFlagged
+                              ? "border-problem/50 bg-problem/15 text-problem hover:bg-problem/25"
+                              : "border-border text-muted hover:border-problem/40 hover:text-problem"
+                          }`}
+                        >
+                          <Flag size={13} />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        aria-label="سجل التغييرات"
+                        title="سجل التغييرات"
+                        onClick={() => setLogOrder(o)}
+                        className="flex h-8 w-8 items-center justify-center rounded-control border border-border text-muted transition-colors hover:border-primary-deep/40 hover:text-text"
+                      >
+                        <History size={13} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {detailOrder && (
+        <OrderDetailsModal
+          open
+          order={detailOrder}
+          canAct={canAct}
+          onClose={() => setDetailOrderId(null)}
+          onFlag={onFlag}
+          onOpenLog={() => {
+            const target = detailOrder;
+            setDetailOrderId(null);
+            setLogOrder(target);
+          }}
+        />
+      )}
+
+      {logOrder && (
+        <OrderLogModal
+          open
+          orderId={logOrder.id}
+          waybill={logOrder.waybill}
+          onClose={() => setLogOrder(null)}
+        />
+      )}
+    </>
+  );
+}

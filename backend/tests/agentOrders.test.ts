@@ -471,3 +471,46 @@ describe("تعديل محتويات البوكس داخل أوردر الفتا�
     }
   });
 });
+
+describe("تفاصيل متابعة المحاسب والبحث بالعميل/الهاتف مع الحفاظ على الصلاحيات", () => {
+  it("يعرض تفاصيل العميل ومكونات البوكس والعدّادات ويدعم البحث بالعميل والهاتف دون كشف التكاليف أو توسيع الصلاحيات", async () => {
+    const r = await api(ag1).post("/api/agent/orders").send({
+      date: D,
+      customerName: "سارة محمود",
+      customerPhone: "01099887766",
+      customerAddress: "المعادي — شارع 9 عمارة 12",
+      notes: "التوصيل بعد العصر",
+      lines: [{ productId: box.id, quantity: 1 }],
+    });
+    expect(r.status).toBe(201);
+    const wb = r.body.order.waybill as string;
+    expect((await exportIds(ag1, [r.body.order.id])).status).toBe(200);
+    const soId = await salesOrderOf(r.body.order.id);
+    expect((await execute(soId)).status).toBe(200);
+
+    // قراءة التفاصيل من نقطة المحاسب والبحث بالاسم والهاتف
+    const byName = await api(acct).get(`/api/accounting/orders?q=${encodeURIComponent("سارة محمود")}`);
+    expect(byName.status).toBe(200);
+    expect(byName.body.counts).toMatchObject({ all: expect.any(Number), EXECUTED: expect.any(Number) });
+    const row = byName.body.orders.find((x: { id: string }) => x.id === soId);
+    expect(row).toBeDefined();
+    expect(row.waybill).toBe(wb);
+    expect(row.customerName).toBe("سارة محمود");
+    expect(row.customerPhone).toBe("01099887766");
+    expect(row.customerAddress).toBe("المعادي — شارع 9 عمارة 12");
+    expect(row.notes).toBe("التوصيل بعد العصر");
+    expect(row.lines).toHaveLength(1);
+    expect(row.lines[0].components[0]).toMatchObject({ itemName: "ساعة", unit: "قطعة", quantity: 1 });
+
+    const byPhone = await api(acct).get("/api/accounting/orders?q=01099887766");
+    expect(byPhone.status).toBe(200);
+    expect(byPhone.body.orders.some((x: { id: string }) => x.id === soId)).toBe(true);
+
+    // لا تسرب لأي أسعار تكلفة أو أسعار مكوّنات، وصلاحيات المحاسب تبقى محصورة تماماً
+    expect(JSON.stringify(byName.body)).not.toMatch(/unitCost|unitPrice|unitSell|costTotal|profit|available/);
+    expect((await acctStatus(soId, "RETURNED")).status).toBe(400);
+    expect((await acctStatus(soId, "SHIPPED")).status).toBe(200);
+    expect((await api(acct).patch(`/api/sales/orders/${soId}`).send({ customerName: "تعديل" })).status).toBe(403);
+    expect((await api(acct).delete(`/api/sales/orders/${soId}`)).status).toBe(403);
+  });
+});

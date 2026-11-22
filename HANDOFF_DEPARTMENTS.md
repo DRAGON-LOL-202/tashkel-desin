@@ -42,9 +42,13 @@
   - حساب حدود اليوم بتوقيت `ATTENDANCE_TZ` عبر `tzDayBoundsUtc`/`startOfTodayUtc`.
   - تصفية أصناف المخزون قبل توقيع روابط R2، ودفع فلتر `bucket` في `agent.ts` لـ Prisma، وتنظيف مؤقت المهمة عند الإكمال وقفل `FOR UPDATE` عند بدء المؤقت.
   - قنوات `liveSync` مقسّمة (`tasks`, `inventory`, `sales`, `accounting`, `users`, `notifications`, `general`) مع debounce 350ms، وتقسيم حزم Vite عبر `React.lazy` و`Suspense` و`ErrorBoundary`، وإصلاح عرض محتويات البوكسات والبحث في الأصناف وإلغاء الأوردر فقط قبل التنفيذ في `AgentOrders.tsx`/`AgentOrderModal.tsx`.
+- **تحديث صفحة «متابعة أوردرات المبيعات» (`/sales-follow-up`)**:
+  - إعادة بناء العرض كجدول متابعة منظم عبر [FollowOrdersTable.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/FollowOrdersTable.tsx) يضم: رقم البوليصة، اسم العميل وهاتفه، الأوردر والقيمة، التاريخ، الحالة كقائمة منسدلة (`تم التنفيذ` ← `شحن` / `تم التسليم`)، الفتاة، سعر الشحن، وزر «التفاصيل» مع أزرار علامة المرتجع وسجل التغييرات.
+  - إضافة نافذة [OrderDetailsModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/OrderDetailsModal.tsx) لعرض كامل تفاصيل الأوردر المدخلة من الفتاة (اسم العميل، الهاتف مع زر نسخ، العنوان، الملاحظات، البوكسات ومكوّناتها، والتواريخ والمبالغ) وإتاحتها أيضاً من صفوف `FollowOrderRow`.
+  - إثراء `GET /api/accounting/orders` في `backend/src/routes/accounting.ts` بتفاصيل العميل والبنود والبحث بالاسم/الهاتف وعدّادات الحالات مع بقاء صلاحيات `SALES_ACCOUNTANT` محصورة كما هي دون أي تسرب لتكاليف المخزون.
 - **ملفات المستودع والاختبارات**:
   - إضافة `.env.example` في `backend/` و`frontend/` وملف `.github/workflows/ci.yml`.
-  - إصلاح وإضافة اختبارات في `backend/tests/` حتى نجح كامل الطقم (`437/437`).
+  - إصلاح وإضافة اختبارات التغطية في `backend/tests/` (شاملةً اختبارات تفاصيل المتابعة وعدم تسرب التكاليف).
 
 ---
 
@@ -57,6 +61,8 @@
 - `frontend/.env.example`
 - `frontend/src/lib/departments.ts`
 - `frontend/src/components/departments/DepartmentProvider.tsx`
+- `frontend/src/components/agent/FollowOrdersTable.tsx`
+- `frontend/src/components/agent/OrderDetailsModal.tsx`
 - `frontend/src/components/ui/ErrorBoundary.tsx`
 - `frontend/src/pages/Workspace.tsx`
 - `HANDOFF_DEPARTMENTS.md`
@@ -98,6 +104,7 @@
 ### ملفات معدّلة في Frontend
 - `frontend/src/App.tsx` (تضمين `/workspace` وتقسيم الحزم وإزالة مسار `/products`)
 - `frontend/src/components/agent/AgentOrderModal.tsx`
+- `frontend/src/components/agent/FollowOrderRow.tsx`
 - `frontend/src/components/auth/AuthProvider.tsx`
 - `frontend/src/components/sidebar/Sidebar.tsx`
 - `frontend/src/hooks/useLiveSync.ts`
@@ -105,6 +112,7 @@
 - `frontend/src/hooks/useTeamMembers.ts`
 - `frontend/src/lib/liveSync.ts`
 - `frontend/src/lib/permissions.ts`
+- `frontend/src/types/agent.ts`
 - `frontend/src/types/index.ts`
 - `frontend/src/pages/AgentAccounts.tsx`
 - `frontend/src/pages/AgentOrders.tsx`
@@ -144,11 +152,11 @@
 | الفحص | الأمر | النتيجة | التفاصيل المرصودة |
 | --- | --- | --- | --- |
 | فحص أنواع Backend | `cd backend && npm run typecheck` | **PASS** | `tsc -p tsconfig.json --noEmit` — خروج برمز 0 (0 أخطاء) |
-| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **26 ملفاً نجح / 26**، **437 اختباراً نجح / 437** (0 فشل، 0 تخطي) في `44.44s` |
-| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (214ms) + `tsc -p tsconfig.json` — خروج برمز 0 |
+| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **26 ملفاً نجح / 26**، **438 اختباراً نجح / 438** (0 فشل، 0 تخطي) في `118.94s` |
+| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (315ms) + `tsc -p tsconfig.json` — خروج برمز 0 |
 | اختبار قبول الإدارات والصلاحيات | `tsx verify_departments.ts` | **PASS** | طباعة `ALL_DEPARTMENTS_ACCEPTANCE_CHECKS_PASSED` (تحقق من `/workspace` و`manageUsers` لـ `admin`/`manager` فقط، إزالة `/products` من `Workspace`/`App`/`Sidebar`، عدّ الروابط `6/8/3/1`، وثبات `departmentsForPath`) |
-| فحص Frontend Lint | `cd frontend && npm run lint` | **PASS** | `oxlint` — `0 errors`, `20 warnings` (على 169 ملفاً في `54ms`) |
-| بناء Frontend | `cd frontend && npm run build` | **PASS** | `tsc -b && vite build` — 2861 وحدة في `1.45s`؛ الحزمة الرئيسية `230.27 kB` (مقارنة بـ `775.92 kB` قبل تقسيم `React.lazy`) |
+| فحص Frontend Lint | `cd frontend && npm run lint` | **PASS** | `oxlint` — `0 errors`, `20 warnings` (على 171 ملفاً في `248ms`) |
+| بناء Frontend | `cd frontend && npm run build` | **PASS** | `tsc -b && vite build` — 2863 وحدة في `6.42s`؛ الحزمة الرئيسية `230.37 kB` (مقارنة بـ `775.92 kB` قبل تقسيم `React.lazy`) |
 | اختبار المتصفح الحي (E2E) | — | **NOT RUN** | لم يُشغَّل متصفح فعلي للنقر البصري |
 
 ---
