@@ -137,17 +137,33 @@ export function OrderDetailsModal({ open, order: o, canAct, onClose, onOpenLog, 
               <dd className="mt-0.5 font-medium text-text">{formatArabicDate(o.date, "EEEE، d MMM yyyy")}</dd>
             </div>
             <div>
-              <dt className="text-xs text-muted">قيمة البيع</dt>
+              <dt className="text-xs text-muted">سعر الخروج</dt>
               <dd className="mt-0.5 font-bold tabular-nums text-text">
                 {o.sellPrice === null ? "—" : fmtMoney(o.sellPrice)}
               </dd>
             </div>
+            {o.inventorySellPrice !== null && (
+              <div>
+                <dt className="text-xs text-muted">سعر الخروج من المخزون</dt>
+                <dd className="mt-0.5 font-semibold tabular-nums text-muted">
+                  {fmtMoney(o.inventorySellPrice)}
+                </dd>
+              </div>
+            )}
             <div>
               <dt className="text-xs text-muted">سعر الشحن</dt>
               <dd className="mt-0.5 font-semibold tabular-nums text-text">
                 {o.shippingPrice === null ? "غير محدد" : fmtMoney(o.shippingPrice)}
               </dd>
             </div>
+            {o.sellPrice !== null && (
+              <div>
+                <dt className="text-xs text-muted">الإجمالي بالشحن</dt>
+                <dd className="mt-0.5 font-bold tabular-nums text-primary-deep">
+                  {fmtMoney(o.sellPrice + (o.shippingPrice ?? 0))}
+                </dd>
+              </div>
+            )}
             <div>
               <dt className="text-xs text-muted">تاريخ الشحن</dt>
               <dd className="mt-0.5 text-xs text-text">
@@ -184,11 +200,24 @@ export function OrderDetailsModal({ open, order: o, canAct, onClose, onOpenLog, 
             <div className="flex flex-col gap-2">
               {o.lines.map((line) => (
                 <div key={line.id} className="rounded-control border border-border/80 bg-surface px-3 py-2">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-semibold text-text">{line.productName}</span>
-                    <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-bold tabular-nums text-primary-deep">
-                      العدد: {line.quantity}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {line.boxPrice !== null && (
+                        <span className="text-xs tabular-nums text-muted">
+                          سعر البوكس: <strong className="text-text">{fmtMoney(line.boxPrice)}</strong>
+                          {line.lineTotal !== null && (
+                            <>
+                              {" "}
+                              • الإجمالي: <strong className="text-primary-deep">{fmtMoney(line.lineTotal)}</strong>
+                            </>
+                          )}
+                        </span>
+                      )}
+                      <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-bold tabular-nums text-primary-deep">
+                        العدد: {line.quantity}
+                      </span>
+                    </div>
                   </div>
                   {line.components.length > 0 && (
                     <ul className="mt-1.5 flex flex-wrap gap-1.5">

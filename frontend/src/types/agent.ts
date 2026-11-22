@@ -33,6 +33,8 @@ export interface AgentOrderLine {
   productId: string | null;
   productName: string;
   quantity: number;
+  boxPrice?: number | null;
+  lineTotal?: number | null;
   /** محتويات الوحدة الواحدة من البوكس في هذا الأوردر */
   components: AgentComponent[];
 }
@@ -46,8 +48,10 @@ export interface AgentOrder {
   customerPhone: string;
   customerAddress: string;
   notes: string;
-  /** محسوب تلقائياً في الباكند من مكونات الأوردر (لا تدخله الفتاة) */
+  /** سعر الخروج (مجموع أسعار البوكسات التي أدخلتها الفتاة، أو تلقائي من المكونات للأوردرات القديمة) */
   sellPrice: number;
+  shippingPrice?: number | null;
+  totalWithShipping?: number;
   status: AgentOrderStatus;
   /** حالة أوردر المبيعات المرتبط بعد التصدير */
   salesStatus: SalesOrderStatus | null;
@@ -65,7 +69,8 @@ export interface AgentOrderInput {
   customerPhone: string;
   customerAddress: string;
   notes: string;
-  lines: { productId: string; quantity: number; components: { itemId: string; quantity: number }[] }[];
+  shippingPrice?: number | null;
+  lines: { productId: string; quantity: number; boxPrice?: number; components: { itemId: string; quantity: number }[] }[];
 }
 
 export interface AgentProfile {
@@ -99,6 +104,8 @@ export interface FollowOrderLine {
   id: string;
   productName: string;
   quantity: number;
+  boxPrice: number | null;
+  lineTotal: number | null;
   components: AgentComponent[];
 }
 
@@ -126,7 +133,10 @@ export interface FollowOrder {
   customerAddress: string;
   notes: string;
   lines: FollowOrderLine[];
+  /** سعر الخروج (الذي أدخلته الفتاة إن وُجد، وإلا سعر المخزون) */
   sellPrice: number | null;
+  /** سعر الخروج من المخزون */
+  inventorySellPrice: number | null;
   shippingPrice: number | null;
   status: SalesOrderStatus;
   returnFlagged: boolean;
@@ -191,11 +201,18 @@ export interface GeneralAccounts {
   shippedCount: number;
   returnedCount: number;
   cancelledCount: number;
+  /** سعر الخروج من المخزون */
   deliveredSales: number;
+  /** سعر الخروج (من الفتاة) */
+  deliveredExitPrice: number;
   totalShipping: number;
+  /** الإجمالي الكلي = سعر الخروج + الشحن */
   grandTotal: number;
   salesPercent: number;
   shippingPercent: number;
+  /** فرق صرف بالجنيه وبالنسبة المئوية بين سعر الخروج من المخزون وسعر الخروج */
+  priceDiff: number;
+  priceDiffPercent: number;
 }
 
 /** إدارة Prefix الفتيات (الإدارة) */

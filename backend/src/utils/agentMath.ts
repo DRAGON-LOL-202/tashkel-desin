@@ -24,7 +24,10 @@ export interface AccountingRow {
   /** حالة أوردر المبيعات المرتبط (null للمسودة) */
   salesStatus: SalesStatus | null;
   returnFlagged: boolean;
+  /** سعر الخروج من المخزون (مكوّنات البوكس × سعر بيع الصنف بالمخزون) */
   sellCents: number;
+  /** سعر الخروج الفعلي الذي أدخلته الفتاة (وإن غاب يساوي sellCents) */
+  exitCents?: number;
   shippingCents: number;
 }
 
@@ -72,7 +75,7 @@ export interface AgentSummary {
 
 export function summarize(rows: AccountingRow[]): AgentSummary {
   const delivered = rows.filter(isDelivered);
-  const salesCents = delivered.reduce((a, r) => a + r.sellCents, 0);
+  const salesCents = delivered.reduce((a, r) => a + (r.exitCents ?? r.sellCents), 0);
   const fixed = delivered.length * FIXED_FEE_CENTS;
   const commission = commissionCents(salesCents);
   return {
@@ -92,13 +95,16 @@ export function summarize(rows: AccountingRow[]): AgentSummary {
   };
 }
 
-/** الحسابات العامة: الشحن يُحتسب مرة واحدة لكل أوردر مسلَّم (ولا يدخل ملغي/مرتجع). الإجمالي صفر ← النسب صفر. */
+/** الحسابات العامة: سعر الخروج من المخزون + سعر الخروج (من الفتاة) + الشحن + فرق الصرف %. الإجمالي الكلي = سعر الخروج + الشحن. */
 export function generalAccounts(rows: AccountingRow[], draftCount = 0) {
   const delivered = rows.filter(isDelivered);
-  const salesCents = delivered.reduce((a, r) => a + r.sellCents, 0);
+  const inventorySellCents = delivered.reduce((a, r) => a + r.sellCents, 0);
+  const exitPriceCents = delivered.reduce((a, r) => a + (r.exitCents ?? r.sellCents), 0);
   const shippingCents = delivered.reduce((a, r) => a + r.shippingCents, 0);
-  const grandCents = salesCents + shippingCents;
+  const grandCents = exitPriceCents + shippingCents;
+  const priceDiffCents = exitPriceCents - inventorySellCents;
   const pct = (part: number) => (grandCents === 0 ? 0 : Math.round((part / grandCents) * 10000) / 100);
+  const priceDiffPercent = inventorySellCents === 0 ? 0 : Math.round((priceDiffCents / inventorySellCents) * 10000) / 100;
   return {
     // نفس تعريف حساب الفتاة: كل الأوردرات (مسودات + مصدَّرة + ملغاة) ⇒ الإجمالي العام = مجموع حسابات الفتيات
     totalOrders: rows.length + draftCount,
@@ -107,10 +113,17 @@ export function generalAccounts(rows: AccountingRow[], draftCount = 0) {
     shippedCount: rows.filter(isShipped).length,
     returnedCount: rows.filter(isReturned).length,
     cancelledCount: rows.filter((r) => r.agentStatus === "CANCELLED").length,
-    deliveredSales: fromCents(salesCents),
+    /** سعر الخروج من المخزون (قيمة مكونات المخزون للأوردرات المسلّمة) */
+    deliveredSales: fromCents(inventorySellCents),
+    /** سعر الخروج الذي أدخلته الفتيات للأوردرات المسلّمة */
+    deliveredExitPrice: fromCents(exitPriceCents),
     totalShipping: fromCents(shippingCents),
+    /** الإجمالي الكلي = سعر الخروج + الشحن */
     grandTotal: fromCents(grandCents),
-    salesPercent: pct(salesCents),
+    salesPercent: pct(exitPriceCents),
     shippingPercent: pct(shippingCents),
+    /** فرق صرف (بالجنيه وبالنسبة المئوية) بين سعر الخروج من المخزون وسعر الخروج */
+    priceDiff: fromCents(priceDiffCents),
+    priceDiffPercent,
   };
 }

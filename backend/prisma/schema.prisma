@@ -554,6 +554,7 @@ model SalesOrderLine {
   // اسم المنتج وقت الإضافة (يبقى حتى لو حُذف المنتج الثابت)
   productName String
   quantity    Int      @default(1)
+  boxPrice    Decimal? @db.Decimal(12, 2)
   createdAt   DateTime @default(now())
 
   order      SalesOrder             @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -611,9 +612,10 @@ model AgentOrder {
   customerName  String           @default("")
   customerPhone String           @default("")
   customerAddress String         @default("")
-  notes         String           @default("")
-  sellPrice     Decimal          @db.Decimal(12, 2)
-  status        AgentOrderStatus @default(DRAFT)
+  notes           String           @default("")
+  sellPrice       Decimal          @db.Decimal(12, 2)
+  shippingPrice   Decimal?         @db.Decimal(12, 2)
+  status          AgentOrderStatus @default(DRAFT)
   exportedAt    DateTime?
   exportedById  String?
   salesOrderId  String?          @unique
@@ -639,6 +641,7 @@ model AgentOrderLine {
   productId   String?
   productName String
   quantity    Int      @default(1)
+  boxPrice    Decimal? @db.Decimal(12, 2)
 
   order   AgentOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product SalesProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)

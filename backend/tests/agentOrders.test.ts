@@ -514,3 +514,66 @@ describe("تفاصيل متابعة المحاسب والبحث بالعميل/�
     expect((await api(acct).delete(`/api/sales/orders/${soId}`)).status).toBe(403);
   });
 });
+
+describe("سعر كل بوكس من الفتاة + مصاريف الشحن + الحسابات العامة (سعر الخروج وفرق الصرف)", () => {
+  it("يحفظ سعر البوكس والشحن ورقم الهاتف المزدوج، ويحسب سعر الخروج من المخزون وسعر الخروج والإجمالي الكلي وفرق الصرف بدقة", async () => {
+    const agCustom = await makeUser("ag_box_price", "SALES_AGENT");
+    await api(admin).put(`/api/sales-agents/${agCustom.id}/prefix`).send({ prefix: 950 });
+    const agTok = await login("ag_box_price");
+
+    const cat = (await prisma().inventoryCategory.findFirstOrThrow()).id;
+    const item = (await api(admin).post("/api/inventory").send({ unit: "قطعة", categoryId: cat, name: "ميدالية نحاس", initialQuantity: 50, unitPrice: 80, sellPrice: 180 })).body.item;
+    const customBox = (await api(admin).post("/api/sales/products").send({ name: "بوكس تهادوا تحابوا", components: [{ itemId: item.id, quantity: 1 }] })).body.product;
+
+    const D2 = "2026-11-22";
+    const created = await api(agTok).post("/api/agent/orders").send({
+      date: D2,
+      customerName: "هيثم جمال عبد المجيد احمد",
+      customerPhone: "01097457278 / 01029793559",
+      customerAddress: "محافظة الدقهلية مركز بلقاس",
+      notes: "الاسم على الميدالية (هيثم)",
+      shippingPrice: 70,
+      lines: [{ productId: customBox.id, quantity: 1, boxPrice: 650 }],
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.order.customerPhone).toBe("01097457278 / 01029793559");
+    expect(created.body.order.sellPrice).toBe(650);
+    expect(created.body.order.shippingPrice).toBe(70);
+    expect(created.body.order.totalWithShipping).toBe(720);
+    expect(created.body.order.lines[0]).toMatchObject({ boxPrice: 650, lineTotal: 650 });
+
+    const aoId = created.body.order.id as string;
+    expect((await exportIds(agTok, [aoId])).status).toBe(200);
+    const soId = await salesOrderOf(aoId);
+    expect((await execute(soId)).status).toBe(200);
+    expect((await acctStatus(soId, "DELIVERED")).status).toBe(200);
+
+    const savedSo = await prisma().salesOrder.findUniqueOrThrow({ where: { id: soId }, include: { lines: true } });
+    expect(Number(savedSo.agentSellPrice)).toBe(650);
+    expect(Number(savedSo.shippingPrice)).toBe(70);
+    expect(Number(savedSo.lines[0].boxPrice)).toBe(650);
+
+    // الحسابات العامة لنفس اليوم: سعر الخروج من المخزون = 180، سعر الخروج = 650، الشحن = 70، الإجمالي = 720
+    const gen = (await api(acct).get(`/api/accounting/general?from=${D2}&to=${D2}`)).body.general;
+    expect(gen.deliveredCount).toBe(1);
+    expect(gen.deliveredSales).toBe(180);
+    expect(gen.deliveredExitPrice).toBe(650);
+    expect(gen.totalShipping).toBe(70);
+    expect(gen.grandTotal).toBe(720);
+    expect(gen.priceDiff).toBe(470);
+    expect(gen.priceDiffPercent).toBe(261.11);
+    expect(gen.salesPercent).toBe(90.28);
+    expect(gen.shippingPercent).toBe(9.72);
+
+    // المتابعة تعيد سعر الخروج وسعر المخزون وسعر البوكس بدون أي تسريب للتكاليف
+    const follow = await api(acct).get(`/api/accounting/orders?from=${D2}&to=${D2}`);
+    expect(follow.status).toBe(200);
+    expect(follow.body.orders[0]).toMatchObject({
+      sellPrice: 650,
+      inventorySellPrice: 180,
+      shippingPrice: 70,
+    });
+    expect(follow.body.orders[0].lines[0]).toMatchObject({ boxPrice: 650, lineTotal: 650 });
+    expect(JSON.stringify(follow.body)).not.toMatch(/unitCost|unitPrice|unitSell|costTotal|profit|available/);
+  });
+});

@@ -23,6 +23,8 @@ const lines = z
     z.object({
       productId: id,
       quantity: lineQty.default(1),
+      // سعر البوكس الواحد كما تدخله الفتاة (اختياري للتوافق مع الطلبات القديمة؛ الواجهة ترسله عن كل بوكس)
+      boxPrice: money.optional(),
       // اختياري: محتويات هذا البوكس بعد تعديل الفتاة. إن غابت تُنسخ محتويات المنتج الثابت كما هي.
       components: z.array(z.object({ itemId: id, quantity: componentQty }), { message: "محتويات البوكس غير صالحة" }).min(1, "البوكس يحتاج محتوى واحداً على الأقل").max(60, "محتويات البوكس كثيرة جداً").optional(),
     }),
@@ -31,8 +33,8 @@ const lines = z
   .min(1, "أضف منتجاً واحداً على الأقل")
   .max(20, "عدد المنتجات كبير جداً")
   .transform((list) => {
-    // نفس الصنف مكرر داخل بوكس واحد: تُجمع كمياته. ونفس البوكس بنفس المحتويات يُدمج في بند واحد؛ البوكسات المختلفة المحتوى تبقى بنوداً منفصلة.
-    const merged = new Map<string, { productId: string; quantity: number; components?: { itemId: string; quantity: number }[] }>();
+    // نفس الصنف مكرر داخل بوكس واحد: تُجمع كمياته. ونفس البوكس بنفس المحتويات والسعر يُدمج في بند واحد؛ البوكسات المختلفة تبقى منفصلة.
+    const merged = new Map<string, { productId: string; quantity: number; boxPrice?: number; components?: { itemId: string; quantity: number }[] }>();
     for (const l of list) {
       let components: { itemId: string; quantity: number }[] | undefined;
       if (l.components) {
@@ -40,17 +42,18 @@ const lines = z
         for (const c of l.components) byItem.set(c.itemId, Math.round(((byItem.get(c.itemId) ?? 0) + c.quantity) * 1000) / 1000);
         components = [...byItem].map(([itemId, quantity]) => ({ itemId, quantity })).sort((a, b) => (a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : 0));
       }
-      const key = `${l.productId}|${components ? components.map((c) => `${c.itemId}:${c.quantity}`).join(",") : "default"}`;
+      const priceKey = l.boxPrice === undefined ? "auto" : String(Math.round(l.boxPrice * 100));
+      const key = `${l.productId}|${priceKey}|${components ? components.map((c) => `${c.itemId}:${c.quantity}`).join(",") : "default"}`;
       const cur = merged.get(key);
       if (cur) cur.quantity = Math.min(cur.quantity + l.quantity, 1000);
-      else merged.set(key, { productId: l.productId, quantity: l.quantity, ...(components ? { components } : {}) });
+      else merged.set(key, { productId: l.productId, quantity: l.quantity, ...(l.boxPrice !== undefined ? { boxPrice: l.boxPrice } : {}), ...(components ? { components } : {}) });
     }
     return [...merged.values()];
   });
 
 const customer = {
   customerName: z.string().trim().min(1, "اسم العميل مطلوب").max(120, "اسم العميل طويل جداً"),
-  customerPhone: z.string().trim().max(30, "رقم الهاتف طويل جداً"),
+  customerPhone: z.string().trim().max(60, "رقم الهاتف طويل جداً"),
   customerAddress: z.string().trim().max(300, "العنوان طويل جداً"),
   notes: z.string().trim().max(1000, "الملاحظات طويلة جداً"),
 };
@@ -61,6 +64,7 @@ export const createAgentOrderSchema = z.object({
   customerPhone: customer.customerPhone.default(""),
   customerAddress: customer.customerAddress.default(""),
   notes: customer.notes.default(""),
+  shippingPrice: money.nullable().optional(),
   lines,
 });
 
@@ -71,6 +75,7 @@ export const updateAgentOrderSchema = z
     customerPhone: customer.customerPhone.optional(),
     customerAddress: customer.customerAddress.optional(),
     notes: customer.notes.optional(),
+    shippingPrice: money.nullable().optional(),
     lines: lines.optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: "لا توجد حقول للتعديل" });

@@ -45,16 +45,39 @@ describe("agentMath", () => {
     expect(s.total).toBe(7);
   });
   it("الحسابات العامة: النسب من نفس المجموعة، والصفر يعطي نسباً صفرية، والشحن لا يُحتسب لملغي/مرتجع", () => {
-    expect(generalAccounts([])).toMatchObject({ grandTotal: 0, salesPercent: 0, shippingPercent: 0 });
+    expect(generalAccounts([])).toMatchObject({ grandTotal: 0, salesPercent: 0, shippingPercent: 0, deliveredExitPrice: 0, priceDiff: 0, priceDiffPercent: 0 });
     const g = generalAccounts([
       row({ sellCents: 90000, shippingCents: 10000 }),
       row({ salesStatus: "RETURNED", sellCents: 50000, shippingCents: 5000 }),
       row({ agentStatus: "CANCELLED", sellCents: 50000, shippingCents: 5000 }),
     ]);
     expect(g.deliveredSales).toBe(900);
+    expect(g.deliveredExitPrice).toBe(900);
     expect(g.totalShipping).toBe(100);
     expect(g.grandTotal).toBe(1000);
     expect(g.salesPercent).toBe(90);
     expect(g.shippingPercent).toBe(10);
+    expect(g.priceDiff).toBe(0);
+    expect(g.priceDiffPercent).toBe(0);
+  });
+  it("سعر الخروج من الفتاة مختلف عن سعر الخروج من المخزون: الإجمالي الكلي = سعر الخروج + الشحن، وفرق الصرف كنسبة مئوية", () => {
+    // سعر المخزون = 500، سعر الخروج = 650 (+30%)، شحن = 70 → الإجمالي الكلي = 720
+    const gPos = generalAccounts([row({ sellCents: 50000, exitCents: 65000, shippingCents: 7000 })]);
+    expect(gPos.deliveredSales).toBe(500);
+    expect(gPos.deliveredExitPrice).toBe(650);
+    expect(gPos.totalShipping).toBe(70);
+    expect(gPos.grandTotal).toBe(720);
+    expect(gPos.priceDiff).toBe(150);
+    expect(gPos.priceDiffPercent).toBe(30);
+    expect(gPos.salesPercent).toBe(Math.round((65000 / 72000) * 10000) / 100);
+    expect(gPos.shippingPercent).toBe(Math.round((7000 / 72000) * 10000) / 100);
+
+    // خصم تحت سعر المخزون: 450 مقابل 500 → فرق صرف -10%
+    const gNeg = generalAccounts([row({ sellCents: 50000, exitCents: 45000, shippingCents: 5000 })]);
+    expect(gNeg.deliveredSales).toBe(500);
+    expect(gNeg.deliveredExitPrice).toBe(450);
+    expect(gNeg.grandTotal).toBe(500);
+    expect(gNeg.priceDiff).toBe(-50);
+    expect(gNeg.priceDiffPercent).toBe(-10);
   });
 });

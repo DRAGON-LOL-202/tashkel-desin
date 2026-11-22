@@ -34,12 +34,13 @@ const include = {
       cancelledAt: true,
     },
   },
-  // المكونات لحساب سعر البيع (مثبَّت بعد التنفيذ)؛ تفاصيل الكميات والأسماء فقط للمحاسب بلا أسعار مكونات أو تكاليف
+  // المكونات لحساب سعر الخروج من المخزون؛ وبند البوكس لحساب سعر الخروج من الفتاة — بلا كشف أسعار المخزون أو تكاليفه للمحاسب
   lines: {
     select: {
       id: true,
       productName: true,
       quantity: true,
+      boxPrice: true,
       components: { include: { item: { select: itemSelect } }, orderBy: { id: "asc" } },
     },
     orderBy: { id: "asc" },
@@ -49,15 +50,29 @@ type Row = Prisma.SalesOrderGetPayload<{ include: typeof include }>;
 
 const FOLLOW_STATUSES = ["EXECUTED", "SHIPPED", "DELIVERED", "RETURNED"] as const;
 
+/** سعر الخروج للأوردر بالقروش: إن أدخلت الفتاة سعر البوكس يُحسب من سعرها، وإلا يتبع سعر الخروج من المخزون */
+function orderExitCents(o: Pick<Row, "lines">) {
+  if (o.lines.some((l) => l.boxPrice !== null)) {
+    return o.lines.reduce(
+      (acc, l) => acc + (l.boxPrice !== null ? l.quantity * toCents(l.boxPrice) : orderSellCents([l])),
+      0
+    );
+  }
+  return orderSellCents(o.lines);
+}
+
 const rowOf = (o: Row): AccountingRow => ({
   agentStatus: (o.agentOrder?.status ?? "EXPORTED") as AccountingRow["agentStatus"],
   salesStatus: o.status,
   returnFlagged: o.returnFlagged,
   sellCents: orderSellCents(o.lines),
+  exitCents: orderExitCents(o),
   shippingCents: toCents(o.shippingPrice),
 });
 
 function serialize(o: Row) {
+  const invCents = orderSellCents(o.lines);
+  const exitCents = orderExitCents(o);
   return {
     id: o.id,
     waybill: o.waybill,
@@ -76,6 +91,8 @@ function serialize(o: Row) {
       id: l.id,
       productName: l.productName,
       quantity: l.quantity,
+      boxPrice: l.boxPrice === null ? null : Number(l.boxPrice.toString()),
+      lineTotal: l.boxPrice === null ? null : fromCents(l.quantity * toCents(l.boxPrice)),
       components: l.components.map((c) => ({
         itemId: c.itemId,
         itemName: c.item.name,
@@ -83,7 +100,8 @@ function serialize(o: Row) {
         quantity: num3(c.quantity),
       })),
     })),
-    sellPrice: fromCents(orderSellCents(o.lines)),
+    sellPrice: fromCents(exitCents),
+    inventorySellPrice: fromCents(invCents),
     shippingPrice: o.shippingPrice === null ? null : Number(o.shippingPrice.toString()),
     status: o.status,
     returnFlagged: o.returnFlagged,

@@ -27,10 +27,30 @@ const lineInclude = {
 
 const agentOrderInclude = {
   lines: { orderBy: { id: "asc" }, include: lineInclude },
-  // الأسطر والمكونات لحساب سعر البيع تلقائياً (ثابت بعد التنفيذ، وحيّ قبله) — لا تُرسل للفتاة
-  salesOrder: { select: { id: true, status: true, returnFlagged: true, stockDeducted: true, lines: { include: { components: { include: { item: { select: itemSelect } } } } } } },
+  // الأسطر والمكونات لحساب سعر الخروج وسعر المخزون تلقائياً (ثابت بعد التنفيذ، وحيّ قبله)
+  salesOrder: {
+    select: {
+      id: true,
+      status: true,
+      returnFlagged: true,
+      stockDeducted: true,
+      lines: {
+        select: {
+          quantity: true,
+          boxPrice: true,
+          components: { include: { item: { select: itemSelect } } },
+        },
+      },
+    },
+  },
 } satisfies Prisma.AgentOrderInclude;
 type AgentOrderRow = Prisma.AgentOrderGetPayload<{ include: typeof agentOrderInclude }>;
+
+type SalesLineLike = {
+  quantity: number;
+  boxPrice: { toString(): string } | null;
+  components: Parameters<typeof orderSellCents>[0][number]["components"];
+};
 
 type AccountingSourceRow = {
   status: AgentOrderRow["status"];
@@ -38,19 +58,31 @@ type AccountingSourceRow = {
   salesOrder: {
     status: string;
     returnFlagged: boolean;
-    lines: Parameters<typeof orderSellCents>[0];
+    lines: SalesLineLike[];
   } | null;
 };
 
-/** سعر بيع الأوردر بالقروش: لا تدخله الفتاة. بعد التصدير يُقرأ من أوردر المبيعات (مثبَّت بعد التنفيذ)، وللمسودة من آخر حساب محفوظ. */
+/** سعر الخروج من المخزون بالقروش (من مكونات المخزون) */
 const agentSellCents = (o: AccountingSourceRow) => (o.salesOrder ? orderSellCents(o.salesOrder.lines) : toCents(o.sellPrice));
+
+function exitCentsOfSalesLines(lines: SalesLineLike[]) {
+  if (lines.some((l) => l.boxPrice !== null)) {
+    return lines.reduce((acc, l) => acc + (l.boxPrice !== null ? l.quantity * toCents(l.boxPrice) : orderSellCents([l])), 0);
+  }
+  return orderSellCents(lines);
+}
+
+/** سعر الخروج الفعلي للأوردر بالقروش: إن وُجد boxPrice على البنود يُحسب منه، وإلا يتبع سعر المخزون */
+const agentExitCents = (o: AccountingSourceRow) => (o.salesOrder ? exitCentsOfSalesLines(o.salesOrder.lines) : toCents(o.sellPrice));
 
 type LineRow = AgentOrderRow["lines"][number];
 /** محتويات البند الفعلية: المعدَّلة إن وُجدت، وإلا محتويات المنتج الثابت (أسطر أُنشئت قبل ميزة التعديل) */
 const effectiveComponents = (l: LineRow) => (l.components.length > 0 ? l.components : (l.product?.components ?? []));
 
-/** الفتاة لا ترى سعر الشحن ولا أي بيانات داخلية للمبيعات؛ ترى حالة أوردرها فقط */
+/** الفتاة ترى بيانات الفاتورة وأسعار البوكسات/الشحن التي أدخلتها فقط؛ لا ترى أسعار مكونات المخزون ولا التكاليف */
 export function serializeAgentOrder(o: AgentOrderRow) {
+  const exitCents = agentExitCents(o);
+  const shipCents = toCents(o.shippingPrice);
   return {
     id: o.id,
     seq: o.seq,
@@ -60,7 +92,13 @@ export function serializeAgentOrder(o: AgentOrderRow) {
     customerPhone: o.customerPhone,
     customerAddress: o.customerAddress,
     notes: o.notes,
-    sellPrice: fromCents(agentSellCents(o)),
+    sellPrice: fromCents(exitCents),
+    ...(o.shippingPrice !== null
+      ? {
+          shippingPrice: Number(o.shippingPrice.toString()),
+          totalWithShipping: fromCents(exitCents + shipCents),
+        }
+      : {}),
     status: o.status,
     salesStatus: o.salesOrder?.status ?? null,
     returnFlagged: o.salesOrder?.returnFlagged ?? false,
@@ -68,14 +106,18 @@ export function serializeAgentOrder(o: AgentOrderRow) {
     cancelledAt: o.cancelledAt?.toISOString() ?? null,
     cancelReason: o.cancelReason,
     createdAt: o.createdAt.toISOString(),
-    lines: o.lines.map((l) => ({
-      id: l.id,
-      productId: l.productId,
-      productName: l.productName,
-      quantity: l.quantity,
-      // محتويات الوحدة الواحدة من البوكس (اسم وكمية فقط — بلا أي سعر)
-      components: effectiveComponents(l).map((c) => ({ itemId: c.itemId, itemName: c.item.name, unit: c.item.unit, quantity: num3(c.quantity) })),
-    })),
+    lines: o.lines.map((l) => {
+      const bp = l.boxPrice === null ? null : Number(l.boxPrice.toString());
+      return {
+        id: l.id,
+        productId: l.productId,
+        productName: l.productName,
+        quantity: l.quantity,
+        ...(bp !== null ? { boxPrice: bp, lineTotal: fromCents(l.quantity * toCents(bp)) } : {}),
+        // محتويات الوحدة الواحدة من البوكس (اسم وكمية فقط — بلا أي سعر)
+        components: effectiveComponents(l).map((c) => ({ itemId: c.itemId, itemName: c.item.name, unit: c.item.unit, quantity: num3(c.quantity) })),
+      };
+    }),
   };
 }
 
@@ -84,7 +126,8 @@ export const toAccountingRow = (o: AccountingSourceRow): AccountingRow => ({
   salesStatus: (o.salesOrder?.status ?? null) as AccountingRow["salesStatus"],
   returnFlagged: o.salesOrder?.returnFlagged ?? false,
   sellCents: agentSellCents(o),
-  shippingCents: 0, // سعر الشحن لا يظهر ولا يدخل حسابات الفتاة
+  exitCents: agentExitCents(o),
+  shippingCents: 0, // سعر شحن المحاسبة يُحسب من جدول المبيعات لا من مساحة الفتاة
 });
 
 async function loadActiveProducts(db: Pick<Tx, "salesProduct">, rawProductIds: string[]) {
@@ -104,18 +147,27 @@ interface ResolvedLine {
   productId: string;
   productName: string;
   quantity: number;
+  boxPrice: number | null;
   /** كمية الوحدة الواحدة من كل صنف في هذا البوكس */
   components: { itemId: string; quantity: number | string }[];
 }
 interface LineInput {
   productId: string;
   quantity: number;
+  boxPrice?: number;
   components?: { itemId: string; quantity: number }[];
 }
 
-/** سعر بيع البنود بالقروش (الكمية × مجموع مكونات البوكس × سعر بيع المكوّن الحالي) */
-const resolvedSellCents = (lines: { quantity: number; components: { itemId: string; quantity: number | string }[] }[], items: Map<string, ItemRow>) =>
-  orderSellCents(lines.map((l) => ({ quantity: l.quantity, components: l.components.map((c) => ({ id: c.itemId, itemId: c.itemId, quantity: c.quantity, item: items.get(c.itemId)! })) })));
+/** سعر بيع البنود بالقروش (إذا أدخلت الفتاة سعر البوكس يُؤخذ عن كل بوكس، وإلا من مكونات المخزون) */
+const resolvedExitCents = (lines: { quantity: number; boxPrice: number | null; components: { itemId: string; quantity: number | string }[] }[], items: Map<string, ItemRow>) =>
+  lines.reduce(
+    (acc, l) =>
+      acc +
+      (l.boxPrice !== null
+        ? l.quantity * toCents(l.boxPrice)
+        : orderSellCents([{ quantity: l.quantity, components: l.components.map((c) => ({ id: c.itemId, itemId: c.itemId, quantity: c.quantity, item: items.get(c.itemId)! })) }])),
+    0
+  );
 
 /**
  * يحوّل بنود الطلب إلى بنود جاهزة للحفظ: المحتويات المرسلة (تعديل الفتاة) بعد التحقق من الأصناف، وإلا نسخة من المنتج الثابت.
@@ -137,16 +189,27 @@ async function resolveLines(tx: Tx, products: LoadedProducts, input: LineInput[]
       // الأصناف المؤرشفة تُرفض فقط إذا أضافتها الفتاة؛ نسخة المنتج الثابت الأصلية تمر كما كانت
       if (l.components && !item.isActive) throw badRequest(`الصنف «${item.name}» غير مفعّل`);
     }
-    return { productId: p.id, productName: p.name, quantity: l.quantity, components };
+    return { productId: p.id, productName: p.name, quantity: l.quantity, boxPrice: l.boxPrice ?? null, components };
   });
-  return { lines, items, sellCents: resolvedSellCents(lines, items) };
+  return { lines, items, sellCents: resolvedExitCents(lines, items) };
 }
 
 const linesCreate = (lines: ResolvedLine[]) =>
-  lines.map((l) => ({ productId: l.productId, productName: l.productName, quantity: l.quantity, components: { create: l.components.map((c) => ({ itemId: c.itemId, quantity: c.quantity })) } }));
+  lines.map((l) => ({
+    productId: l.productId,
+    productName: l.productName,
+    quantity: l.quantity,
+    boxPrice: l.boxPrice === null ? null : centsToDecimalString(toCents(l.boxPrice)),
+    components: { create: l.components.map((c) => ({ itemId: c.itemId, quantity: c.quantity })) },
+  }));
 
-/** سعر بيع الأوردر المحفوظ حالياً (بنود الأوردر في قاعدة البيانات) بالقروش */
-const storedLinesSellCents = (lines: LineRow[]) => orderSellCents(lines.map((l) => ({ quantity: l.quantity, components: effectiveComponents(l) })));
+/** سعر الخروج للأوردر المحفوظ حالياً بالقروش (يدعم سعر البوكس المخصص أو التقدير التلقائي من المكونات) */
+const storedLinesExitCents = (lines: LineRow[]) =>
+  lines.reduce(
+    (acc, l) =>
+      acc + (l.boxPrice !== null ? l.quantity * toCents(l.boxPrice) : orderSellCents([{ quantity: l.quantity, components: effectiveComponents(l) }])),
+    0
+  );
 
 async function getOwnOrder(agentId: string, rawId: unknown) {
   const o = await prisma().agentOrder.findFirst({ where: { id: idOf(rawId), agentId }, include: agentOrderInclude });
@@ -275,6 +338,7 @@ agentRouter.get(
             lines: {
               select: {
                 quantity: true,
+                boxPrice: true,
                 components: {
                   select: {
                     id: true,
@@ -316,6 +380,9 @@ agentRouter.post(
           customerAddress: body.customerAddress,
           notes: body.notes,
           sellPrice: centsToDecimalString(resolved.sellCents),
+          ...(body.shippingPrice !== undefined
+            ? { shippingPrice: body.shippingPrice === null ? null : centsToDecimalString(toCents(body.shippingPrice)) }
+            : {}),
           lines: { create: linesCreate(resolved.lines) },
         },
         include: agentOrderInclude,
@@ -348,11 +415,14 @@ agentRouter.patch(
           ...(body.customerPhone !== undefined ? { customerPhone: body.customerPhone } : {}),
           ...(body.customerAddress !== undefined ? { customerAddress: body.customerAddress } : {}),
           ...(body.notes !== undefined ? { notes: body.notes } : {}),
+          ...(body.shippingPrice !== undefined
+            ? { shippingPrice: body.shippingPrice === null ? null : centsToDecimalString(toCents(body.shippingPrice)) }
+            : {}),
         },
       });
-      // السعر محسوب تلقائياً: يُعاد حسابه من البوكسات الحالية عند كل تعديل للمسودة
+      // السعر: يُعاد حسابه من سعر البوكسات أو من مكوناتها عند كل تعديل للمسودة
       const current = await tx.agentOrderLine.findMany({ where: { orderId: own.id }, include: lineInclude });
-      await tx.agentOrder.update({ where: { id: own.id }, data: { sellPrice: centsToDecimalString(storedLinesSellCents(current)) } });
+      await tx.agentOrder.update({ where: { id: own.id }, data: { sellPrice: centsToDecimalString(storedLinesExitCents(current)) } });
       return tx.agentOrder.findUniqueOrThrow({ where: { id: own.id }, include: agentOrderInclude });
     });
     res.json({ order: serializeAgentOrder(updated) });
@@ -386,7 +456,7 @@ async function exportOne(agentId: string, agentName: string, orderId: string) {
     if (order.lines.some((l) => l.productId === null)) throw badRequest(`الأوردر ${order.waybill} يحتوي منتجاً لم يعد موجوداً`);
     const dup = await tx.salesOrder.findFirst({ where: { waybill: { equals: order.waybill, mode: "insensitive" } }, select: { id: true } });
     if (dup) throw conflict(`رقم البوليصة ${order.waybill} مستخدم في أوردر آخر`);
-    const sellCents = storedLinesSellCents(order.lines);
+    const exitCents = storedLinesExitCents(order.lines);
     const customer = [order.customerName, order.customerPhone, order.customerAddress].filter(Boolean).join(" — ");
     const salesOrder = await tx.salesOrder.create({
       data: {
@@ -397,19 +467,26 @@ async function exportOne(agentId: string, agentName: string, orderId: string) {
         createdById: agentId,
         agentId,
         source: "AGENT",
-        agentSellPrice: centsToDecimalString(sellCents),
+        agentSellPrice: centsToDecimalString(exitCents),
+        ...(order.shippingPrice !== null ? { shippingPrice: order.shippingPrice } : {}),
         lines: {
           create: order.lines.map((l) => {
             const p = products.get(l.productId!)!;
-            // تُنسخ محتويات البوكس كما عدّلتها الفتاة (أو محتويات المنتج الثابت إن لم تُعدَّل)
-            return { productId: p.id, productName: p.name, quantity: l.quantity, components: { create: effectiveComponents(l).map((c) => ({ itemId: c.itemId, quantity: c.quantity })) } };
+            // تُنسخ محتويات البوكس كما عدّلتها الفتاة (مع سعر البوكس الذي أدخلته إن وُجد)
+            return {
+              productId: p.id,
+              productName: p.name,
+              quantity: l.quantity,
+              boxPrice: l.boxPrice,
+              components: { create: effectiveComponents(l).map((c) => ({ itemId: c.itemId, quantity: c.quantity })) },
+            };
           }),
         },
       },
     });
     await tx.agentOrder.update({
       where: { id: orderId },
-      data: { status: "EXPORTED", exportedAt: new Date(), exportedById: agentId, salesOrderId: salesOrder.id, sellPrice: centsToDecimalString(sellCents) },
+      data: { status: "EXPORTED", exportedAt: new Date(), exportedById: agentId, salesOrderId: salesOrder.id, sellPrice: centsToDecimalString(exitCents) },
     });
     await tx.salesOrderStatusLog.create({ data: { orderId: salesOrder.id, event: "EXPORT", fromValue: null, toValue: order.waybill, byId: agentId } });
     return { id: orderId, result: "EXPORTED" as const };

@@ -46,6 +46,10 @@
   - إعادة بناء العرض كجدول متابعة منظم عبر [FollowOrdersTable.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/FollowOrdersTable.tsx) يضم: رقم البوليصة، اسم العميل وهاتفه، الأوردر والقيمة، التاريخ، الحالة كقائمة منسدلة (`تم التنفيذ` ← `شحن` / `تم التسليم`)، الفتاة، سعر الشحن، وزر «التفاصيل» مع أزرار علامة المرتجع وسجل التغييرات.
   - إضافة نافذة [OrderDetailsModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/OrderDetailsModal.tsx) لعرض كامل تفاصيل الأوردر المدخلة من الفتاة (اسم العميل، الهاتف مع زر نسخ، العنوان، الملاحظات، البوكسات ومكوّناتها، والتواريخ والمبالغ) وإتاحتها أيضاً من صفوف `FollowOrderRow`.
   - إثراء `GET /api/accounting/orders` في `backend/src/routes/accounting.ts` بتفاصيل العميل والبنود والبحث بالاسم/الهاتف وعدّادات الحالات مع بقاء صلاحيات `SALES_ACCOUNTANT` محصورة كما هي دون أي تسرب لتكاليف المخزون.
+- **فاتورة الفتاة وسعر البوكس والحسابات العامة (`0026_agent_line_price_shipping`)**:
+  - تحديث [AgentOrderModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/AgentOrderModal.tsx) وكروت [AgentOrders.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/AgentOrders.tsx) لتطابق حقول الفاتورة (التاريخ، اسم العميل، العنوان، التليفون حتى 60 حرفاً، اسم الصنف، الكمية، **سعر كل بوكس**، **م شحن** اختياري، والإجمالي بالشحن، والملاحظات).
+  - إضافة migration `0026_agent_line_price_shipping` لحقول `boxPrice` و`shippingPrice` ونقلها عند التصدير في `agent.ts` و`validators/agent.ts`.
+  - تحديث `agentMath.ts` و`accounting.ts` و[GeneralAccounts.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/GeneralAccounts.tsx) لتعرض: **«سعر الخروج من المخزون»**، و**«سعر الخروج»** (من الفتاة)، و**«إجمالي الشحن»**، و**«الإجمالي الكلي»** (`سعر الخروج + الشحن`)، و**«فرق صرف»** كنسبة مئوية بينهما.
 - **ملفات المستودع والاختبارات**:
   - إضافة `.env.example` في `backend/` و`frontend/` وملف `.github/workflows/ci.yml`.
   - إصلاح وإضافة اختبارات التغطية في `backend/tests/` (شاملةً اختبارات تفاصيل المتابعة وعدم تسرب التكاليف).
@@ -58,6 +62,7 @@
 - `.github/workflows/ci.yml`
 - `backend/.env.example`
 - `backend/prisma/migrations/0025_user_token_version/migration.sql`
+- `backend/prisma/migrations/0026_agent_line_price_shipping/migration.sql`
 - `frontend/.env.example`
 - `frontend/src/lib/departments.ts`
 - `frontend/src/components/departments/DepartmentProvider.tsx`
@@ -82,6 +87,7 @@
 - `backend/src/routes/sync.ts`
 - `backend/src/routes/tasks.ts`
 - `backend/src/routes/users.ts`
+- `backend/src/utils/agentMath.ts`
 - `backend/src/utils/attendance.ts`
 - `backend/src/utils/env.ts`
 - `backend/src/utils/inventoryAccess.ts`
@@ -89,9 +95,11 @@
 - `backend/src/utils/notify.ts`
 - `backend/src/utils/r2Client.ts`
 - `backend/src/utils/syncVersion.ts`
+- `backend/src/validators/agent.ts`
 - `backend/src/validators/attachments.ts`
 - `backend/tests/access.test.ts`
 - `backend/tests/agentIntegrity.test.ts`
+- `backend/tests/agentMath.test.ts`
 - `backend/tests/agentOrders.test.ts`
 - `backend/tests/auth.test.ts`
 - `backend/tests/files.test.ts`
@@ -152,11 +160,11 @@
 | الفحص | الأمر | النتيجة | التفاصيل المرصودة |
 | --- | --- | --- | --- |
 | فحص أنواع Backend | `cd backend && npm run typecheck` | **PASS** | `tsc -p tsconfig.json --noEmit` — خروج برمز 0 (0 أخطاء) |
-| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **26 ملفاً نجح / 26**، **438 اختباراً نجح / 438** (0 فشل، 0 تخطي) في `118.94s` |
-| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (315ms) + `tsc -p tsconfig.json` — خروج برمز 0 |
+| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **26 ملفاً نجح / 26**، **440 اختباراً نجح / 440** (0 فشل، 0 تخطي) في `124.65s` |
+| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (407ms) + `tsc -p tsconfig.json` — خروج برمز 0 |
 | اختبار قبول الإدارات والصلاحيات | `tsx verify_departments.ts` | **PASS** | طباعة `ALL_DEPARTMENTS_ACCEPTANCE_CHECKS_PASSED` (تحقق من `/workspace` و`manageUsers` لـ `admin`/`manager` فقط، إزالة `/products` من `Workspace`/`App`/`Sidebar`، عدّ الروابط `6/8/3/1`، وثبات `departmentsForPath`) |
-| فحص Frontend Lint | `cd frontend && npm run lint` | **PASS** | `oxlint` — `0 errors`, `20 warnings` (على 171 ملفاً في `248ms`) |
-| بناء Frontend | `cd frontend && npm run build` | **PASS** | `tsc -b && vite build` — 2863 وحدة في `6.42s`؛ الحزمة الرئيسية `230.37 kB` (مقارنة بـ `775.92 kB` قبل تقسيم `React.lazy`) |
+| فحص Frontend Lint | `cd frontend && npm run lint` | **PASS** | `oxlint` — `0 errors`, `20 warnings` (على 171 ملفاً في `75ms`) |
+| بناء Frontend | `cd frontend && npm run build` | **PASS** | `tsc -b && vite build` — 2863 وحدة في `2.38s`؛ الحزمة الرئيسية `230.37 kB` (مقارنة بـ `775.92 kB` قبل تقسيم `React.lazy`) |
 | اختبار المتصفح الحي (E2E) | — | **NOT RUN** | لم يُشغَّل متصفح فعلي للنقر البصري |
 
 ---
@@ -173,7 +181,7 @@
    npx prisma migrate deploy
    npm run build
    ```
-   (تتضمن migration الجديدة `0025_user_token_version` لإضافة عمود `tokenVersion`).
+   (تتضمن migrations الجديدة `0025_user_token_version` لعمود `tokenVersion` و`0026_agent_line_price_shipping` لحقول `boxPrice` و`shippingPrice`).
 3. **بناء ونشر الواجهة**:
    ```bash
    cd frontend

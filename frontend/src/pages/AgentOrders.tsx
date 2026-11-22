@@ -213,7 +213,14 @@ export default function AgentOrdersPage() {
                   <span className="text-base font-bold tabular-nums text-text">{o.waybill}</span>
                   <Badge color={badge.color}>{badge.label}</Badge>
                   <span className="text-xs text-muted">{formatArabicDate(o.date)}</span>
-                  <span className="ms-auto text-sm font-bold tabular-nums text-text">{fmtMoney(o.sellPrice)}</span>
+                  <div className="ms-auto flex flex-wrap items-baseline gap-2 text-end">
+                    <span className="text-sm font-bold tabular-nums text-text">{fmtMoney(o.sellPrice)}</span>
+                    {o.shippingPrice != null && (
+                      <span className="text-xs tabular-nums text-muted">
+                        + شحن {fmtMoney(o.shippingPrice)} = <strong className="text-primary-deep">{fmtMoney(o.totalWithShipping ?? o.sellPrice + o.shippingPrice)}</strong>
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="mt-2 grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
                   <p className="text-text">
@@ -224,7 +231,14 @@ export default function AgentOrdersPage() {
                       </span>
                     )}
                   </p>
-                  <p className="text-muted">{o.lines.map((l) => (l.quantity > 1 ? `${l.productName} × ${l.quantity}` : l.productName)).join("، ")}</p>
+                  <p className="text-muted">
+                    {o.lines
+                      .map((l) => {
+                        const base = l.quantity > 1 ? `${l.productName} × ${l.quantity}` : l.productName;
+                        return l.boxPrice != null ? `${base} (${fmtMoney(l.boxPrice)})` : base;
+                      })
+                      .join("، ")}
+                  </p>
                   {o.customerAddress && <p className="text-xs text-muted sm:col-span-2">{o.customerAddress}</p>}
                   {o.notes && <p className="text-xs text-muted sm:col-span-2">ملاحظات: {o.notes}</p>}
                   {o.status === "CANCELLED" && <p className="text-xs text-problem sm:col-span-2">سبب الإلغاء: {o.cancelReason}</p>}
@@ -286,7 +300,18 @@ export default function AgentOrdersPage() {
         </div>
       )}
 
-      {editing && <AgentOrderModal key={editing === "new" ? "new" : editing.id} open products={products.data} items={items.data} editing={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} onSubmit={save} />}
+      {editing && (
+        <AgentOrderModal
+          key={editing === "new" ? "new" : editing.id}
+          open
+          products={products.data}
+          items={items.data}
+          editing={editing === "new" ? undefined : editing}
+          nextWaybill={profile.data ? profile.data.prefix * 100 + profile.data.nextSeq : null}
+          onClose={() => setEditing(null)}
+          onSubmit={save}
+        />
+      )}
       {exporting && <ExportModal open orders={exporting} onClose={() => setExporting(null)} onConfirm={() => doExport(exporting)} />}
       {cancelling && <CancelModal open order={cancelling} onClose={() => setCancelling(null)} onConfirm={(reason) => doCancel(cancelling, reason)} />}
       <ConfirmDialog open={!!deleting} onClose={() => setDeleting(null)} onConfirm={() => deleting && void doDelete(deleting)} title="حذف المسودة؟" description={deleting ? `سيُحذف الأوردر ${deleting.waybill} نهائياً قبل التصدير، ولن يُعاد استخدام رقمه.` : undefined} confirmLabel="حذف" />
