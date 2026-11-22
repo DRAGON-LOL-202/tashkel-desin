@@ -256,7 +256,7 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
       )}
     >
       {loading ? (
-        <LoadingState label="جارٍ تحميل المبيعات..." />
+        <LoadingState label="جارٍ تحميل المبيعات..." variant="cards" />
       ) : error ? (
         <ErrorState message={error} onRetry={() => void Promise.all([orders.retry(), products.retry()])} />
       ) : (

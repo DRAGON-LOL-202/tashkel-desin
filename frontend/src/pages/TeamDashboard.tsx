@@ -73,7 +73,7 @@ export default function TeamDashboardPage() {
       )}
     >
       {loading ? (
-        <LoadingState label="جارٍ تحميل بيانات الفريق..." />
+        <LoadingState label="جارٍ تحميل بيانات الفريق..." variant="stats" />
       ) : error ? (
         <ErrorState message={error} onRetry={() => { void retryTasks(); void reloadMembers(); }} />
       ) : (

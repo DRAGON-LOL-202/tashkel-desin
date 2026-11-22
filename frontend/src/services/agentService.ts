@@ -40,6 +40,21 @@ export const agentService = {
     return orders;
   },
 
+  async ordersPage(
+    bucket: AgentBucket,
+    q: string,
+    page?: { limit?: number; offset?: number }
+  ): Promise<{ orders: AgentOrder[]; total: number; hasMore: boolean }> {
+    return api<{ orders: AgentOrder[]; total: number; hasMore: boolean }>("/agent/orders", {
+      query: {
+        bucket,
+        q,
+        ...(page?.limit !== undefined ? { limit: String(page.limit) } : {}),
+        ...(page?.offset !== undefined ? { offset: String(page.offset) } : {}),
+      },
+    });
+  },
+
   async dashboard(): Promise<AgentSummary> {
     const { summary } = await api<{ summary: AgentSummary }>("/agent/dashboard");
     return summary;
@@ -71,7 +86,15 @@ export const agentService = {
 
 // المحاسب والإدارة
 export const accountingService = {
-  async followOrders(params: { agentId?: string; status?: string; q?: string; from?: string; to?: string }): Promise<FollowList> {
+  async followOrders(params: {
+    agentId?: string;
+    status?: string;
+    q?: string;
+    from?: string;
+    to?: string;
+    limit?: string;
+    offset?: string;
+  }): Promise<FollowList> {
     return api<FollowList>("/accounting/orders", { query: params });
   },
 

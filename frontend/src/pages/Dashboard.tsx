@@ -389,7 +389,7 @@ export default function Dashboard({ board = "design" }: { board?: TaskBoard }) {
       )}
     >
       {tasksLoading || membersLoading ? (
-        <LoadingState label="جارٍ تحميل المهام..." />
+        <LoadingState label="جارٍ تحميل المهام..." variant="cards" />
       ) : tasksError || membersError ? (
         <ErrorState
           message={tasksError ?? membersError ?? "تعذّر تحميل البيانات"}

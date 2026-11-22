@@ -56,7 +56,7 @@ export default function GeneralAccountsPage() {
         <Input type="date" aria-label="إلى تاريخ" value={to} onChange={(e) => setTo(e.target.value)} className="!w-40" />
       </div>
       {g.loading ? (
-        <LoadingState />
+        <LoadingState variant="stats" />
       ) : g.error ? (
         <ErrorState message={g.error} onRetry={() => void g.retry()} />
       ) : (

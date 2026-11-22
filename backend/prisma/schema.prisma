@@ -155,6 +155,7 @@ model Task {
   @@index([assignedToId, date])
   @@index([parentId])
   @@index([board, date])
+  @@index([createdById])
 }
 
 model TaskTimeLog {
@@ -170,6 +171,7 @@ model TaskTimeLog {
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([taskId])
+  @@index([userId])
 }
 
 model TaskComment {
@@ -183,6 +185,7 @@ model TaskComment {
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([taskId])
+  @@index([userId])
 }
 
 model Feedback {
@@ -200,6 +203,8 @@ model Feedback {
   createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
 
   @@index([createdById])
+  @@index([date])
+  @@index([createdAt, id])
 }
 
 model Goal {
@@ -217,6 +222,8 @@ model Goal {
   updatedAt   DateTime   @updatedAt
 
   createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([createdById])
 }
 
 model CalendarEvent {
@@ -231,6 +238,8 @@ model CalendarEvent {
   updatedAt   DateTime @updatedAt
 
   createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([createdById])
 }
 
 model ProductCategory {
@@ -459,6 +468,7 @@ model InventoryMovement {
   @@index([itemId, createdAt])
   @@index([batchId])
   @@index([type, createdAt])
+  @@index([createdById, createdAt])
 }
 
 // ===== المبيعات العامة =====
@@ -545,6 +555,9 @@ model SalesOrder {
   @@index([status])
   @@index([waybill])
   @@index([agentId])
+  @@index([status, date])
+  @@index([agentId, date])
+  @@index([createdById])
 }
 
 model SalesOrderLine {
@@ -562,6 +575,7 @@ model SalesOrderLine {
   components SalesOrderComponent[]
 
   @@index([orderId])
+  @@index([productId])
 }
 
 // محتويات البند منسوخة من المنتج الثابت (كمية الوحدة الواحدة). السعران يُثبَّتان لحظة التنفيذ.
@@ -633,6 +647,7 @@ model AgentOrder {
 
   @@unique([agentId, seq])
   @@index([agentId, status])
+  @@index([agentId, date, seq])
 }
 
 model AgentOrderLine {
@@ -649,6 +664,7 @@ model AgentOrderLine {
   components AgentOrderLineComponent[]
 
   @@index([orderId])
+  @@index([productId])
 }
 
 model AgentOrderLineComponent {
@@ -678,4 +694,5 @@ model SalesOrderStatusLog {
   by    User       @relation(fields: [byId], references: [id], onDelete: Restrict)
 
   @@index([orderId, createdAt])
+  @@index([byId])
 }

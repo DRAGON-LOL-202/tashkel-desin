@@ -130,7 +130,7 @@ export default function WithdrawalsPage() {
       )}
     >
       {loading ? (
-        <LoadingState label="جارٍ تحميل المخزون..." />
+        <LoadingState label="جارٍ تحميل المخزون..." variant="table" />
       ) : error ? (
         <ErrorState message={error} onRetry={() => void Promise.all([stock.retry(), log.retry()])} />
       ) : (

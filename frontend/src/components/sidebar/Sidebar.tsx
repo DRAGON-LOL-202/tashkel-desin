@@ -84,7 +84,14 @@ export function Sidebar({ collapsed, onToggle, onNavigate }: SidebarProps) {
       }`}
     >
       <div className="flex items-center gap-2.5 px-4 h-16 border-b border-border shrink-0">
-        <img src="/tashkeel-cnc-logo.svg" alt="TASHKEEL.CNC" className="h-9 w-9 object-contain shrink-0" />
+        <img
+          src="/tashkeel-cnc-logo.svg"
+          alt="TASHKEEL.CNC"
+          width={36}
+          height={36}
+          decoding="async"
+          className="h-9 w-9 object-contain shrink-0"
+        />
         {!collapsed && (
           <div className="leading-tight overflow-hidden">
             <p className="text-[13px] font-bold text-text tracking-tight truncate">TASHKEEL.CNC</p>

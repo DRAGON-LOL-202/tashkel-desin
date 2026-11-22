@@ -6,6 +6,7 @@ import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Input, Select } from "../components/ui/Field";
+import { PaginationBar } from "../components/ui/PaginationBar";
 import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { useToast } from "../components/ui/ToastProvider";
 import { FollowOrdersTable } from "../components/agent/FollowOrdersTable";
@@ -26,6 +27,7 @@ const NO_ORDERS: FollowList = {
 const NO_AGENTS: { agents: AgentAccountRow[]; totals: AgentAccountTotals | null } = { agents: [], totals: null };
 const STATUS_TABS = ["", "EXECUTED", "SHIPPED", "DELIVERED", "RETURNED"] as const;
 const ACCOUNTING_CHANNELS: SyncChannel[] = ["accounting"];
+const PAGE_SIZE = 50;
 
 // متابعة أوردرات المبيعات: جدول متابعة، تغيير الحالة من القائمة المنسدلة، سعر الشحن، معاينة/طباعة البوليصة، وتحديد عدة بوالص لتحميلها كـ PDF.
 export default function SalesFollowUpPage() {
@@ -34,13 +36,26 @@ export default function SalesFollowUpPage() {
   const [search, setSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [busyPdf, setBusyPdf] = useState(false);
   const { show } = useToast();
   const run = useSafeAction();
 
   const q = search.trim();
-  const loader = useCallback(() => accountingService.followOrders({ status, agentId, q, from, to }), [status, agentId, q, from, to]);
+  const loader = useCallback(
+    () =>
+      accountingService.followOrders({
+        status,
+        agentId,
+        q,
+        from,
+        to,
+        limit: String(PAGE_SIZE),
+        offset: String((page - 1) * PAGE_SIZE),
+      }),
+    [status, agentId, q, from, to, page]
+  );
   const orders = useResource<FollowList>(loader, NO_ORDERS, ACCOUNTING_CHANNELS);
   const agentsLoader = useCallback(async () => ({ ...(await accountingService.agents({})) }), []);
   const agents = useResource(agentsLoader, NO_AGENTS, ACCOUNTING_CHANNELS);
@@ -113,6 +128,8 @@ export default function SalesFollowUpPage() {
     setSearch("");
     setFrom("");
     setTo("");
+    setPage(1);
+    setSelectedIds(new Set());
   };
 
   return (
@@ -137,7 +154,11 @@ export default function SalesFollowUpPage() {
                 type="button"
                 role="tab"
                 aria-selected={active}
-                onClick={() => setStatus(s)}
+                onClick={() => {
+                  setStatus(s);
+                  setPage(1);
+                  setSelectedIds(new Set());
+                }}
                 className={`inline-flex items-center gap-2 rounded-control border px-3 py-1.5 text-xs font-semibold transition-colors ${
                   active
                     ? "border-primary-deep bg-primary/15 text-primary-deep"
@@ -168,13 +189,26 @@ export default function SalesFollowUpPage() {
             <Search size={15} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted" />
             <Input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+                setSelectedIds(new Set());
+              }}
               placeholder="ابحث باسم العميل، رقم الهاتف، رقم البوليصة أو اسم الفتاة..."
               aria-label="بحث"
               className="!pr-9"
             />
           </div>
-          <Select aria-label="الفتاة" value={agentId} onChange={(e) => setAgentId(e.target.value)} className="!w-44">
+          <Select
+            aria-label="الفتاة"
+            value={agentId}
+            onChange={(e) => {
+              setAgentId(e.target.value);
+              setPage(1);
+              setSelectedIds(new Set());
+            }}
+            className="!w-44"
+          >
             <option value="">كل الفتيات</option>
             {agents.data.agents.map((a) => (
               <option key={a.agentId} value={a.agentId}>
@@ -184,11 +218,31 @@ export default function SalesFollowUpPage() {
           </Select>
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted">من</span>
-            <Input type="date" aria-label="من تاريخ" value={from} onChange={(e) => setFrom(e.target.value)} className="!w-40" />
+            <Input
+              type="date"
+              aria-label="من تاريخ"
+              value={from}
+              onChange={(e) => {
+                setFrom(e.target.value);
+                setPage(1);
+                setSelectedIds(new Set());
+              }}
+              className="!w-40"
+            />
           </div>
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted">إلى</span>
-            <Input type="date" aria-label="إلى تاريخ" value={to} onChange={(e) => setTo(e.target.value)} className="!w-40" />
+            <Input
+              type="date"
+              aria-label="إلى تاريخ"
+              value={to}
+              onChange={(e) => {
+                setTo(e.target.value);
+                setPage(1);
+                setSelectedIds(new Set());
+              }}
+              className="!w-40"
+            />
           </div>
           {hasFilters && (
             <button
@@ -256,7 +310,7 @@ export default function SalesFollowUpPage() {
       )}
 
       {orders.loading ? (
-        <LoadingState />
+        <LoadingState variant="table" />
       ) : orders.error ? (
         <ErrorState message={orders.error} onRetry={() => void orders.retry()} />
       ) : orders.data.orders.length === 0 ? (
@@ -264,6 +318,21 @@ export default function SalesFollowUpPage() {
           <EmptyState
             title="لا توجد أوردرات للمتابعة"
             description="تظهر هنا أوردرات الفتيات والأوردرات اليدوية بعد وصولها إلى «تم التنفيذ»."
+            action={
+              page > 1 && orders.data.total > 0 ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    setPage(Math.max(1, Math.ceil(orders.data.total / PAGE_SIZE)));
+                    setSelectedIds(new Set());
+                  }}
+                >
+                  العودة لآخر صفحة متاحة
+                </Button>
+              ) : undefined
+            }
           />
         </Card>
       ) : (
@@ -279,11 +348,15 @@ export default function SalesFollowUpPage() {
             onShipping={shipping}
             onPrintOne={(o) => void handlePrintList([o])}
           />
-          {orders.data.hasMore && (
-            <p className="border-t border-border px-3 py-2 text-center text-xs text-muted" role="status">
-              يعرض أول {orders.data.orders.length} من {orders.data.total} أوردر — ضيّق البحث أو الفترة لعرض الباقي.
-            </p>
-          )}
+          <PaginationBar
+            page={page}
+            pageSize={PAGE_SIZE}
+            total={orders.data.total}
+            onPageChange={(p) => {
+              setPage(p);
+              setSelectedIds(new Set());
+            }}
+          />
         </Card>
       )}
     </AppLayout>

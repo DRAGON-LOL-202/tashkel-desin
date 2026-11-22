@@ -44,6 +44,8 @@ export const listFeedbackQuerySchema = z.object({
   status: statusInput.optional(),
   from: isoDate.optional(),
   to: isoDate.optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
 });
 
 // حذف جماعي (نفس خيارات الواجهة: النوع + فترة زمنية). بدون أي خيار = حذف الكل.

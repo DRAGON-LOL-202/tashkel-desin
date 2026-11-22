@@ -144,7 +144,7 @@ export default function ManageUsersPage() {
       )}
     >
       {loading ? (
-        <LoadingState label="جارٍ تحميل المستخدمين..." />
+        <LoadingState label="جارٍ تحميل المستخدمين..." variant="table" />
       ) : error ? (
         <ErrorState message={error} onRetry={() => void retry()} />
       ) : (

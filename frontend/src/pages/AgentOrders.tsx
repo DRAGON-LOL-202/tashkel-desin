@@ -8,6 +8,7 @@ import { Card } from "../components/ui/Card";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Input } from "../components/ui/Field";
+import { PaginationBar } from "../components/ui/PaginationBar";
 import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { useToast } from "../components/ui/ToastProvider";
 import { AgentOrderModal } from "../components/agent/AgentOrderModal";
@@ -23,9 +24,16 @@ import { useSafeAction } from "../hooks/useSafeAction";
 import { agentService } from "../services/agentService";
 import type { AgentBucket, AgentItem, AgentOrder, AgentOrderInput, AgentProduct, AgentProfile } from "../types";
 
-const NO_ORDERS: AgentOrder[] = [];
+interface AgentOrdersPageData {
+  orders: AgentOrder[];
+  total: number;
+  hasMore: boolean;
+}
+
+const NO_ORDERS_PAGE: AgentOrdersPageData = { orders: [], total: 0, hasMore: false };
 const NO_PRODUCTS: AgentProduct[] = [];
 const NO_ITEMS: AgentItem[] = [];
+const PAGE_SIZE = 50;
 
 const ORDER_SYNC_CHANNELS: SyncChannel[] = ["sales", "accounting"];
 const CATALOG_SYNC_CHANNELS: SyncChannel[] = ["sales", "inventory"];
@@ -35,6 +43,7 @@ const PROFILE_SYNC_CHANNELS: SyncChannel[] = ["accounting", "users"];
 export default function AgentOrdersPage() {
   const [bucket, setBucket] = useState<AgentBucket>("all");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<AgentOrder | "new" | null>(null);
   const [previewing, setPreviewing] = useState<AgentOrder | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -47,8 +56,11 @@ export default function AgentOrdersPage() {
   const run = useSafeAction();
 
   const q = search.trim();
-  const ordersLoader = useCallback(() => agentService.orders(bucket, q), [bucket, q]);
-  const orders = useResource<AgentOrder[]>(ordersLoader, NO_ORDERS, ORDER_SYNC_CHANNELS);
+  const ordersLoader = useCallback(
+    () => agentService.ordersPage(bucket, q, { limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
+    [bucket, q, page]
+  );
+  const orders = useResource<AgentOrdersPageData>(ordersLoader, NO_ORDERS_PAGE, ORDER_SYNC_CHANNELS);
   const products = useResource<AgentProduct[]>(agentService.products, NO_PRODUCTS, CATALOG_SYNC_CHANNELS);
   const items = useResource<AgentItem[]>(agentService.items, NO_ITEMS, CATALOG_SYNC_CHANNELS);
   const profile = useResource<AgentProfile | null>(agentService.me, null, PROFILE_SYNC_CHANNELS);
@@ -57,7 +69,8 @@ export default function AgentOrdersPage() {
     await Promise.all([orders.reload(), profile.reload()]);
   }, [orders, profile]);
 
-  const drafts = useMemo(() => orders.data.filter((o) => o.status === "DRAFT"), [orders.data]);
+  const orderRows = orders.data.orders;
+  const drafts = useMemo(() => orderRows.filter((o) => o.status === "DRAFT"), [orderRows]);
   const selectedDrafts = useMemo(() => drafts.filter((o) => selected.has(o.id)), [drafts, selected]);
 
   const toggle = (id: string) =>
@@ -139,7 +152,11 @@ export default function AgentOrdersPage() {
               key={b}
               role="tab"
               aria-selected={bucket === b}
-              onClick={() => setBucket(b)}
+              onClick={() => {
+                setBucket(b);
+                setPage(1);
+                setSelected(new Set());
+              }}
               className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${bucket === b ? "border-primary-deep bg-primary/15 text-primary-deep" : "border-border text-muted hover:text-text"}`}
             >
               {BUCKET_LABEL[b]}
@@ -148,7 +165,17 @@ export default function AgentOrdersPage() {
         </div>
         <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
           <Search size={15} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="بحث برقم البوليصة أو اسم/هاتف العميل" aria-label="بحث" className="!pr-9" />
+          <Input
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+              setSelected(new Set());
+            }}
+            placeholder="بحث برقم البوليصة أو اسم/هاتف العميل"
+            aria-label="بحث"
+            className="!pr-9"
+          />
         </div>
         {selectedDrafts.length > 0 && (
           <Button icon={<Send size={15} />} onClick={() => setExporting(selectedDrafts)}>
@@ -158,12 +185,30 @@ export default function AgentOrdersPage() {
       </div>
 
       {orders.loading ? (
-        <LoadingState />
+        <LoadingState variant="cards" />
       ) : orders.error ? (
         <ErrorState message={orders.error} onRetry={() => void orders.retry()} />
-      ) : orders.data.length === 0 ? (
+      ) : orderRows.length === 0 ? (
         <Card>
-          <EmptyState title={q || bucket !== "all" ? "لا أوردرات مطابقة" : "لا توجد أوردرات بعد"} description={q || bucket !== "all" ? "غيّر التصفية أو البحث." : "اضغط «أوردر جديد» لإضافة أول أوردر."} />
+          <EmptyState
+            title={q || bucket !== "all" ? "لا أوردرات مطابقة" : "لا توجد أوردرات بعد"}
+            description={q || bucket !== "all" ? "غيّر التصفية أو البحث." : "اضغط «أوردر جديد» لإضافة أول أوردر."}
+            action={
+              page > 1 && orders.data.total > 0 ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    setPage(Math.max(1, Math.ceil(orders.data.total / PAGE_SIZE)));
+                    setSelected(new Set());
+                  }}
+                >
+                  العودة لآخر صفحة متاحة
+                </Button>
+              ) : undefined
+            }
+          />
         </Card>
       ) : (
         <div className="flex flex-col gap-2.5">
@@ -173,7 +218,7 @@ export default function AgentOrdersPage() {
               تحديد كل المسودات المعروضة
             </label>
           )}
-          {orders.data.map((o) => {
+          {orderRows.map((o) => {
             const badge = agentOrderBadge(o);
             const isDraft = o.status === "DRAFT";
             const canCancelOrder = o.status === "EXPORTED" && (o.salesStatus === null || o.salesStatus === "REGISTERED");
@@ -272,6 +317,20 @@ export default function AgentOrdersPage() {
               </Card>
             );
           })}
+          {orders.data.total > PAGE_SIZE && (
+            <Card className="overflow-hidden">
+              <PaginationBar
+                page={page}
+                pageSize={PAGE_SIZE}
+                total={orders.data.total}
+                onPageChange={(p) => {
+                  setPage(p);
+                  setSelected(new Set());
+                }}
+                className="!border-t-0"
+              />
+            </Card>
+          )}
         </div>
       )}
 

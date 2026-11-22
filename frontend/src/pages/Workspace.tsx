@@ -83,6 +83,9 @@ export default function WorkspacePage() {
           <img
             src="/tashkeel-cnc-logo.svg"
             alt="TASHKEEL.CNC"
+            width={80}
+            height={80}
+            decoding="async"
             className="mb-4 h-16 w-16 object-contain drop-shadow-sm sm:h-20 sm:w-20"
           />
           <h1 className="text-2xl font-bold tracking-tight text-text sm:text-3xl">

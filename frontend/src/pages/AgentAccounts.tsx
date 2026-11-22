@@ -50,7 +50,7 @@ export default function AgentAccountsPage() {
       </div>
 
       {accounts.loading ? (
-        <LoadingState />
+        <LoadingState variant="stats" />
       ) : accounts.error ? (
         <ErrorState message={accounts.error} onRetry={() => void accounts.retry()} />
       ) : (

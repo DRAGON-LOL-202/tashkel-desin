@@ -147,7 +147,7 @@ export default function NotificationsPage() {
         </Card>
 
         {loading ? (
-          <LoadingState label="جارٍ تحميل الإشعارات..." />
+          <LoadingState label="جارٍ تحميل الإشعارات..." variant="list" />
         ) : error ? (
           <ErrorState message={error} onRetry={() => void retry()} />
         ) : data.notifications.length === 0 ? (

@@ -307,19 +307,29 @@ agentRouter.get(
     const bucketRaw = typeof req.query.bucket === "string" ? req.query.bucket : "all";
     const bucket: Bucket = (BUCKETS as readonly string[]).includes(bucketRaw) ? (bucketRaw as Bucket) : "all";
     const q = typeof req.query.q === "string" ? req.query.q.trim().slice(0, 80) : "";
-    const rows = await prisma().agentOrder.findMany({
-      where: {
-        agentId: req.user!.id,
-        ...bucketWhere(bucket),
-        ...(q
-          ? { OR: [{ waybill: { contains: q } }, { customerName: { contains: q, mode: "insensitive" as const } }, { customerPhone: { contains: q } }] }
-          : {}),
-      },
-      include: agentOrderInclude,
-      orderBy: [{ date: "desc" }, { seq: "desc" }],
-      take: 1000,
-    });
-    res.json({ orders: rows.filter((o) => matchesBucket(toAccountingRow(o), bucket)).map(serializeAgentOrder) });
+    const rawLimit = Number(req.query.limit);
+    const rawOffset = Number(req.query.offset);
+    const limit = Number.isInteger(rawLimit) && rawLimit >= 1 ? Math.min(rawLimit, 1000) : 500;
+    const offset = Number.isInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+    const where: Prisma.AgentOrderWhereInput = {
+      agentId: req.user!.id,
+      ...bucketWhere(bucket),
+      ...(q
+        ? { OR: [{ waybill: { contains: q } }, { customerName: { contains: q, mode: "insensitive" as const } }, { customerPhone: { contains: q } }] }
+        : {}),
+    };
+    const [rows, total] = await Promise.all([
+      prisma().agentOrder.findMany({
+        where,
+        include: agentOrderInclude,
+        orderBy: [{ date: "desc" }, { seq: "desc" }, { id: "desc" }],
+        take: limit,
+        skip: offset,
+      }),
+      prisma().agentOrder.count({ where }),
+    ]);
+    const orders = rows.map(serializeAgentOrder);
+    res.json({ orders, total, hasMore: offset + orders.length < total });
   })
 );
 

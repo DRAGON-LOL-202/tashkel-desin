@@ -153,18 +153,8 @@ async function loadAccountingRows(where: Prisma.SalesOrderWhereInput) {
   return out;
 }
 
-/** قائمة معروضة: العدد الكلي المطابق دقيق دائماً، والمعروض محدود بـ limit مع hasMore */
+/** الحد الأقصى للصفحة في قوائم المتابعة وتفاصيل الفتاة */
 const LIST_LIMIT = 500;
-async function listAgentRows(where: Prisma.SalesOrderWhereInput, match: (r: AccountingRow) => boolean, limit = LIST_LIMIT, scope: "agent" | "all" = "agent") {
-  const orders: ReturnType<typeof serialize>[] = [];
-  let total = 0;
-  await scanAgentRows(where, (o) => {
-    if (!match(rowOf(o))) return;
-    total += 1;
-    if (orders.length < limit) orders.push(serialize(o));
-  }, scope);
-  return { orders, total, hasMore: total > orders.length };
-}
 
 // يعمل على أوردرات الفتيات المصدَّرة وعلى الأوردرات اليدوية؛ المرفوض فقط: الملغي.
 async function lockAgentOrder(tx: Tx, id: string) {
@@ -195,6 +185,13 @@ accountingRouter.get(
         ],
       });
     }
+    const rawLimit = Number(req.query.limit);
+    const rawOffset = Number(req.query.offset);
+    const limit = Number.isInteger(rawLimit) && rawLimit >= 1 ? Math.min(rawLimit, LIST_LIMIT) : LIST_LIMIT;
+    const offset = Number.isInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+    const validStatus = (FOLLOW_STATUSES as readonly string[]).includes(statusQ)
+      ? (statusQ as (typeof FOLLOW_STATUSES)[number])
+      : null;
     const baseWhere: Prisma.SalesOrderWhereInput = {
       status: { in: [...FOLLOW_STATUSES] },
       cancelledAt: null,
@@ -202,16 +199,18 @@ accountingRouter.get(
       ...(agentId ? { agentId } : {}),
       ...dateFilter(req.query),
     };
-    const [result, grouped] = await Promise.all([
-      listAgentRows(
-        {
-          ...baseWhere,
-          status: { in: (FOLLOW_STATUSES as readonly string[]).includes(statusQ) ? [statusQ as (typeof FOLLOW_STATUSES)[number]] : [...FOLLOW_STATUSES] },
-        },
-        () => true,
-        LIST_LIMIT,
-        "all"
-      ),
+    const filteredWhere: Prisma.SalesOrderWhereInput = {
+      ...baseWhere,
+      status: { in: validStatus ? [validStatus] : [...FOLLOW_STATUSES] },
+    };
+    const [rows, grouped] = await Promise.all([
+      prisma().salesOrder.findMany({
+        where: filteredWhere,
+        include,
+        orderBy: [{ date: "desc" }, { waybill: "desc" }, { id: "desc" }],
+        take: limit,
+        skip: offset,
+      }),
       prisma().salesOrder.groupBy({ by: ["status"], where: baseWhere, _count: { _all: true } }),
     ]);
     const counts = { all: 0, EXECUTED: 0, SHIPPED: 0, DELIVERED: 0, RETURNED: 0 };
@@ -219,7 +218,13 @@ accountingRouter.get(
       if (g.status in counts) counts[g.status as (typeof FOLLOW_STATUSES)[number]] = g._count._all;
       counts.all += g._count._all;
     }
-    res.json({ ...result, counts });
+    const total = validStatus ? counts[validStatus] : counts.all;
+    res.json({
+      orders: rows.map(serialize),
+      total,
+      hasMore: offset + rows.length < total,
+      counts,
+    });
   })
 );
 

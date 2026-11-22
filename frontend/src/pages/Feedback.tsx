@@ -14,6 +14,7 @@ import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { feedbackService } from "../services/feedbackService";
 import type { CreateFeedbackInput, Feedback as FeedbackItem, FeedbackType } from "../types";
 import { useToast } from "../components/ui/ToastProvider";
+import { PaginationBar } from "../components/ui/PaginationBar";
 import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
@@ -21,6 +22,7 @@ import { usePermissions } from "../hooks/usePermissions";
 import type { SyncChannel } from "../lib/liveSync";
 
 const FEEDBACK_CHANNELS: SyncChannel[] = ["tasks"];
+const PAGE_SIZE = 24;
 type FilterValue = "all" | FeedbackType;
 export default function FeedbackPage() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -29,6 +31,7 @@ export default function FeedbackPage() {
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [filter, setFilter] = useState<FilterValue>("all");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [view, setView] = useState<"list" | "calendar">("list");
   const { show } = useToast();
   const run = useSafeAction();
@@ -52,6 +55,13 @@ export default function FeedbackPage() {
         .filter((i) => i.title.toLowerCase().includes(search.toLowerCase()))
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     [items, filter, search]
+  );
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedFiltered = useMemo(
+    () => filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
+    [filtered, safePage]
   );
 
   const handleSubmit = async (input: CreateFeedbackInput) => {
@@ -114,7 +124,7 @@ export default function FeedbackPage() {
       )}
     >
       {loading ? (
-        <LoadingState label="جارٍ تحميل الملاحظات..." />
+        <LoadingState label="جارٍ تحميل الملاحظات..." variant="cards" />
       ) : error ? (
         <ErrorState message={error} onRetry={() => void retry()} />
       ) : (
@@ -130,7 +140,10 @@ export default function FeedbackPage() {
               { value: "idea", label: "فكرة" },
             ]}
             value={filter}
-            onChange={(v) => setFilter(v as FilterValue)}
+            onChange={(v) => {
+              setFilter(v as FilterValue);
+              setPage(1);
+            }}
           />
           <div className="flex items-center gap-2">
             {isStaff && (
@@ -148,7 +161,10 @@ export default function FeedbackPage() {
               <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted" />
               <input
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
                 placeholder="بحث..."
                 className="w-full rounded-control border border-border bg-surface pr-9 pl-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
@@ -178,17 +194,24 @@ export default function FeedbackPage() {
             }
           />
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filtered.map((item) => (
-              <FeedbackCard
-                key={item.id}
-                item={item}
-                canManage={isStaff}
-                onEdit={handleEdit}
-                onDelete={(id) => setDeleteId(id)}
-                onToggleStatus={handleToggleStatus}
-              />
-            ))}
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {pagedFiltered.map((item) => (
+                <FeedbackCard
+                  key={item.id}
+                  item={item}
+                  canManage={isStaff}
+                  onEdit={handleEdit}
+                  onDelete={(id) => setDeleteId(id)}
+                  onToggleStatus={handleToggleStatus}
+                />
+              ))}
+            </div>
+            {filtered.length > PAGE_SIZE && (
+              <div className="overflow-hidden rounded-card border border-border">
+                <PaginationBar page={safePage} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={setPage} className="!border-t-0" />
+              </div>
+            )}
           </div>
         )}
       </div>

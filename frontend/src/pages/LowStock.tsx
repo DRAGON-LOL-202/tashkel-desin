@@ -144,7 +144,7 @@ export default function LowStockPage() {
       )}
     >
       {loading ? (
-        <LoadingState label="جارٍ تحميل نواقص المخزون..." />
+        <LoadingState label="جارٍ تحميل نواقص المخزون..." variant="table" />
       ) : error ? (
         <ErrorState message={error} onRetry={() => void retry()} />
       ) : (

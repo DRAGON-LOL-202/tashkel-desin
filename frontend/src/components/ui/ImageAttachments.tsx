@@ -5,6 +5,7 @@ import type { ImageAttachment } from "../../types";
 import { generateId } from "../../lib/id";
 import { errorMessage } from "../../lib/api";
 import { attachmentSrc } from "../../lib/attachments";
+import { optimizeImageFile } from "../../lib/imageOptimize";
 import { discardUpload, getFilesConfig, uploadImage, type UploadScope } from "../../services/filesService";
 import { Button } from "./Button";
 import { Modal } from "./Modal";
@@ -21,7 +22,15 @@ interface ImageAttachmentsFieldProps {
 const MAX_ATTACHMENTS = 20; // نفس حد الـ backend
 
 /** صورة مرفق مع بديل عند فشل التحميل (كائن محذوف أو رابط منتهٍ) */
-export function AttachmentImage({ attachment, className }: { attachment: ImageAttachment; className?: string }) {
+export function AttachmentImage({
+  attachment,
+  className,
+  eager = false,
+}: {
+  attachment: ImageAttachment;
+  className?: string;
+  eager?: boolean;
+}) {
   const src = attachmentSrc(attachment);
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   if (!src || failedSrc === src) {
@@ -31,7 +40,16 @@ export function AttachmentImage({ attachment, className }: { attachment: ImageAt
       </div>
     );
   }
-  return <img src={src} alt={attachment.name} className={className} onError={() => setFailedSrc(src)} />;
+  return (
+    <img
+      src={src}
+      alt={attachment.name}
+      loading={eager ? "eager" : "lazy"}
+      decoding="async"
+      className={className}
+      onError={() => setFailedSrc(src)}
+    />
+  );
 }
 
 function PreviewModal({ attachment, onClose }: { attachment: ImageAttachment | null; onClose: () => void }) {
@@ -40,7 +58,7 @@ function PreviewModal({ attachment, onClose }: { attachment: ImageAttachment | n
   return createPortal(
     <Modal open={!!attachment} onClose={onClose} title={attachment?.name ?? "معاينة الصورة"} size="xl">
       {attachment && (
-        <AttachmentImage attachment={attachment} className="mx-auto max-h-[70vh] w-auto max-w-full rounded-control object-contain" />
+        <AttachmentImage attachment={attachment} eager className="mx-auto max-h-[70vh] w-auto max-w-full rounded-control object-contain" />
       )}
     </Modal>
     ,
@@ -83,11 +101,12 @@ export function ImageAttachmentsField({ value, onChange, scope, sessionKeys: ext
       if (batch.length < imageFiles.length) messages.push(`الحد الأقصى ${MAX_ATTACHMENTS} مرفقاً.`);
 
       const config = await getFilesConfig().catch(() => null);
+      const optimizedBatch = await Promise.all(batch.map((file) => optimizeImageFile(file)));
       const added: ImageAttachment[] = [];
 
       if (config?.enabled) {
-        // رفع مباشر إلى R2 (واحداً بعد الآخر)
-        for (const file of batch) {
+        // رفع مباشر إلى R2 (واحداً بعد الآخر) بعد التصغير والتحويل لـ WebP
+        for (const file of optimizedBatch) {
           if (!config.allowedTypes.includes(file.type)) {
             messages.push(`${file.name}: النوع غير مدعوم (JPG أو PNG أو WebP أو GIF).`);
             continue;
@@ -105,8 +124,8 @@ export function ImageAttachmentsField({ value, onChange, scope, sessionKeys: ext
           }
         }
       } else {
-        // R2 غير مفعّل على الخادم: السلوك القديم (base64 داخل الطلب)
-        added.push(...(await Promise.all(batch.map(readAsDataUrl))));
+        // R2 غير مفعّل على الخادم: السلوك القديم (base64 داخل الطلب) بعد ضغط الصورة لتخفيف حجم الصف والطلب
+        added.push(...(await Promise.all(optimizedBatch.map(readAsDataUrl))));
       }
 
       if (added.length > 0) onChange([...valueRef.current, ...added]);

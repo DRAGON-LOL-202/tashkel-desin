@@ -143,7 +143,7 @@ export default function GoalsPage() {
       )}
     >
       {loading ? (
-        <LoadingState label="جارٍ تحميل الأهداف..." />
+        <LoadingState label="جارٍ تحميل الأهداف..." variant="cards" />
       ) : error ? (
         <ErrorState message={error} onRetry={() => void retry()} />
       ) : (

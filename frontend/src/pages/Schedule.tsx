@@ -75,7 +75,7 @@ export default function SchedulePage() {
       )}
     >
       {loading ? (
-        <LoadingState label="جارٍ تحميل الجدولة..." />
+        <LoadingState label="جارٍ تحميل الجدولة..." variant="cards" />
       ) : error ? (
         <ErrorState message={error} onRetry={() => void retry()} />
       ) : seasons.length === 0 ? (

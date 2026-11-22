@@ -37,12 +37,19 @@ feedbackRouter.get(
     if (q.type) where.type = q.type;
     if (q.status) where.status = q.status;
     if (q.from || q.to) where.date = { ...(q.from ? { gte: q.from } : {}), ...(q.to ? { lte: q.to } : {}) };
-    const items = await prisma().feedback.findMany({
-      where,
-      include: feedbackInclude,
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    });
-    res.json({ feedback: items.map(serializeFeedback) });
+    const limit = q.limit ?? 500;
+    const offset = q.offset ?? 0;
+    const [items, total] = await Promise.all([
+      prisma().feedback.findMany({
+        where,
+        include: feedbackInclude,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: limit,
+        skip: offset,
+      }),
+      prisma().feedback.count({ where }),
+    ]);
+    res.json({ feedback: items.map(serializeFeedback), total, hasMore: offset + items.length < total });
   })
 );
 

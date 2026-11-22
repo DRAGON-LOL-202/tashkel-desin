@@ -54,9 +54,14 @@
   - إصلاح عطل جوهري في [app.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/src/app.ts) حيث كانت `channelsForWritePath(req.path)` تُستدعى داخل `res.on("finish")` بعد قصّ الراوترات الفرعية للبادئة من `req.url`، مما كان يسقط جميع الكتابات في قناة `general` فقط ولا يُشغّل أي تحديثات على الصفحات المشتركة في القنوات المتخصصة (`tasks`, `inventory`, `sales`, `accounting`, `users`, `notifications`)؛ تم التقاط `writePath = req.path` وحساب `affectedChannels` قبل `next()` وتصدير `channelsForWritePath` وتحديث قناة `/api/users` و`/api/sales-agents` مع إسكات `/api/files`.
   - إضافة ترويسة `Cache-Control: no-store` لاستجابات `/api` وتمرير `cache: "no-store"` في [api.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/lib/api.ts) و`runStream` في [liveSync.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/lib/liveSync.ts).
   - تقوية [liveSync.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/lib/liveSync.ts) (انتظار أول حزمة بيانات فعلية قبل اعتبار `streamConnected = true` حتى لا يتوقف الفحص الاحتياطي عند تخزين الوسيط للـ SSE، تقليص مهلة الصمت إلى `40_000ms` وdebounce إلى `200ms`، توحيد نهايات الأسطر `\r\n`، بث قناة `general` كشبكة أمان، وإضافة `resetLiveSync()` المستدعى في [AuthProvider.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/auth/AuthProvider.tsx) عند الخروج أو `401`)، مع عدّاد تسلسل `requestSeq` في [useResource.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/hooks/useResource.ts)، وإضافة قناة `"users"` لملف الفتاة في [AgentOrders.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/AgentOrders.tsx)، ورفع رقم كاش الـ Service Worker في [sw.js](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/public/sw.js) إلى `tashkeel-shell-v2`.
+- **تحسينات الأداء الملائمة لحجم المشروع (`Tier S` — بدون Redis أو كاش للأرصدة/المخزون)**:
+  - **فهارس قاعدة البيانات (`0027_performance_indexes`)**: إضافة 15 فهرساً لمفاتيح أجنبية واستعلامات التصفية والفرز المركّبة على `Task`, `TaskTimeLog`, `TaskComment`, `Feedback`, `Goal`, `CalendarEvent`, `InventoryMovement`, `SalesOrder`, `SalesOrderLine`, `AgentOrder`, `AgentOrderLine`, `SalesOrderStatusLog` في [schema.prisma](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/prisma/schema.prisma) وملف الترحيل [0027_performance_indexes](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/prisma/migrations/0027_performance_indexes/migration.sql).
+  - **ترقيم الصفحات (`Pagination`)**: إضافة `limit`/`offset` في الـ Backend مع توافق عكسي كامل في [accounting.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/src/routes/accounting.ts) (`GET /accounting/orders`) و[agent.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/src/routes/agent.ts) (`GET /agent/orders`) و[feedback.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/src/routes/feedback.ts) (`GET /feedback`)، وإضافة مكوّن [PaginationBar.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/ui/PaginationBar.tsx) وتفعيله في [SalesFollowUp.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/SalesFollowUp.tsx) و[AgentOrders.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/AgentOrders.tsx) و[Feedback.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/Feedback.tsx) و[Inventory.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/Inventory.tsx).
+  - **تحسين الصور قبل الرفع (`WebP` + `Lazy Loading`)**: إضافة [imageOptimize.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/lib/imageOptimize.ts) لتصغير الصور الكبيرة (`1600px`) وضغطها إلى `WebP` (`0.8`) قبل الرفع في [ImageAttachments.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/ui/ImageAttachments.tsx) مع الحفاظ على GIF المتحرك، وتفعيل `loading="lazy"` و`decoding="async"` للصور المصغرة وتحديد أبعاد شعار النظام في `Sidebar.tsx` و`Workspace.tsx`.
+  - **واجهات التحميل الهيكلية (`Skeleton Loading`)**: توسيع [StatusViews.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/ui/StatusViews.tsx) بالأنماط (`table`, `cards`, `stats`, `list`) وتمريرها لصفحات المهام والمخزون والمبيعات والمتابعة والحسابات والإشعارات والمستخدمين والأهداف والجدولة لمنع الوميض وقفز العناصر.
 - **ملفات المستودع والاختبارات**:
   - إضافة `.env.example` في `backend/` و`frontend/` وملف `.github/workflows/ci.yml`.
-  - إضافة [sync.test.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/tests/sync.test.ts) وإصلاح وإضافة اختبارات التغطية في `backend/tests/` (شاملةً اختبارات القنوات والبث اللحظي SSE وتفاصيل المتابعة وعدم تسرب التكاليف).
+  - إضافة [sync.test.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/tests/sync.test.ts) و[performance.test.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/tests/performance.test.ts) وإصلاح وإضافة اختبارات التغطية في `backend/tests/` (شاملةً اختبارات القنوات والبث اللحظي SSE والفهارس والـ Pagination وتفاصيل المتابعة وعدم تسرب التكاليف).
 
 ---
 
@@ -67,14 +72,19 @@
 - `backend/.env.example`
 - `backend/prisma/migrations/0025_user_token_version/migration.sql`
 - `backend/prisma/migrations/0026_agent_line_price_shipping/migration.sql`
+- `backend/prisma/migrations/0027_performance_indexes/migration.sql`
+- `backend/tests/sync.test.ts`
+- `backend/tests/performance.test.ts`
 - `frontend/.env.example`
 - `frontend/src/lib/departments.ts`
+- `frontend/src/lib/imageOptimize.ts`
 - `frontend/src/lib/waybillPdf.ts`
 - `frontend/src/components/departments/DepartmentProvider.tsx`
 - `frontend/src/components/agent/FollowOrdersTable.tsx`
 - `frontend/src/components/agent/WaybillPreviewModal.tsx`
 - `frontend/src/components/agent/WaybillSheet.tsx`
 - `frontend/src/components/ui/ErrorBoundary.tsx`
+- `frontend/src/components/ui/PaginationBar.tsx`
 - `frontend/src/pages/Workspace.tsx`
 - `HANDOFF_DEPARTMENTS.md`
 - `CHANGES_DEPARTMENTS.md`
@@ -103,6 +113,7 @@
 - `backend/src/utils/syncVersion.ts`
 - `backend/src/validators/agent.ts`
 - `backend/src/validators/attachments.ts`
+- `backend/src/validators/feedback.ts`
 - `backend/tests/access.test.ts`
 - `backend/tests/agentIntegrity.test.ts`
 - `backend/tests/agentMath.test.ts`
@@ -112,7 +123,6 @@
 - `backend/tests/inventory.test.ts`
 - `backend/tests/r2Client.test.ts`
 - `backend/tests/sales.test.ts`
-- `backend/tests/sync.test.ts` (جديد)
 - `backend/tests/tasks.test.ts`
 - `backend/tests/users.test.ts`
 
@@ -124,6 +134,8 @@
 - `frontend/src/components/agent/FollowOrderRow.tsx`
 - `frontend/src/components/auth/AuthProvider.tsx`
 - `frontend/src/components/sidebar/Sidebar.tsx`
+- `frontend/src/components/ui/ImageAttachments.tsx`
+- `frontend/src/components/ui/StatusViews.tsx`
 - `frontend/src/hooks/useLiveSync.ts`
 - `frontend/src/hooks/useResource.ts`
 - `frontend/src/hooks/useTeamMembers.ts`
@@ -147,6 +159,7 @@
 - `frontend/src/pages/Schedule.tsx`
 - `frontend/src/pages/TeamDashboard.tsx`
 - `frontend/src/pages/Withdrawals.tsx`
+- `frontend/src/services/agentService.ts`
 - `frontend/src/services/usersService.ts`
 
 ### ملفات محذوفة من Frontend (إزالة واجهة «أسعار منتجات»)
@@ -170,11 +183,11 @@
 | الفحص | الأمر | النتيجة | التفاصيل المرصودة |
 | --- | --- | --- | --- |
 | فحص أنواع Backend | `cd backend && npm run typecheck` | **PASS** | `tsc -p tsconfig.json --noEmit` — خروج برمز 0 (0 أخطاء) |
-| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **27 ملفاً نجح / 27**، **444 اختباراً نجح / 444** (0 فشل، 0 تخطي) في `47.58s` |
-| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (216ms) + `tsc -p tsconfig.json` — خروج برمز 0 |
+| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **28 ملفاً نجح / 28**، **447 اختباراً نجح / 447** (0 فشل، 0 تخطي) في `61.96s` |
+| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (202ms) + `tsc -p tsconfig.json` — خروج برمز 0 |
 | اختبار قبول الإدارات والصلاحيات | `tsx verify_departments.ts` | **PASS** | طباعة `ALL_DEPARTMENTS_ACCEPTANCE_CHECKS_PASSED` (تحقق من `/workspace` و`manageUsers` لـ `admin`/`manager` فقط، إزالة `/products` من `Workspace`/`App`/`Sidebar`، عدّ الروابط `6/8/3/1`، وثبات `departmentsForPath`) |
-| فحص Frontend Lint | `cd frontend && npm run lint` | **PASS** | `oxlint` — `0 errors`, `20 warnings` (على 173 ملفاً في `67ms`) |
-| بناء Frontend | `cd frontend && npm run build` | **PASS** | `tsc -b && vite build` — 3064 وحدة في `1.51s`؛ الحزمة الرئيسية `230.60 kB` (مع تحميل `jspdf` و`html2canvas` كحزم منفصلة كسولة) |
+| فحص Frontend Lint | `cd frontend && npm run lint` | **PASS** | `oxlint` — `0 errors`, `20 warnings` (على 175 ملفاً في `71ms`) |
+| بناء Frontend | `cd frontend && npm run build` | **PASS** | `tsc -b && vite build` — 3066 وحدة في `1.53s`؛ الحزمة الرئيسية `230.72 kB` (مع تحميل `jspdf` و`html2canvas` كحزم منفصلة كسولة) |
 | اختبار المتصفح الحي (E2E) | — | **NOT RUN** | لم يُشغَّل متصفح فعلي للنقر البصري |
 
 ---
@@ -191,7 +204,7 @@
    npx prisma migrate deploy
    npm run build
    ```
-   (تتضمن migrations الجديدة `0025_user_token_version` لعمود `tokenVersion` و`0026_agent_line_price_shipping` لحقول `boxPrice` و`shippingPrice`).
+   (تتضمن migrations الجديدة `0025_user_token_version` لعمود `tokenVersion`، و`0026_agent_line_price_shipping` لحقول `boxPrice` و`shippingPrice`، و`0027_performance_indexes` لفهارس الأداء).
 3. **بناء ونشر الواجهة**:
    ```bash
    cd frontend

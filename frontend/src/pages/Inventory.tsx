@@ -43,6 +43,7 @@ import { Button } from "../components/ui/Button";
 import { AttachmentImage } from "../components/ui/ImageAttachments";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { EmptyState } from "../components/ui/EmptyState";
+import { PaginationBar } from "../components/ui/PaginationBar";
 import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { useToast } from "../components/ui/ToastProvider";
 import { useAuth } from "../components/auth/AuthProvider";
@@ -54,6 +55,7 @@ import type { SyncChannel } from "../lib/liveSync";
 import { EMPTY_INVENTORY_DATA, inventoryService } from "../services/inventoryService";
 
 const INVENTORY_CHANNELS: SyncChannel[] = ["inventory"];
+const INVENTORY_PAGE_SIZE = 50;
 import type {
   InventoryCategory,
   InventoryData,
@@ -73,6 +75,7 @@ export default function InventoryPage() {
   const [sortBy, setSortBy] = useState<SortField>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [showInactive, setShowInactive] = useState(false);
+  const [page, setPage] = useState(1);
 
   const [itemModal, setItemModal] = useState<{ editing: InventoryItem | null } | null>(null);
   const [detailsItem, setDetailsItem] = useState<InventoryItem | null>(null);
@@ -120,6 +123,13 @@ export default function InventoryPage() {
       return a.name.localeCompare(b.name, "ar") * dir;
     });
   }, [items, search, showInactive, activeCategory, statusFilter, sortBy, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(visible.length / INVENTORY_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedVisible = useMemo(
+    () => visible.slice((safePage - 1) * INVENTORY_PAGE_SIZE, safePage * INVENTORY_PAGE_SIZE),
+    [visible, safePage]
+  );
 
   const live = (i: InventoryItem | null) => (i ? (items.find((x) => x.id === i.id) ?? i) : null);
 
@@ -203,7 +213,7 @@ export default function InventoryPage() {
       )}
     >
       {loading ? (
-        <LoadingState label="جارٍ تحميل بيانات المخزون..." />
+        <LoadingState label="جارٍ تحميل بيانات المخزون..." variant="table" />
       ) : error ? (
         <ErrorState message={error} onRetry={() => void retry()} />
       ) : (
@@ -371,7 +381,10 @@ export default function InventoryPage() {
               <Search size={16} className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-muted" />
               <input
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
                 placeholder="ابحث بالاسم أو الكود..."
                 aria-label="بحث في المخزون"
                 className="pp-input pp-input--icon"
@@ -380,7 +393,10 @@ export default function InventoryPage() {
 
             <select
               value={activeCategory}
-              onChange={(e) => setCategoryFilter(e.target.value)}
+              onChange={(e) => {
+                setCategoryFilter(e.target.value);
+                setPage(1);
+              }}
               aria-label="فلتر التصنيف"
               className="pp-input pp-input--select cursor-pointer sm:w-44"
             >
@@ -390,7 +406,10 @@ export default function InventoryPage() {
 
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              onChange={(e) => {
+                setStatusFilter(e.target.value as StatusFilter);
+                setPage(1);
+              }}
               aria-label="تصفية حسب حالة المخزون"
               className="pp-input pp-input--select cursor-pointer sm:w-44"
             >
@@ -404,7 +423,10 @@ export default function InventoryPage() {
             <div className="flex items-center gap-1.5">
               <select
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as SortField)}
+                onChange={(e) => {
+                  setSortBy(e.target.value as SortField);
+                  setPage(1);
+                }}
                 aria-label="ترتيب حسب"
                 className="pp-input pp-input--select cursor-pointer sm:w-40"
               >
@@ -414,7 +436,10 @@ export default function InventoryPage() {
               </select>
               <button
                 type="button"
-                onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+                onClick={() => {
+                  setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                  setPage(1);
+                }}
                 title={sortDir === "asc" ? "تصاعدي (اضغط للتنازلي)" : "تنازلي (اضغط للتصاعدي)"}
                 aria-label="عكس اتجاه الترتيب"
                 className="task-icon-btn !h-10 !w-10 shrink-0"
@@ -425,7 +450,14 @@ export default function InventoryPage() {
 
             {canManageInventory && (
               <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-text sm:text-sm">
-                <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={showInactive}
+                  onChange={(e) => {
+                    setShowInactive(e.target.checked);
+                    setPage(1);
+                  }}
+                />
                 عرض المؤرشف
               </label>
             )}
@@ -448,7 +480,8 @@ export default function InventoryPage() {
           ) : visible.length === 0 ? (
             <EmptyState icon={<Search size={24} />} title="لا توجد نتائج مطابقة" description="جرّب تغيير البحث أو الفلاتر." />
           ) : (
-            <div className="pp-panel overflow-x-auto">
+            <div className="pp-panel overflow-hidden">
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-right text-xs text-muted">
@@ -471,7 +504,7 @@ export default function InventoryPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visible.map((i) => {
+                  {pagedVisible.map((i) => {
                     const statusMeta = STATUS_META[i.status] ?? STATUS_META.AVAILABLE;
                     const itemTotalValue = i.totalValue ?? calcTotalValue(i.quantity, i.unitPrice);
                     return (
@@ -635,6 +668,8 @@ export default function InventoryPage() {
                   })}
                 </tbody>
               </table>
+              </div>
+              <PaginationBar page={safePage} pageSize={INVENTORY_PAGE_SIZE} total={visible.length} onPageChange={setPage} />
             </div>
           )}
         </div>
