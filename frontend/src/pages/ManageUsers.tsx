@@ -19,6 +19,9 @@ import { inventoryAccessLabel, roleLabel, usersService } from "../services/users
 import { inventoryService } from "../services/inventoryService";
 import { agentAdminService } from "../services/agentService";
 import type { CreateUserInput, TeamMember, UpdateUserInput, UserRole } from "../types";
+import type { SyncChannel } from "../lib/liveSync";
+
+const USER_CHANNELS: SyncChannel[] = ["users"];
 
 const roleColor: Record<UserRole, string> = {
   admin: "#FF6B6B",
@@ -44,7 +47,7 @@ export default function ManageUsersPage() {
   const { user: actor } = useAuth();
   const { show } = useToast();
   const safe = useSafeAction();
-  const { data: users, loading, error, reload, retry } = useResource<TeamMember[]>(usersService.list, []);
+  const { data: users, loading, error, reload, retry } = useResource<TeamMember[]>(usersService.list, [], USER_CHANNELS);
   const [groupNames, setGroupNames] = useState<Record<string, string>>({});
   useEffect(() => {
     let cancelled = false;

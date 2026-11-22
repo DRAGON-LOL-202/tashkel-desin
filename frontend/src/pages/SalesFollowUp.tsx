@@ -11,12 +11,14 @@ import { FollowOrderRow } from "../components/agent/FollowOrderRow";
 import { SALES_STATUS_META } from "../components/sales/status";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
+import type { SyncChannel } from "../lib/liveSync";
 import { accountingService } from "../services/agentService";
 import type { AgentAccountRow, AgentAccountTotals, FollowList, FollowOrder } from "../types";
 
 const NO_ORDERS: FollowList = { orders: [], total: 0, hasMore: false };
 const NO_AGENTS: { agents: AgentAccountRow[]; totals: AgentAccountTotals | null } = { agents: [], totals: null };
 const STATUS_TABS = ["", "EXECUTED", "SHIPPED", "DELIVERED", "RETURNED"] as const;
+const ACCOUNTING_CHANNELS: SyncChannel[] = ["accounting"];
 
 // متابعة أوردرات المبيعات: كل أوردر وصل «تم التنفيذ» فما بعد في أوردرات مبيعات إلكترونية (يدوي أو من الفتيات)، كقائمة أسطر.
 // المحاسب يغيّر الحالة (شحن/تسليم) ويعلّم المرتجع ويدخل سعر الشحن — بلا خصم مخزون ولا تعديل لمحتوى الأوردر.
@@ -31,9 +33,9 @@ export default function SalesFollowUpPage() {
 
   const q = search.trim();
   const loader = useCallback(() => accountingService.followOrders({ status, agentId, q, from, to }), [status, agentId, q, from, to]);
-  const orders = useResource<FollowList>(loader, NO_ORDERS);
+  const orders = useResource<FollowList>(loader, NO_ORDERS, ACCOUNTING_CHANNELS);
   const agentsLoader = useCallback(async () => ({ ...(await accountingService.agents({})) }), []);
-  const agents = useResource(agentsLoader, NO_AGENTS);
+  const agents = useResource(agentsLoader, NO_AGENTS, ACCOUNTING_CHANNELS);
 
   const changeStatus = async (o: FollowOrder, next: "SHIPPED" | "DELIVERED") => {
     const r = await run(() => accountingService.setStatus(o.id, next));

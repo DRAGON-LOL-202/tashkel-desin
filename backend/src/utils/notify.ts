@@ -87,8 +87,8 @@ export async function notify(input: NotifyInput): Promise<string[]> {
   }
 }
 
-/** للمهام الخلفية (خارج طلبات HTTP): يرفع رقم النسخة ليتحدّث عداد الواجهات فوراً. */
-export const announceNotificationsChanged = bumpDataVersion;
+/** للمهام الخلفية (خارج طلبات HTTP): يرفع رقم النسخة ليتحدّث عداد الواجهات والمهام فوراً. */
+export const announceNotificationsChanged = () => bumpDataVersion(["notifications", "tasks"]);
 
 /** المديرون والمشرفون النشطون (للإشعارات الإدارية). */
 export async function staffIds(): Promise<string[]> {

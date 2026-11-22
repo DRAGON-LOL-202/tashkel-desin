@@ -4,11 +4,11 @@ import { ALLOWED_IMAGE_TYPE_LIST, type AllowedImageType } from "../utils/attachm
 const id = z.string().min(1).max(100);
 const name = z.string().max(255);
 
-// قديم: صورة base64 داخل الصف (الحد الكلي للطلب 15MB في app.ts)
+// قديم: صورة base64 داخل الصف (مقصورة على الصور الآمنة فقط، بدون SVG؛ والحد الكلي للطلب 15MB في app.ts)
 const legacyAttachment = z.object({
   id,
   name,
-  dataUrl: z.string().startsWith("data:image/").max(8_000_000),
+  dataUrl: z.string().regex(/^data:image\/(jpeg|png|webp|gif);base64,/, "نوع الصورة غير مدعوم").max(8_000_000),
 });
 
 // جديد: مرجع لكائن في R2. حقل url (رابط العرض الموقَّع) يُهمَل هنا ولا يُخزَّن.

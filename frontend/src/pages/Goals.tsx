@@ -15,6 +15,9 @@ import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { useAuth } from "../components/auth/AuthProvider";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
+import type { SyncChannel } from "../lib/liveSync";
+
+const GOAL_CHANNELS: SyncChannel[] = ["tasks"];
 
 const sections: { type: GoalType; label: string; accent: string }[] = [
   { type: "weekly", label: "أهداف أسبوعية", accent: "#27C6A3" },
@@ -50,7 +53,7 @@ export default function GoalsPage() {
   const { show } = useToast();
   const run = useSafeAction();
   const { user } = useAuth();
-  const { data: goals, loading, error, reload, retry } = useResource<Goal[]>(goalsService.list, []);
+  const { data: goals, loading, error, reload, retry } = useResource<Goal[]>(goalsService.list, [], GOAL_CHANNELS);
 
   const filteredGoals = useMemo(() => {
     const query = search.trim().toLowerCase();

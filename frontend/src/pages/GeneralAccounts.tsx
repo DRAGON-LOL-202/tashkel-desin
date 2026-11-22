@@ -6,8 +6,11 @@ import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { StatTile } from "../components/agent/StatTile";
 import { fmtMoney } from "../components/inventory/format";
 import { useResource } from "../hooks/useResource";
+import type { SyncChannel } from "../lib/liveSync";
 import { accountingService } from "../services/agentService";
 import type { GeneralAccounts } from "../types";
+
+const ACCOUNTING_CHANNELS: SyncChannel[] = ["accounting"];
 
 const EMPTY: GeneralAccounts = { totalOrders: 0, deliveredCount: 0, shippedCount: 0, returnedCount: 0, cancelledCount: 0, deliveredSales: 0, totalShipping: 0, grandTotal: 0, salesPercent: 0, shippingPercent: 0 };
 
@@ -16,7 +19,7 @@ export default function GeneralAccountsPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const loader = useCallback(() => accountingService.general({ from, to }), [from, to]);
-  const g = useResource<GeneralAccounts>(loader, EMPTY);
+  const g = useResource<GeneralAccounts>(loader, EMPTY, ACCOUNTING_CHANNELS);
   const d = g.data;
   const pct = (n: number) => `${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}%`;
 

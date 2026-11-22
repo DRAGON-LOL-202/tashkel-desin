@@ -46,9 +46,11 @@ export function createR2Client(cfg: R2Config, fetchFn: FetchLike = (url, init) =
 
   return {
     /** رابط رفع مباشر من المتصفح. يجب أن يرسل العميل Content-Type بنفس القيمة الموقَّعة. */
-    presignPut(key: string, contentType: string, now: Date = new Date()) {
+    presignPut(key: string, contentType: string, now: Date = new Date(), contentLength?: number) {
+      const signedHeaders: Record<string, string> = { "content-type": contentType };
+      if (contentLength !== undefined) signedHeaders["content-length"] = String(contentLength);
       return {
-        url: sign("PUT", key, UPLOAD_TTL_SEC, now, { "content-type": contentType }),
+        url: sign("PUT", key, UPLOAD_TTL_SEC, now, signedHeaders),
         headers: { "Content-Type": contentType },
         expiresIn: UPLOAD_TTL_SEC,
       };

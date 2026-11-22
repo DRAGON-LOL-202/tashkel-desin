@@ -86,10 +86,26 @@ describe("auth", () => {
     await prisma().user.update({ where: { username: "designer1" }, data: { isActive: true } });
   });
 
-  it("logout يحتاج مصادقة", async () => {
+  it("logout يحتاج مصادقة ويُبطل التوكن فوراً على الخادم", async () => {
     expect((await api().post("/api/auth/logout")).status).toBe(401);
     const token = await login("designer1");
     expect((await api(token).post("/api/auth/logout")).status).toBe(200);
+    expect((await api(token).get("/api/auth/me")).status).toBe(401);
+  });
+
+  it("تغيير كلمة المرور أو إعادة تعيينها يُبطل التوكن القديم فوراً", async () => {
+    await makeUser("pwuser");
+    const oldToken = await login("pwuser");
+    const ch = await api(oldToken).patch("/api/users/me").send({ currentPassword: PASSWORD, newPassword: "new-pass-1234" });
+    expect(ch.status).toBe(200);
+    expect(ch.body.token).toBeTruthy();
+    expect((await api(oldToken).get("/api/auth/me")).status).toBe(401);
+    expect((await api(ch.body.token).get("/api/auth/me")).status).toBe(200);
+
+    const adminToken = await login("lol");
+    const u = await prisma().user.findUniqueOrThrow({ where: { username: "pwuser" } });
+    expect((await api(adminToken).patch(`/api/users/${u.id}`).send({ password: "admin-reset-1234" })).status).toBe(200);
+    expect((await api(ch.body.token).get("/api/auth/me")).status).toBe(401);
   });
 
   it("health بدون مصادقة", async () => {

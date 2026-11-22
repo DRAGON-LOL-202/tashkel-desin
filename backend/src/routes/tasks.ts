@@ -499,7 +499,7 @@ tasksRouter.post(
   asyncHandler(async (req, res) => {
     const { assigneeId } = copyTaskSchema.parse(req.body);
     const db = prisma();
-    const source = await db.task.findUnique({ where: { id: req.params.id } });
+    const source = await db.task.findUnique({ where: { id: idOf(req.params.id) } });
     if (!source) throw notFound("المهمة غير موجودة");
     if (source.parentId) throw badRequest("يمكن نسخ المهمة الرئيسية فقط");
     const assignee = await db.user.findUnique({ where: { id: assigneeId } });
@@ -555,7 +555,7 @@ tasksRouter.post(
   requireStaff,
   asyncHandler(async (req, res) => {
     const { date } = moveUnfinishedSchema.parse(req.body);
-    const task = await prisma().task.findUnique({ where: { id: req.params.id } });
+    const task = await prisma().task.findUnique({ where: { id: idOf(req.params.id) } });
     if (!task) throw notFound("المهمة غير موجودة");
     if (task.parentId) throw badRequest("يمكن نقل المهمة الرئيسية فقط");
     if (task.date === date) throw badRequest("المهمة موجودة في هذا اليوم بالفعل");
@@ -623,7 +623,10 @@ tasksRouter.patch(
     await db.$transaction(ops);
     // المرفقات التي أُزيلت من المهمة تُحذف من R2 بعد نجاح الحفظ (أفضل جهد)
     if (body.attachments !== undefined) await deleteUnreferencedObjects(removedKeys(task.attachments, body.attachments));
-    if (becomesDone) await notifyCompleted(req.user!, task);
+    if (becomesDone) {
+      await dropTimer(task.id);
+      await notifyCompleted(req.user!, task);
+    }
     if (leavesDone) await notifyReopened(req.user!, task);
     if (body.attachments !== undefined && keysOf(body.attachments).length > keysOf(task.attachments).length) {
       await notify({
@@ -697,16 +700,21 @@ tasksRouter.post(
     const me = req.user!;
     const db = prisma();
     const task = await getTaskFor(me, req.params.id);
-    if (task.status === "RUNNING") throw conflict("المهمة تعمل بالفعل");
-    if (task.status === "COMPLETED") throw conflict("المهمة مكتملة");
     const now = new Date();
-    await db.$transaction([
-      db.taskTimeLog.create({ data: { taskId: task.id, userId: me.id, startTime: now } }),
-      db.task.update({
+    await db.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<{ status: string; startedAt: Date | null }[]>`
+        SELECT "status"::text AS "status", "startedAt" FROM "Task" WHERE "id" = ${task.id} FOR UPDATE
+      `;
+      const locked = rows[0];
+      if (!locked) throw notFound("المهمة غير موجودة");
+      if (locked.status === "RUNNING") throw conflict("المهمة تعمل بالفعل");
+      if (locked.status === "COMPLETED") throw conflict("المهمة مكتملة");
+      await tx.taskTimeLog.create({ data: { taskId: task.id, userId: me.id, startTime: now } });
+      await tx.task.update({
         where: { id: task.id },
-        data: { status: "RUNNING", startedAt: task.startedAt ?? now, endTime: null },
-      }),
-    ]);
+        data: { status: "RUNNING", startedAt: locked.startedAt ?? now, endTime: null },
+      });
+    });
     await resumeTimerIfIdle(task.id);
     await notifyStatus(me, task, "بدأ العمل على");
     await respondTask(res, task.id);

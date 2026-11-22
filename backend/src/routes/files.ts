@@ -26,7 +26,7 @@ filesRouter.post(
     if (body.size > maxFileBytes()) throw new HttpError(413, "حجم الملف أكبر من المسموح", "FILE_TOO_LARGE");
 
     const objectKey = buildObjectKey(body.scope, req.user!.id, randomUUID(), body.mimeType);
-    const put = client.presignPut(objectKey, body.mimeType);
+    const put = client.presignPut(objectKey, body.mimeType, undefined, body.size);
     res.json({ objectKey, uploadUrl: put.url, headers: put.headers, expiresIn: put.expiresIn, previewUrl: client.presignGet(objectKey) });
   })
 );

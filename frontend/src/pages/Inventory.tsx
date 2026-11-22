@@ -50,7 +50,10 @@ import { usePermissions } from "../hooks/usePermissions";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
 import { ApiError, errorMessage } from "../lib/api";
+import type { SyncChannel } from "../lib/liveSync";
 import { EMPTY_INVENTORY_DATA, inventoryService } from "../services/inventoryService";
+
+const INVENTORY_CHANNELS: SyncChannel[] = ["inventory"];
 import type {
   InventoryCategory,
   InventoryData,
@@ -87,7 +90,7 @@ export default function InventoryPage() {
   const { user } = useAuth();
   const { canManageInventory, canDeleteInventory, canAddStock, canEditInventoryItem, hideInventoryPrices } = usePermissions();
   const loadInventory = useMemo(() => () => inventoryService.list({ includeGroups: canManageInventory }), [canManageInventory]);
-  const { data, loading, error, reload, retry } = useResource<InventoryData>(loadInventory, EMPTY_INVENTORY_DATA);
+  const { data, loading, error, reload, retry } = useResource<InventoryData>(loadInventory, EMPTY_INVENTORY_DATA, INVENTORY_CHANNELS);
   const { items, categories, groups, stats, units } = data;
 
   const activeCategory = isValidCategoryFilter(categoryFilter, categories) ? categoryFilter : "all";

@@ -34,7 +34,10 @@ import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
 import { ApiError, errorMessage } from "../lib/api";
 import { exportInventoryReport } from "../lib/exportInventory";
+import type { SyncChannel } from "../lib/liveSync";
 import { EMPTY_INVENTORY_DATA, inventoryService } from "../services/inventoryService";
+
+const INVENTORY_CHANNELS: SyncChannel[] = ["inventory"];
 import type { InventoryCategory, InventoryData, InventoryItem, InventoryItemInput, InventoryMovementInput } from "../types";
 
 export default function LowStockPage() {
@@ -53,7 +56,7 @@ export default function LowStockPage() {
   const run = useSafeAction();
   const { user } = useAuth();
   const { canManageInventory } = usePermissions();
-  const { data, loading, error, reload, retry } = useResource<InventoryData>(inventoryService.list, EMPTY_INVENTORY_DATA);
+  const { data, loading, error, reload, retry } = useResource<InventoryData>(inventoryService.list, EMPTY_INVENTORY_DATA, INVENTORY_CHANNELS);
   const { items, categories, groups, units } = data;
 
   const shortages = useMemo(

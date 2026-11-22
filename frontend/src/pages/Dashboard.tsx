@@ -19,6 +19,7 @@ import { useResource } from "../hooks/useResource";
 import type { AttendanceSession, AttendanceToday, CalendarDateState, CreateTaskInput, Task, TaskBoard, TeamMember, TimerAction } from "../types";
 import { getTaskElapsed } from "../hooks/useTaskTimer";
 import { todayISO } from "../lib/date";
+import type { SyncChannel } from "../lib/liveSync";
 import { useToast } from "../components/ui/ToastProvider";
 import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { useAuth } from "../components/auth/AuthProvider";
@@ -31,6 +32,7 @@ import { downloadDailyReport } from "../lib/exportDailyReport";
 import { buildNumberMap, getSiblings, insertAtPosition } from "../lib/taskOrder";
 
 const NO_ATTENDANCE: AttendanceToday = { today: "", sessions: [] };
+const TASK_SYNC_CHANNELS: SyncChannel[] = ["tasks"];
 
 function sortTasks(a: Task, b: Task): number {
   if (a.status === "completed" && b.status !== "completed") return 1;
@@ -145,7 +147,7 @@ export default function Dashboard({ board = "design" }: { board?: TaskBoard }) {
       // نُبقي القائمة الحالية ونحاول عند التغيير التالي
     }
   }, [selectedDate, fetchDay, refreshDateStates]);
-  useLiveSync(syncTasks);
+  useLiveSync(syncTasks, TASK_SYNC_CHANNELS);
 
   useEffect(() => {
     const id = setInterval(() => setTick((value) => value + 1), 1000);
@@ -154,7 +156,7 @@ export default function Dashboard({ board = "design" }: { board?: TaskBoard }) {
 
   // الحضور والانصراف: يتحدث تلقائياً عند أي تغيير من أي مستخدم، وكل 5 دقائق ليلتقط تغيّر اليوم بعد منتصف الليل.
   // فشل تحميله لا يعطّل صفحة المهام (تظهر الكروت بدون جلسات).
-  const { data: attendance, reload: reloadAttendance } = useResource<AttendanceToday>(attendanceService.today, NO_ATTENDANCE);
+  const { data: attendance, reload: reloadAttendance } = useResource<AttendanceToday>(attendanceService.today, NO_ATTENDANCE, TASK_SYNC_CHANNELS);
   useEffect(() => {
     const id = setInterval(() => void reloadAttendance(), 5 * 60_000);
     return () => clearInterval(id);

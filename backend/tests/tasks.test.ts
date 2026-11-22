@@ -284,4 +284,18 @@ describe("tasks: لوحة الإنتاج (board)", () => {
     expect(res.status).toBe(200);
     expect(res.body.tasks.every((t: any) => t.board === "production" && t.assigneeId === d1Id)).toBe(true);
   });
+
+  it("إكمال مهمة عبر PATCH /:id يحذف مؤقتها، والبدء المتزامن لا يفتح سجلي وقت", async () => {
+    const t = await mk(d1, { target: 2, plannedMinutes: 30, date: "2026-10-08" });
+    const starts = await Promise.all([api(d1).post(`/api/tasks/${t.id}/start`), api(d1).post(`/api/tasks/${t.id}/start`)]);
+    expect(starts.filter((r) => r.status === 200)).toHaveLength(1);
+    expect(starts.filter((r) => r.status === 409)).toHaveLength(1);
+    expect(await prisma().taskTimeLog.count({ where: { taskId: t.id, stopTime: null } })).toBe(1);
+
+    const done = await api(d1).patch(`/api/tasks/${t.id}`).send({ current: 2 });
+    expect(done.status).toBe(200);
+    expect(done.body.task.status).toBe("completed");
+    expect(done.body.task.timer).toBeUndefined();
+    expect(await prisma().taskTimer.findUnique({ where: { taskId: t.id } })).toBeNull();
+  });
 });

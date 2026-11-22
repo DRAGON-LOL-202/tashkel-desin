@@ -14,14 +14,17 @@ import { getTaskElapsed } from "../hooks/useTaskTimer";
 import { formatArabicDate, formatDuration, monthRange, todayISO } from "../lib/date";
 import { LongTermTimePanel } from "../components/tasks/LongTermTimePanel";
 import { AttendanceMonthPanel } from "../components/tasks/AttendanceMonthPanel";
+import type { SyncChannel } from "../lib/liveSync";
+
+const TASK_CHANNELS: SyncChannel[] = ["tasks"];
 
 export default function TeamDashboardPage() {
   // الإحصائيات الشهرية تُحسب لشهر واحد في كل مرة (الافتراضي: الشهر الحالي)؛ والطويلة الأمد من لوحة التجميع أسفل الصفحة.
   const [month, setMonth] = useState(() => todayISO().slice(0, 7));
   const { from: monthFrom, to: monthTo } = useMemo(() => monthRange(month), [month]);
   const loadMonthTasks = useCallback(() => tasksService.list({ from: monthFrom, to: monthTo }), [monthFrom, monthTo]);
-  const { data: tasks, loading: tasksLoading, error: tasksError, retry: retryTasks } = useResource<Task[]>(loadMonthTasks, []);
-  const { data: knownMonths } = useResource<string[]>(tasksService.months, []);
+  const { data: tasks, loading: tasksLoading, error: tasksError, retry: retryTasks } = useResource<Task[]>(loadMonthTasks, [], TASK_CHANNELS);
+  const { data: knownMonths } = useResource<string[]>(tasksService.months, [], TASK_CHANNELS);
   const { members: teamMembers, loading: membersLoading, error: membersError, reload: reloadMembers } = useTeamMembers();
   const loading = tasksLoading || membersLoading;
   const error = tasksError ?? membersError;

@@ -14,8 +14,11 @@ import { NotificationItem } from "../components/notifications/NotificationItem";
 import { PushSettingsCard } from "../components/notifications/PushSettingsCard";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
+import type { SyncChannel } from "../lib/liveSync";
 import { notificationsService } from "../services/notificationsService";
 import type { AppNotification, NotificationCategory, NotificationList } from "../types";
+
+const NOTIFICATION_CHANNELS: SyncChannel[] = ["notifications"];
 
 type TabValue = "all" | "unread" | "read" | NotificationCategory;
 
@@ -47,7 +50,7 @@ export default function NotificationsPage() {
     const category = tab === "all" || tab === "unread" || tab === "read" ? undefined : tab;
     return () => notificationsService.list({ filter, category, q: query, from: from || undefined, to: to || undefined });
   }, [tab, query, from, to]);
-  const { data, loading, error, reload, retry } = useResource<NotificationList>(loader, EMPTY);
+  const { data, loading, error, reload, retry } = useResource<NotificationList>(loader, EMPTY, NOTIFICATION_CHANNELS);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);

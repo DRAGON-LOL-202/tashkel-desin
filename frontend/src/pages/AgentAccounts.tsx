@@ -12,8 +12,11 @@ import { PrefixManager } from "../components/agent/PrefixManager";
 import { fmtMoney } from "../components/inventory/format";
 import { usePermissions } from "../hooks/usePermissions";
 import { useResource } from "../hooks/useResource";
+import type { SyncChannel } from "../lib/liveSync";
 import { accountingService } from "../services/agentService";
 import type { AgentAccountRow, AgentAccountTotals } from "../types";
+
+const ACCOUNTING_CHANNELS: SyncChannel[] = ["accounting"];
 
 const EMPTY: { agents: AgentAccountRow[]; totals: AgentAccountTotals } = {
   agents: [],
@@ -28,7 +31,7 @@ export default function AgentAccountsPage() {
   const [open, setOpen] = useState<AgentAccountRow | null>(null);
 
   const loader = useCallback(() => accountingService.agents({ from, to }), [from, to]);
-  const accounts = useResource(loader, EMPTY);
+  const accounts = useResource(loader, EMPTY, ACCOUNTING_CHANNELS);
   const t = accounts.data.totals;
 
   return (

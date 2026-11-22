@@ -1,0 +1,27 @@
+# سجل التغييرات — بوابة الإدارات وإصلاحات v11 (`CHANGES_DEPARTMENTS.md`)
+
+## 1. بوابة الإدارات الرئيسية (Departments Portal)
+- إضافة تعريف الإدارات المركزي `frontend/src/lib/departments.ts` للأقسام الأربعة:
+  - `design` («إدارة التصميم» — 6 روابط: `/daily-tasks`, `/notifications`, `/feedback`, `/goals`, `/schedule`, `/users`).
+  - `production_inventory` («إدارة الإنتاج والمخزون» — 8 روابط: `/production-tasks`, `/notifications`, `/feedback`, `/inventory`, `/inventory/shortages`, `/withdrawals`, `/sales`, `/sales-orders`).
+  - `accounting` («إدارة الحسابات» — 3 روابط: `/sales-follow-up`, `/agent-accounts`, `/general-accounts`).
+  - `general_stats` («الحسابات العامة والإحصائيات» — رابط واحد: `/general-accounts` دون أي إحصائيات أو صفحات وهمية).
+- إضافة صفحة `/workspace` عبر `frontend/src/pages/Workspace.tsx` (واجهة RTL داكنة وفاتحة، شبكة 2×2 على سطح المكتب وعمود واحد على الهاتف، شعار `/tashkeel-cnc-logo.svg`، وتذييل للروابط الإدارية العامة `/manage-users` و`/profile`).
+- إضافة سياق التنقل `frontend/src/components/departments/DepartmentProvider.tsx` لحفظ الإدارة النشطة ومزامنتها مع المسار الحالي ومسحها عند الخروج أو `401`.
+- تحديث `frontend/src/lib/permissions.ts` و`frontend/src/App.tsx`: حصر `/workspace` و`defaultPathForRole` -> `/workspace` في `admin` و`manager` فقط، دون تغيير أي صلاحيات أو وجهات للأدوار الأخرى.
+- تحديث `frontend/src/components/sidebar/Sidebar.tsx`: عرض روابط الإدارة المختارة فقط للمدير/مدير النظام + محوّل الإدارة السريع + زر «العودة إلى الإدارات» + رابط دائم لعنصر «إدارة المستخدمين» (`/manage-users`) يظهر في كل الإدارات والحالات للمدير ومدير النظام فقط، مع بقاء قائمة بقية الأدوار وعدّاد الإشعارات كما هي.
+- إزالة واجهة ومسار «أسعار منتجات» بالكامل من الـ Frontend (`Workspace.tsx`، `App.tsx`، `permissions.ts`، `types/index.ts`، وحذف `Products.tsx` و`productsService.ts` و`types/product.ts` و`components/products/*`) مع الإبقاء على جداول وراوتر `/api/products` في الـ Backend دون مساس بالبيانات.
+
+## 2. إصلاحات الأمان والموثوقية والـ Backend
+- **إبطال التوكن الفعلي**: إضافة `tokenVersion` (`prisma/migrations/0025_user_token_version/migration.sql`) للتحقق في `authenticateToken`، وإبطال التوكن عند `POST /api/auth/logout` وتغيير/إعادة تعيين كلمة المرور مع إرجاع توكن جديد في `PATCH /users/me`.
+- **تقييد المعدّل والأحجام**: فصل محدّد محاولات الدخول (`ipLimiter` + `accountLimiter`) وإضافة محدد عام على `/api` وحدود JSON لكل مسار، وحظر `data:image/svg+xml`.
+- **حذف المستخدمين والمنتجات**: معالجة `agentOrder`/`salesOrderStatusLog` عند `DELETE /api/users/:id` و`purge=true`، وحظر حذف منتج مرتبط بمسودة فتاة (`409`).
+- **السباقات الزمنية (Concurrency)**: استخدام `pg_advisory_xact_lock` لفحص البوليصة (`sales.ts`) وسحب المخزون idempotency (`inventory.ts`)، وقفل المهام `FOR UPDATE` في `tasks.ts` مع تنظيف المؤقت عند الإنهاء.
+- **دقة المبيعات وحسابات الفتيات**: منع إلغاء الفتاة لأوردر بعد تنفيذه، فلترة `bucket` في قاعدة البيانات واستعلام لوحة خفيف في `agent.ts`، عدم دمج بند قياسي مع بند مُعدّل المكوّنات، تسجيل `shippedAt`/`deliveredAt` و`RETURN_FLAG` في `sales.ts`، وإدراج الفتيات اللاتي تغير دورهن لاحقاً في `accounting.ts`.
+- **الملفات والوقت والمزامنة**: السماح لـ `SALES_SUPERVISOR` بـ `presign-upload` لنطاق `inventory` فقط وتوقيع `content-length` في `r2Client.ts`؛ حساب حدود اليوم بتوقيت `ATTENDANCE_TZ`؛ وتصفية المخزون قبل توقيع R2.
+
+## 3. تحسينات الأداء والتجربة والاختبارات وCI
+- تقسيم القنوات في `syncVersion.ts` / `liveSync.ts` / `useLiveSync.ts` مع debounce وتنظيف SSE وإعادة تحقق الجلسة دورياً.
+- تقسيم الحزم بـ `React.lazy` + `Suspense` وإضافة `ErrorBoundary`.
+- استكمال تجربة صندوق الفتاة في `AgentOrders.tsx` (ملخص اللوحة، عرض مكونات البوكسات القابل للطي، زر الإلغاء قبل التنفيذ فقط) والبحث داخل الأصناف في `AgentOrderModal.tsx`.
+- إضافة `.env.example` و`.github/workflows/ci.yml` وإصلاح وإضافة اختبارات التغطية (`437/437` تمر بنجاح).

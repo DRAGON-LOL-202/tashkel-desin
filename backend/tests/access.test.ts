@@ -61,7 +61,10 @@ describe("تعبئة/مشغل: القائمة البيضاء", () => {
     ["post", "/api/push/subscribe"],
     ["get", "/api/this-route-does-not-exist-yet"],
   ];
-  for (const [who, getToken] of [["تعبئة", () => packer], ["مشغل", () => operator]] as const) {
+  for (const [who, getToken, username, setToken] of [
+    ["تعبئة", () => packer, "acc_packer", (t: string) => { packer = t; }],
+    ["مشغل", () => operator, "acc_operator", (t: string) => { operator = t; }],
+  ] as const) {
     it(`${who}: كل مسار خارج القائمة ← 403`, async () => {
       for (const [m, url] of blocked) {
         const r = await (api(getToken()) as any)[m](url).send({});
@@ -76,8 +79,12 @@ describe("تعبئة/مشغل: القائمة البيضاء", () => {
       for (const url of ["/api/auth/me", "/api/sync", "/api/inventory", "/api/inventory/categories", "/api/inventory/withdrawals"]) {
         expect((await api(getToken()).get(url)).status, url).toBe(200);
       }
-      expect((await api(getToken()).post("/api/auth/logout")).status).toBe(200);
       expect((await api(getToken()).patch("/api/users/me").send({ name: "اسم جديد" })).status).toBe(200);
+      // تسجيل الخروج يُبطل التوكن القديم فعلياً، ثم نعيد الدخول لباقي اختبارات الملف
+      const oldToken = getToken();
+      expect((await api(oldToken).post("/api/auth/logout")).status).toBe(200);
+      expect((await api(oldToken).get("/api/auth/me")).status).toBe(401);
+      setToken(await login(username));
     });
   }
   it("بلا توكن ← 401 (البوابة لا تغيّر ذلك)", async () => {

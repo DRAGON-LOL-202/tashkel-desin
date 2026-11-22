@@ -22,6 +22,8 @@ describe("r2Client", () => {
     expect(put.url).toContain("X-Amz-SignedHeaders=content-type%3Bhost");
     expect(put.url).toContain("X-Amz-Expires=600");
     expect(put.headers).toEqual({ "Content-Type": "image/png" });
+    const putWithSize = c.presignPut("tasks/u1/11111111-1111-1111-1111-111111111111.png", "image/png", now, 5000);
+    expect(putWithSize.url).toContain("X-Amz-SignedHeaders=content-length%3Bcontent-type%3Bhost");
   });
 
   it("presignGet: يثبت داخل الساعة الواحدة ويتغير بعدها (لأجل كاش المتصفح)", () => {

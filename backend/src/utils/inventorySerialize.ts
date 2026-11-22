@@ -121,23 +121,38 @@ export interface InventoryStats {
 }
 
 export function computeInventoryStats(items: SerializedInventoryItem[], todayMovementsCount: number): InventoryStats {
-  const active = items.filter((i) => i.isActive);
+  return computeInventoryStatsFromRows(items, todayMovementsCount);
+}
+
+export function computeInventoryStatsFromRows(
+  items: { isActive: boolean; quantity: { toString(): string } | number; minQuantity: { toString(): string } | number; unitPrice: { toString(): string } | number }[],
+  todayMovementsCount: number
+): InventoryStats {
+  let activeCount = 0;
   let totalQtyMilli = 0;
   let totalValueCents = 0;
   let availableCount = 0;
   let lowStockCount = 0;
   let outOfStockCount = 0;
 
-  for (const item of active) {
-    totalQtyMilli += Math.round(item.quantity * 1000);
-    totalValueCents += Math.round(item.totalValue * 100);
-    if (item.status === "OUT_OF_STOCK") outOfStockCount++;
-    else if (item.status === "LOW_STOCK") lowStockCount++;
+  for (const item of items) {
+    if (!item.isActive) continue;
+    activeCount++;
+    const quantity = num3(item.quantity);
+    const minQuantity = num3(item.minQuantity);
+    const unitPrice = num2(item.unitPrice);
+    const totalValue = calcTotalValue(quantity, unitPrice);
+    const status = getStockStatus(quantity, minQuantity);
+
+    totalQtyMilli += Math.round(quantity * 1000);
+    totalValueCents += Math.round(totalValue * 100);
+    if (status === "OUT_OF_STOCK") outOfStockCount++;
+    else if (status === "LOW_STOCK") lowStockCount++;
     else availableCount++;
   }
 
   return {
-    totalItems: active.length,
+    totalItems: activeCount,
     totalQuantity: Math.round(totalQtyMilli) / 1000,
     totalValue: Math.round(totalValueCents) / 100,
     availableCount,

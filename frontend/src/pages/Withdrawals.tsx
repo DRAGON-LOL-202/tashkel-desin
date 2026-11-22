@@ -15,9 +15,11 @@ import { useAuth } from "../components/auth/AuthProvider";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
 import { EMPTY_INVENTORY_DATA, inventoryService } from "../services/inventoryService";
+import type { SyncChannel } from "../lib/liveSync";
 import type { InventoryData, InventoryItem, InventoryMovement } from "../types";
 
 const NO_LOG: InventoryMovement[] = [];
+const INVENTORY_CHANNELS: SyncChannel[] = ["inventory"];
 
 function makeRequestId(): string {
   return `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -36,8 +38,8 @@ export default function WithdrawalsPage() {
   const { show } = useToast();
   const run = useSafeAction();
   const { user } = useAuth();
-  const stock = useResource<InventoryData>(inventoryService.listForWithdraw, EMPTY_INVENTORY_DATA);
-  const log = useResource<InventoryMovement[]>(inventoryService.withdrawals, NO_LOG);
+  const stock = useResource<InventoryData>(inventoryService.listForWithdraw, EMPTY_INVENTORY_DATA, INVENTORY_CHANNELS);
+  const log = useResource<InventoryMovement[]>(inventoryService.withdrawals, NO_LOG, INVENTORY_CHANNELS);
 
   const items = useMemo(() => stock.data.items.filter((i) => i.isActive), [stock.data.items]);
   const categories = stock.data.categories;

@@ -1,18 +1,33 @@
 import { API_URL, api, tokenStore } from "./api";
 
 // تحديث تلقائي فوري: اتصال مفتوح مع الخادم (SSE عبر fetch حتى نرسل الـ token في الترويسة لا في الرابط).
-// عندما يغيّر أي مستخدم بيانات يدفع الخادم "رقم نسخة" جديداً فنُبلّغ الصفحات المشتركة لتعيد تحميل بياناتها بصمت.
-// شبكة أمان: فحص دوري خفيف يعمل فقط إذا لم يكن الاتصال المفتوح متاحاً (شبكة/وسيط لا يدعم البث)،
-// وحارس يعيد الاتصال إن صمت الخادم أكثر من دقيقة. مراقِب واحد مشترك لكل التطبيق، ويتوقف أثناء إخفاء التبويب.
+// عندما يغيّر أي مستخدم بيانات يدفع الخادم رقم النسخة والقنوات المتأثرة فتعيد الصفحات المعنية فقط التحميل بهدوء (مع debounce 350ms).
+// شبكة أمان: فحص دوري خفيف يعمل فقط إذا لم يكن الاتصال المفتوح متاحاً، ويتوقف أثناء إخفاء التبويب.
+
+export type SyncChannel = "tasks" | "inventory" | "sales" | "accounting" | "users" | "notifications" | "general";
+
+interface SyncPayload {
+  version: string;
+  channels?: Partial<Record<SyncChannel, number>>;
+}
+
+interface Subscriber {
+  notify: () => void | Promise<unknown>;
+  channels?: readonly SyncChannel[];
+  timer: ReturnType<typeof setTimeout> | null;
+}
 
 const POLL_INTERVAL_MS = 4000;
 const STREAM_SILENCE_LIMIT_MS = 60_000; // الخادم يرسل نبضة كل 25 ثانية
 const RECONNECT_MIN_MS = 1000;
 const RECONNECT_MAX_MS = 15_000;
+const DEBOUNCE_MS = 350;
 
-const subscribers = new Set<() => void | Promise<unknown>>();
+const subscribers = new Set<Subscriber>();
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let lastVersion: string | null = null;
+let lastBootId: string | null = null;
+let lastChannels: Partial<Record<SyncChannel, number>> = {};
 let checking = false;
 
 let controller: AbortController | null = null;
@@ -21,15 +36,36 @@ let lastActivity = 0;
 let reconnectDelay = RECONNECT_MIN_MS;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
-function handleVersion(version: string) {
-  const changed = lastVersion !== null && version !== lastVersion;
-  lastVersion = version;
-  if (!changed) return;
-  subscribers.forEach((notify) => {
+function scheduleNotify(sub: Subscriber) {
+  if (sub.timer) clearTimeout(sub.timer);
+  sub.timer = setTimeout(() => {
+    sub.timer = null;
     // فشل مزامنة صامتة لا يجب أن يزعج المستخدم
     void Promise.resolve()
-      .then(notify)
+      .then(sub.notify)
       .catch(() => undefined);
+  }, DEBOUNCE_MS);
+}
+
+function handleSnapshot(payload: SyncPayload) {
+  const version = payload.version;
+  const bootId = version.split(".")[0] ?? version;
+  const changed = lastVersion !== null && version !== lastVersion;
+  const rebooted = lastBootId !== null && bootId !== lastBootId;
+  const prevChannels = lastChannels;
+  const nextChannels = payload.channels ?? {};
+
+  lastVersion = version;
+  lastBootId = bootId;
+  lastChannels = nextChannels;
+  if (!changed) return;
+
+  subscribers.forEach((sub) => {
+    if (!rebooted && sub.channels && sub.channels.length > 0 && payload.channels) {
+      const relevantChanged = sub.channels.some((ch) => nextChannels[ch] !== prevChannels[ch]);
+      if (!relevantChanged) return;
+    }
+    scheduleNotify(sub);
   });
 }
 
@@ -38,8 +74,8 @@ async function check(): Promise<void> {
   if (checking || document.hidden || !tokenStore.get()) return;
   checking = true;
   try {
-    const { version } = await api<{ version: string }>("/sync");
-    handleVersion(version);
+    const data = await api<SyncPayload>("/sync");
+    if (typeof data.version === "string") handleSnapshot(data);
   } catch {
     // انقطاع مؤقت في الاتصال: نحاول في الدورة التالية
   } finally {
@@ -56,8 +92,8 @@ function parseEvents(chunk: string, buffer: { text: string }) {
     const dataLine = rawEvent.split("\n").find((line) => line.startsWith("data:"));
     if (!dataLine) continue; // نبضة (تعليق) فقط
     try {
-      const { version } = JSON.parse(dataLine.slice(5).trim()) as { version?: string };
-      if (typeof version === "string") handleVersion(version);
+      const data = JSON.parse(dataLine.slice(5).trim()) as Partial<SyncPayload>;
+      if (typeof data.version === "string") handleSnapshot({ version: data.version, channels: data.channels });
     } catch {
       // حدث غير مفهوم: نتجاهله
     }
@@ -169,11 +205,16 @@ function stop() {
   disconnect();
 }
 
-export function subscribeLiveSync(notify: () => void | Promise<unknown>): () => void {
-  subscribers.add(notify);
+export function subscribeLiveSync(notify: () => void | Promise<unknown>, channels?: readonly SyncChannel[]): () => void {
+  const sub: Subscriber = { notify, channels, timer: null };
+  subscribers.add(sub);
   start();
   return () => {
-    subscribers.delete(notify);
+    if (sub.timer) {
+      clearTimeout(sub.timer);
+      sub.timer = null;
+    }
+    subscribers.delete(sub);
     if (subscribers.size === 0) stop();
   };
 }

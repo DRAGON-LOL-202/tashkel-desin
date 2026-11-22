@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { Ban, Pencil, Plus, Search, Send, Trash2 } from "lucide-react";
+import { Ban, ChevronDown, ChevronUp, Pencil, Plus, Search, Send, Trash2 } from "lucide-react";
 import { AppLayout } from "../components/layout/AppLayout";
 import { Header } from "../components/header/Header";
 import { Badge } from "../components/ui/Badge";
@@ -12,17 +12,38 @@ import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { useToast } from "../components/ui/ToastProvider";
 import { AgentOrderModal } from "../components/agent/AgentOrderModal";
 import { CancelModal, ExportModal } from "../components/agent/ExportCancelModals";
+import { StatTile } from "../components/agent/StatTile";
 import { BUCKET_LABEL, BUCKET_ORDER, agentOrderBadge } from "../components/agent/meta";
 import { fmtMoney } from "../components/inventory/format";
 import { formatArabicDate } from "../lib/date";
+import type { SyncChannel } from "../lib/liveSync";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
 import { agentService } from "../services/agentService";
-import type { AgentBucket, AgentItem, AgentOrder, AgentOrderInput, AgentProduct, AgentProfile } from "../types";
+import type { AgentBucket, AgentItem, AgentOrder, AgentOrderInput, AgentProduct, AgentProfile, AgentSummary } from "../types";
 
 const NO_ORDERS: AgentOrder[] = [];
 const NO_PRODUCTS: AgentProduct[] = [];
 const NO_ITEMS: AgentItem[] = [];
+const EMPTY_SUMMARY: AgentSummary = {
+  total: 0,
+  unexported: 0,
+  exported: 0,
+  executed: 0,
+  shipped: 0,
+  delivered: 0,
+  returned: 0,
+  cancelled: 0,
+  deliveredSales: 0,
+  deliveredCount: 0,
+  fixedFee: 0,
+  commission: 0,
+  totalDue: 0,
+};
+
+const ORDER_SYNC_CHANNELS: SyncChannel[] = ["sales", "accounting"];
+const CATALOG_SYNC_CHANNELS: SyncChannel[] = ["sales", "inventory"];
+const PROFILE_SYNC_CHANNELS: SyncChannel[] = ["accounting"];
 
 // أوردراتي: مساحة الفتاة. ترى أوردراتها وحسابها فقط (العزل في الباكند). الأوردر يبقى هنا حتى تصدّره بعد التأكيد.
 export default function AgentOrdersPage() {
@@ -30,6 +51,7 @@ export default function AgentOrdersPage() {
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<AgentOrder | "new" | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [expandedBoxes, setExpandedBoxes] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState<AgentOrder[] | null>(null);
   const [cancelling, setCancelling] = useState<AgentOrder | null>(null);
   const [deleting, setDeleting] = useState<AgentOrder | null>(null);
@@ -39,20 +61,29 @@ export default function AgentOrdersPage() {
 
   const q = search.trim();
   const ordersLoader = useCallback(() => agentService.orders(bucket, q), [bucket, q]);
-  const orders = useResource<AgentOrder[]>(ordersLoader, NO_ORDERS);
-  const products = useResource<AgentProduct[]>(agentService.products, NO_PRODUCTS);
-  const items = useResource<AgentItem[]>(agentService.items, NO_ITEMS);
-  const profile = useResource<AgentProfile | null>(agentService.me, null);
+  const orders = useResource<AgentOrder[]>(ordersLoader, NO_ORDERS, ORDER_SYNC_CHANNELS);
+  const dashboard = useResource<AgentSummary>(agentService.dashboard, EMPTY_SUMMARY, ORDER_SYNC_CHANNELS);
+  const products = useResource<AgentProduct[]>(agentService.products, NO_PRODUCTS, CATALOG_SYNC_CHANNELS);
+  const items = useResource<AgentItem[]>(agentService.items, NO_ITEMS, CATALOG_SYNC_CHANNELS);
+  const profile = useResource<AgentProfile | null>(agentService.me, null, PROFILE_SYNC_CHANNELS);
 
   const refresh = useCallback(async () => {
-    await Promise.all([orders.reload(), profile.reload()]);
-  }, [orders, profile]);
+    await Promise.all([orders.reload(), dashboard.reload(), profile.reload()]);
+  }, [orders, dashboard, profile]);
 
   const drafts = useMemo(() => orders.data.filter((o) => o.status === "DRAFT"), [orders.data]);
   const selectedDrafts = useMemo(() => drafts.filter((o) => selected.has(o.id)), [drafts, selected]);
 
   const toggle = (id: string) =>
     setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const toggleBoxes = (id: string) =>
+    setExpandedBoxes((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -94,6 +125,8 @@ export default function AgentOrdersPage() {
     return r.ok;
   };
 
+  const s = dashboard.data;
+
   return (
     <AppLayout
       headerSlot={(openMobileNav) => (
@@ -113,6 +146,17 @@ export default function AgentOrdersPage() {
         <p className="mb-4 rounded-control border border-operational/40 bg-operational/10 px-4 py-3 text-sm text-text" role="alert">
           لم تحدد الإدارة Prefix لحسابك بعد، لذلك لا يمكن إضافة أوردرات. تواصل مع الإدارة.
         </p>
+      )}
+
+      {!dashboard.loading && !dashboard.error && (
+        <section aria-label="ملخص حسابي" className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+          <StatTile label="إجمالي الأوردرات" value={s.total} onClick={() => setBucket("all")} active={bucket === "all"} />
+          <StatTile label="المسلّمة" value={s.delivered} color="#1E8E5A" onClick={() => setBucket("delivered")} active={bucket === "delivered"} />
+          <StatTile label="مبيعات مسلّمة" value={fmtMoney(s.deliveredSales)} />
+          <StatTile label="المقابل الثابت" value={fmtMoney(s.fixedFee)} hint="7 ج × المسلّمة" />
+          <StatTile label="عمولة 3%" value={fmtMoney(s.commission)} />
+          <StatTile label="إجمالي المستحقات" value={fmtMoney(s.totalDue)} color="#1E8E5A" />
+        </section>
       )}
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -159,6 +203,9 @@ export default function AgentOrdersPage() {
           {orders.data.map((o) => {
             const badge = agentOrderBadge(o);
             const isDraft = o.status === "DRAFT";
+            const canCancelOrder = o.status === "EXPORTED" && (o.salesStatus === null || o.salesStatus === "REGISTERED");
+            const hasComponents = o.lines.some((l) => l.components.length > 0);
+            const isExpanded = expandedBoxes.has(o.id);
             return (
               <Card key={o.id} className="p-3.5">
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -182,7 +229,37 @@ export default function AgentOrdersPage() {
                   {o.notes && <p className="text-xs text-muted sm:col-span-2">ملاحظات: {o.notes}</p>}
                   {o.status === "CANCELLED" && <p className="text-xs text-problem sm:col-span-2">سبب الإلغاء: {o.cancelReason}</p>}
                 </div>
-                {(isDraft || o.status === "EXPORTED") && (
+
+                {hasComponents && (
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      aria-expanded={isExpanded}
+                      onClick={() => toggleBoxes(o.id)}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-primary-deep hover:underline"
+                    >
+                      {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      محتويات البوكسات
+                    </button>
+                    {isExpanded && (
+                      <div className="mt-1.5 flex flex-col gap-1.5 rounded-control border border-border bg-surface/60 p-2.5 text-xs">
+                        {o.lines.map((l) => (
+                          <div key={l.id}>
+                            <p className="font-semibold text-text">
+                              {l.productName}
+                              {l.quantity > 1 ? ` × ${l.quantity}` : ""}
+                            </p>
+                            <p className="mt-0.5 text-muted">
+                              {l.components.map((c) => `${c.itemName} (${c.quantity} ${c.unit})`).join("، ")}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {(isDraft || canCancelOrder) && (
                   <div className="mt-2.5 flex flex-wrap justify-end gap-1.5">
                     {isDraft ? (
                       <>

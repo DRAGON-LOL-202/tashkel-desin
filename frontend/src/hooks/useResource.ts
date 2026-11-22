@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { errorMessage } from "../lib/api";
+import type { SyncChannel } from "../lib/liveSync";
 import { useLiveSync } from "./useLiveSync";
 
 /**
  * تحميل مورد من الـ API مع حالات loading / error. `reload()` مزامنة صامتة (بدون وميض)،
  * و `retry()` لإعادة المحاولة بعد خطأ (يعرض loading من جديد).
- * `loader` يجب أن يكون مرجعاً ثابتاً (دالة خدمة على مستوى الملف).
+ * `loader` يجب أن يكون مرجعاً ثابتاً (دالة خدمة على مستوى الملف أو useCallback).
  */
-export function useResource<T>(loader: () => Promise<T>, initial: T) {
+export function useResource<T>(loader: () => Promise<T>, initial: T, channels?: readonly SyncChannel[]) {
   const [data, setData] = useState<T>(initial);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +42,7 @@ export function useResource<T>(loader: () => Promise<T>, initial: T) {
       // نُبقي البيانات الحالية ونحاول عند التغيير التالي
     }
   }, [loader]);
-  useLiveSync(silentSync);
+  useLiveSync(silentSync, channels);
 
   const retry = useCallback(async () => {
     setLoading(true);

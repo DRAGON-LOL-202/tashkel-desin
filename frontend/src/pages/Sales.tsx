@@ -19,6 +19,7 @@ import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
 import { downloadSalesDaily, downloadSalesMonthly } from "../lib/exportSales";
 import { formatArabicDate, monthRange, todayISO } from "../lib/date";
+import type { SyncChannel } from "../lib/liveSync";
 import { EMPTY_INVENTORY_DATA, inventoryService } from "../services/inventoryService";
 import { salesService } from "../services/salesService";
 import type { InventoryData, SalesOrder, SalesOrderPatch, SalesOrderStatus, SalesProduct, SalesProductInput } from "../types";
@@ -36,6 +37,8 @@ const NO_STRINGS: string[] = [];
 const loadNoProducts = async () => NO_PRODUCTS;
 const loadNoClosers = async () => NO_STRINGS;
 const loadNoStock = async () => EMPTY_INVENTORY_DATA;
+const SALES_CHANNELS: SyncChannel[] = ["sales"];
+const INVENTORY_CHANNELS: SyncChannel[] = ["inventory"];
 
 // المبيعات الإلكترونية: أوردرات يومية (بوليصة + مقفل + منتجات ثابتة بمحتوياتها من المخزون).
 // التنفيذ يخصم المكونات من المخزون تلقائياً، والمرتجع يعيدها. التكلفة وسعر البيع يُحسبان من بيانات المخزون.
@@ -64,14 +67,14 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
 
   const key = q ? `q:${q}` : `d:${date}`;
   const ordersLoader = useCallback(async (): Promise<OrdersPayload> => ({ key, orders: q ? await salesService.searchOrders(q) : await salesService.listOrders(date) }), [key, q, date]);
-  const orders = useResource<OrdersPayload>(ordersLoader, NO_PAYLOAD);
-  const products = useResource<SalesProduct[]>(canEditSalesOrders ? salesService.listProducts : loadNoProducts, NO_PRODUCTS);
-  const closers = useResource<string[]>(canEditSalesOrders ? salesService.closers : loadNoClosers, NO_STRINGS);
+  const orders = useResource<OrdersPayload>(ordersLoader, NO_PAYLOAD, SALES_CHANNELS);
+  const products = useResource<SalesProduct[]>(canEditSalesOrders ? salesService.listProducts : loadNoProducts, NO_PRODUCTS, SALES_CHANNELS);
+  const closers = useResource<string[]>(canEditSalesOrders ? salesService.closers : loadNoClosers, NO_STRINGS, SALES_CHANNELS);
   const stockLoader = useMemo(
     () => (!canEditSalesOrders ? loadNoStock : isStaff ? () => inventoryService.list() : inventoryService.listForSalesPicker),
     [canEditSalesOrders, isStaff]
   );
-  const stock = useResource<InventoryData>(stockLoader, EMPTY_INVENTORY_DATA);
+  const stock = useResource<InventoryData>(stockLoader, EMPTY_INVENTORY_DATA, INVENTORY_CHANNELS);
 
   const refresh = useCallback(async () => {
     if (!canEditSalesOrders) {

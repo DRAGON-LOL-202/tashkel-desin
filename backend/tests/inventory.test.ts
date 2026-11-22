@@ -427,6 +427,14 @@ describe("inventory: السحب والتقارير", () => {
     const list = await api(designer).get("/api/inventory");
     expect(list.body.items.find((i: any) => i.id === a.id).quantity).toBe(1);
   });
+  it("طلبان متزامنان بنفس requestId: ينجح واحد فقط والآخر 409 بلا خصم مزدوج", async () => {
+    const a = await mkItem(manager, { name: "تزامن طلب", initialQuantity: 10 });
+    const rs = await Promise.all(Array.from({ length: 4 }, () => withdraw(designer, [{ itemId: a.id, quantity: 3 }], "نفس الطلب", "concurrent-req-1")));
+    expect(rs.filter((r) => r.status === 201)).toHaveLength(1);
+    expect(rs.filter((r) => r.status === 409)).toHaveLength(3);
+    const list = await api(designer).get("/api/inventory");
+    expect(list.body.items.find((i: any) => i.id === a.id).quantity).toBe(7);
+  });
   it("استعلام حركات التقارير يدعم الفلترة بالنوع والمنتج والتصنيف والتاريخ", async () => {
     const a = await mkItem(manager, { name: "تقرير فلتر", initialQuantity: 20, unitPrice: 50 });
     await move(manager, a.id, "ADJUST", 18, "جرد تقرير", { reason: "فحص" });

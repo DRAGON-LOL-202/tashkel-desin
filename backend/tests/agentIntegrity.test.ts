@@ -80,36 +80,26 @@ describe("2.1 مزامنة الإلغاء مع أوردر المبيعات ال�
     expect(await movements()).toBe(beforeMoves);
   });
 
-  it("الإلغاء بعد التنفيذ والتسليم: لا حركة مخزون ولا إعادة كميات، ويُمنع أي تغيير حالة بعده", async () => {
+  it("منع إلغاء الفتاة بعد التنفيذ/الشحن/التسليم (409)، والعودة لحالة مسجل غير مسموحة للفتاة", async () => {
     const o = await exported();
     expect((await execute(o.soId)).status).toBe(200);
+    expect((await cancel(ag1, o.id)).status).toBe(409);
     expect((await acctStatus(o.soId, "SHIPPED")).status).toBe(200);
+    expect((await cancel(ag1, o.id)).status).toBe(409);
     expect((await acctStatus(o.soId, "DELIVERED")).status).toBe(200);
-    const stockAfterExec = await stock();
-    const movesAfterExec = await movements();
-
-    expect((await cancel(ag1, o.id)).status).toBe(200);
-    expect(await stock()).toBe(stockAfterExec);
-    expect(await movements()).toBe(movesAfterExec);
-
+    expect((await cancel(ag1, o.id)).status).toBe(409);
     const so = await prisma().salesOrder.findUniqueOrThrow({ where: { id: o.soId } });
-    expect(so.status).toBe("DELIVERED"); // الحالة تبقى للمرجع، والإلغاء علامة مستقلة
-    expect(so.cancelledAt).not.toBeNull();
-    expect((await acctStatus(o.soId, "SHIPPED")).status).toBe(409);
-    expect((await api(admin).patch(`/api/sales/orders/${o.soId}`).send({ status: "RETURNED" })).status).toBe(409);
-    expect((await api(acct).patch(`/api/sales/orders/${o.soId}`).send({ returnFlagged: true })).status).toBe(409);
-    expect((await api(admin).delete(`/api/sales/orders/${o.soId}`)).status).toBe(409);
+    expect(so.status).toBe("DELIVERED");
+    expect(so.cancelledAt).toBeNull();
   });
 
-  it("إلغاء مكرر مرفوض، والأوردر الملغي لا يدخل الحساب", async () => {
+  it("إلغاء مكرر مرفوض، والأوردر الملغي (قبل التنفيذ) لا يدخل الحساب ولا ينقص الإجمالي", async () => {
     const o = await exported();
-    expect((await execute(o.soId)).status).toBe(200);
-    expect((await acctStatus(o.soId, "DELIVERED")).status).toBe(200);
     const before = (await api(acct).get(`/api/accounting/agents/${ag1Id}`)).body.summary;
     expect((await cancel(ag1, o.id)).status).toBe(200);
     expect((await cancel(ag1, o.id)).status).toBe(409);
     const after = (await api(acct).get(`/api/accounting/agents/${ag1Id}`)).body.summary;
-    expect(after.delivered).toBe(before.delivered - 1);
+    expect(after.exported).toBe(before.exported - 1);
     expect(after.cancelled).toBe(before.cancelled + 1);
     expect(after.total).toBe(before.total); // نفس الأوردر لا يُعدّ مرتين
   });
@@ -328,12 +318,13 @@ describe("متابعة أوردرات المبيعات: كل أوردر «تم �
     expect(row?.status).toBe("EXECUTED");
     expect(row?.counted).toBe(false); // لا فتاة ← لا يدخل في مستحقاتها
 
+    const returnsBefore = await prisma().inventoryMovement.count({ where: { type: "RETURN" } });
     expect((await acctStatus(id, "SHIPPED")).status).toBe(200);
     expect((await acctStatus(id, "DELIVERED")).status).toBe(200);
     expect((await api(acct).put(`/api/accounting/orders/${id}/shipping`).send({ shippingPrice: 30 })).body.order.shippingPrice).toBe(30);
     expect((await api(acct).patch(`/api/accounting/orders/${id}/return-flag`).send({ flagged: true })).status).toBe(200);
     expect(await stock()).toBe(s0 - 1); // لا خصم ولا إرجاع إضافي
-    expect((await prisma().inventoryMovement.count({ where: { type: "RETURN" } }))).toBe(0);
+    expect(await prisma().inventoryMovement.count({ where: { type: "RETURN" } })).toBe(returnsBefore);
   });
 
   it("الأوردر اليدوي لا يدخل في حسابات الفتيات ولا الإجمالي العام", async () => {
@@ -388,5 +379,27 @@ describe("متابعة أوردرات المبيعات: كل أوردر «تم �
     expect(o.waybill).toBe("82120");
     expect((await put({ prefix: 820, startSeq: 200 })).status).toBe(409); // بعد أول أوردر
     expect((await put({ prefix: 830 })).status).toBe(409);
+  });
+
+  it("تغيير دور فتاة المبيعات لاحقاً لا يُسقط أوردراتها التاريخية من حسابات الفتيات ولا يكسر التطابق مع العام", async () => {
+    const u = await makeUser("agent_promoted", "SALES_AGENT");
+    await api(admin).put(`/api/sales-agents/${u.id}/prefix`).send({ prefix: 840 });
+    const t = await login("agent_promoted");
+    const o = await mk(t);
+    await exportIds(t, [o.id]);
+    const so = await soOf(o.id);
+    await execute(so);
+    await acctStatus(so, "DELIVERED");
+    // ترقية الفتاة لدور مدير
+    expect((await api(admin).patch(`/api/users/${u.id}`).send({ role: "manager" })).status).toBe(200);
+    const list = await api(acct).get("/api/accounting/agents");
+    const row = list.body.agents.find((a: { agentId: string }) => a.agentId === u.id);
+    expect(row).toBeDefined();
+    expect(row.delivered).toBe(1);
+    const detail = await api(acct).get(`/api/accounting/agents/${u.id}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.summary.delivered).toBe(1);
+    const gen = (await api(acct).get("/api/accounting/general")).body.general;
+    expect(list.body.totals.deliveredSales).toBe(gen.deliveredSales);
   });
 });

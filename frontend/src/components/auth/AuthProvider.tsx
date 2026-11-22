@@ -3,6 +3,7 @@ import type { TeamMember } from "../../types";
 import { authService } from "../../services/authService";
 import { ApiError, UNAUTHORIZED_EVENT, errorMessage, tokenStore } from "../../lib/api";
 import { ErrorState, FullPageLoading } from "../ui/StatusViews";
+import { clearStoredDepartment } from "../departments/DepartmentProvider";
 
 interface AuthContextValue {
   user: TeamMember | null;
@@ -48,7 +49,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // أي 401 من أي طلب (توكن منتهٍ أو حساب معطَّل) ← خروج فوري
   useEffect(() => {
-    const onUnauthorized = () => setUser(null);
+    const onUnauthorized = () => {
+      clearStoredDepartment();
+      setUser(null);
+    };
     window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
   }, []);
@@ -60,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    clearStoredDepartment();
     setUser(null);
     void authService.logout();
   }, []);

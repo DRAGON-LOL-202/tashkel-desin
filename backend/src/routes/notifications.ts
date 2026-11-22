@@ -6,6 +6,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { notFound } from "../utils/httpError.js";
 import { NOTIFICATION_CATEGORIES } from "../utils/notify.js";
+import { tzDayBoundsUtc } from "../utils/attendance.js";
 
 // كل مستخدم يرى ويعدّل إشعاراته هو فقط: كل استعلام مقيَّد بـ recipientId = المستخدم الحالي.
 // لا يوجد POST هنا عمداً: الإشعارات تُنشأ من أحداث الـ backend فقط.
@@ -79,8 +80,8 @@ notificationsRouter.get(
     }
     if (q.from || q.to) {
       where.createdAt = {
-        ...(q.from ? { gte: new Date(`${q.from}T00:00:00.000Z`) } : {}),
-        ...(q.to ? { lt: new Date(Date.parse(`${q.to}T00:00:00.000Z`) + 86_400_000) } : {}),
+        ...(q.from ? { gte: tzDayBoundsUtc(q.from).start } : {}),
+        ...(q.to ? { lt: tzDayBoundsUtc(q.to).end } : {}),
       };
     }
     const rows = await prisma().notification.findMany({ where, include, orderBy: { createdAt: "desc" }, take: q.limit });

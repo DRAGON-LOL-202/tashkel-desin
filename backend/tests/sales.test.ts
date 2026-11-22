@@ -517,20 +517,25 @@ describe("sales roles: الأدوار الثلاثة المحصورة في ال�
       ["post", "/api/future-endpoint"],
     ];
 
-    for (const [label, token] of [
-      ["SALES_ACCOUNTANT", flagger],
-      ["SALES_EDITOR", editor],
-      ["SALES_SUPERVISOR", supervisor],
+    for (const [label, getToken, username, setToken] of [
+      ["SALES_ACCOUNTANT", () => flagger, "s_flagger", (t: string) => { flagger = t; }],
+      ["SALES_EDITOR", () => editor, "s_editor", (t: string) => { editor = t; }],
+      ["SALES_SUPERVISOR", () => supervisor, "s_supervisor", (t: string) => { supervisor = t; }],
     ] as const) {
+      const token = getToken();
       expect((await api(token).get("/api/auth/me")).status, `${label} auth/me`).toBe(200);
       expect((await api(token).get("/api/sync")).status, `${label} sync`).toBe(200);
       expect((await api(token).patch("/api/users/me").send({ name: `اسم ${label}` })).status, `${label} users/me`).toBe(200);
-      expect((await api(token).post("/api/auth/logout")).status, `${label} logout`).toBe(200);
 
       for (const [method, url] of commonBlocked) {
         const res = await (api(token) as any)[method](url).send({});
         expect(res.status, `${label}: ${method.toUpperCase()} ${url}`).toBe(403);
       }
+
+      // تسجيل الخروج يُبطل التوكن الحالي، ثم نجدّد التوكن لاختبارات الدور التالية
+      expect((await api(token).post("/api/auth/logout")).status, `${label} logout`).toBe(200);
+      expect((await api(token).get("/api/auth/me")).status, `${label} revoked`).toBe(401);
+      setToken(await login(username));
     }
   });
 
@@ -842,6 +847,40 @@ describe("sales roles: الأدوار الثلاثة المحصورة في ال�
     const supBack = await api(supervisor).patch(`/api/sales/orders/${stId}`).send({ status: "REGISTERED" });
     expect(supBack.status).toBe(200);
     expect(supBack.body.order.status).toBe("REGISTERED");
+  });
+
+  it("إضافة بند قياسي لأوردر فيه بند معدّل لا يدمجه معه، وتحديث الحالة يسجل التواريخ وعلامة المرتجع، وحذف منتج مرتبط بمسودة مرفوض", async () => {
+    const isoItem = await mkItem({ name: "صنف عزل تعديل", initialQuantity: 20, unitPrice: 10, sellPrice: 25 });
+    const isoBox = (await api(manager).post("/api/sales/products").send({ name: "بوكس عزل", components: [{ itemId: isoItem.id, quantity: 2 }] })).body.product;
+    const o = await mkOrder({ date: "2026-11-02", waybill: "COMP-SEP-1", lines: [{ productId: isoBox.id, quantity: 1 }] });
+    const lineId = o.lines[0].id as string;
+    // تعديل مكوّن في البند الأول
+    expect((await api(manager).patch(`/api/sales/orders/${o.id}/lines/${lineId}/components/${o.lines[0].components[0].id}`).send({ quantity: 5 })).status).toBe(200);
+    // إضافة نفس المنتج الثابت: لا يندمج مع البند المعدّل بل ينشئ بنداً ثانياً
+    const added = await api(manager).post(`/api/sales/orders/${o.id}/lines`).send({ productId: isoBox.id, quantity: 1 });
+    expect(added.status).toBe(201);
+    expect(added.body.order.lines).toHaveLength(2);
+
+    // الإدارة ترفع الحالة إلى شحن ثم تسليم فتُضبط التواريخ، وعلامة المرتجع تُسجَّل في SalesOrderStatusLog
+    expect((await setStatus(o.id, "EXECUTED")).status).toBe(200);
+    expect((await setStatus(o.id, "SHIPPED")).status).toBe(200);
+    const shippedRow = await prisma().salesOrder.findUniqueOrThrow({ where: { id: o.id } });
+    expect(shippedRow.shippedAt).not.toBeNull();
+    expect(shippedRow.deliveredAt).toBeNull();
+    expect((await setStatus(o.id, "DELIVERED")).status).toBe(200);
+    const deliveredRow = await prisma().salesOrder.findUniqueOrThrow({ where: { id: o.id } });
+    expect(deliveredRow.deliveredAt).not.toBeNull();
+    expect((await api(manager).patch(`/api/sales/orders/${o.id}`).send({ returnFlagged: true })).status).toBe(200);
+    const logs = await prisma().salesOrderStatusLog.findMany({ where: { orderId: o.id, event: "RETURN_FLAG" } });
+    expect(logs).toHaveLength(1);
+
+    // حذف منتج مرتبط بمسودة فتاة مرفوض (409)
+    const ag = await makeUser("sales_prod_ag", "SALES_AGENT");
+    await api(admin).put(`/api/sales-agents/${ag.id}/prefix`).send({ prefix: 920 });
+    const agTok = await login("sales_prod_ag");
+    const draftProd = (await api(manager).post("/api/sales/products").send({ name: "بوكس مسودة محمي", components: [{ itemId: isoItem.id, quantity: 1 }] })).body.product;
+    expect((await api(agTok).post("/api/agent/orders").send({ date: "2026-11-02", customerName: "ع", lines: [{ productId: draftProd.id, quantity: 1 }] })).status).toBe(201);
+    expect((await api(manager).delete(`/api/sales/products/${draftProd.id}`)).status).toBe(409);
   });
 });
 

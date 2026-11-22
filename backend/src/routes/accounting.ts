@@ -228,11 +228,6 @@ accountingRouter.get(
 
 // ===== حسابات الفتيات (المحاسب والإدارة) =====
 async function agentSummaries(range: Record<string, unknown>) {
-  const agents = await prisma().user.findMany({
-    where: { role: "SALES_AGENT" },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true, isActive: true, agentProfile: { select: { prefix: true } } },
-  });
   const drafts = await prisma().agentOrder.groupBy({ by: ["agentId"], where: { status: "DRAFT", ...dateFilter(range) }, _count: { _all: true } });
   const draftBy = new Map(drafts.map((d) => [d.agentId, d._count._all]));
   const rows = await loadAccountingRows(dateFilter(range));
@@ -242,6 +237,13 @@ async function agentSummaries(range: Record<string, unknown>) {
     if (list) list.push(r.row);
     else byAgent.set(r.agentId, [r.row]);
   }
+  // يشمل كل فتيات المبيعات الحاليات + أي موظفة تغيّر دورها لاحقاً ولها أوردرات تاريخية حتى يبقى المجموع مطابقاً للحسابات العامة
+  const historicalIds = [...new Set([...byAgent.keys(), ...draftBy.keys()])];
+  const agents = await prisma().user.findMany({
+    where: historicalIds.length > 0 ? { OR: [{ role: "SALES_AGENT" }, { id: { in: historicalIds } }] } : { role: "SALES_AGENT" },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, isActive: true, agentProfile: { select: { prefix: true } } },
+  });
   const perAgent = agents.map((a) => {
     const s = summarize(byAgent.get(a.id) ?? []);
     const unexported = draftBy.get(a.id) ?? 0;
@@ -274,22 +276,38 @@ accountingRouter.get(
   "/agents/:id",
   asyncHandler(async (req, res) => {
     const agentId = idOf(req.params.id);
-    const agent = await prisma().user.findFirst({ where: { id: agentId, role: "SALES_AGENT" }, select: { id: true, name: true } });
+    const agent = await prisma().user.findFirst({
+      where: {
+        id: agentId,
+        OR: [{ role: "SALES_AGENT" }, { agentOrders: { some: {} } }, { salesOrdersOfAgent: { some: {} } }],
+      },
+      select: { id: true, name: true },
+    });
     if (!agent) throw notFound("الفتاة غير موجودة");
     const bucketRaw = typeof req.query.bucket === "string" ? req.query.bucket : "all";
     const bucket: Bucket = (BUCKETS as readonly string[]).includes(bucketRaw) ? (bucketRaw as Bucket) : "all";
     const range = dateFilter(req.query);
-    const rows = (await loadAccountingRows({ agentId, ...range })).map((r) => r.row);
     // المسودات تخضع لنفس فلتر الفترة الزمنية مثل بقية الحالات
     const drafts = await prisma().agentOrder.count({ where: { agentId, status: "DRAFT", ...range } });
+    // مسح واحد فقط يبني صفوف الملخص وقائمة الفئة المطلوبة معاً
+    const rows: AccountingRow[] = [];
+    const orders: ReturnType<typeof serialize>[] = [];
+    let ordersTotal = 0;
+    await scanAgentRows({ agentId, ...range }, (o) => {
+      const r = rowOf(o);
+      rows.push(r);
+      if (bucket !== "draft" && matchesBucket(r, bucket)) {
+        ordersTotal += 1;
+        if (orders.length < LIST_LIMIT) orders.push(serialize(o));
+      }
+    });
     const summary = summarize(rows);
-    const list = await listAgentRows({ agentId, ...range }, (r) => matchesBucket(r, bucket));
     res.json({
       agent,
       summary: { ...summary, unexported: drafts, total: summary.total + drafts },
-      orders: bucket === "draft" ? [] : list.orders,
-      ordersTotal: bucket === "draft" ? drafts : list.total,
-      hasMore: bucket === "draft" ? false : list.hasMore,
+      orders: bucket === "draft" ? [] : orders,
+      ordersTotal: bucket === "draft" ? drafts : ordersTotal,
+      hasMore: bucket === "draft" ? false : ordersTotal > orders.length,
     });
   })
 );

@@ -16,6 +16,9 @@ import { useToast } from "../components/ui/ToastProvider";
 import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
+import type { SyncChannel } from "../lib/liveSync";
+
+const SCHEDULE_CHANNELS: SyncChannel[] = ["tasks"];
 
 export default function SchedulePage() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -24,7 +27,7 @@ export default function SchedulePage() {
   const [selectedEvents, setSelectedEvents] = useState<Season[]>([]);
   const { show } = useToast();
   const run = useSafeAction();
-  const { data: seasons, loading, error, reload, retry } = useResource<Season[]>(scheduleService.list, []);
+  const { data: seasons, loading, error, reload, retry } = useResource<Season[]>(scheduleService.list, [], SCHEDULE_CHANNELS);
 
   const handleSubmit = async (input: CreateSeasonInput) => {
     const wasEditing = editing;

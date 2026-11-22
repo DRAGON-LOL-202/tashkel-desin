@@ -61,9 +61,9 @@ async function lockOrder(tx: Tx, orderId: string) {
   if (rows.length === 0) throw notFound("الأوردر غير موجود");
 }
 
-async function assertWaybillFree(waybill: string, exceptId?: string) {
+async function assertWaybillFree(waybill: string, exceptId?: string, db: Pick<Tx, "salesOrder" | "salesAgentProfile"> = prisma()) {
   if (!waybill) return;
-  const dup = await prisma().salesOrder.findFirst({
+  const dup = await db.salesOrder.findFirst({
     where: { waybill: { equals: waybill, mode: "insensitive" }, ...(exceptId ? { id: { not: exceptId } } : {}) },
     select: { date: true },
   });
@@ -71,7 +71,7 @@ async function assertWaybillFree(waybill: string, exceptId?: string) {
   // رقم سبق تخصيصه لفتاة (حتى لو حُذفت مسودته أو أُلغي أوردره) لا يُعاد استخدامه يدوياً
   if (/^\d{1,18}$/.test(waybill)) {
     const n = BigInt(waybill);
-    const profiles = await prisma().salesAgentProfile.findMany({ select: { prefix: true, nextSeq: true } });
+    const profiles = await db.salesAgentProfile.findMany({ select: { prefix: true, nextSeq: true } });
     for (const p of profiles) {
       const base = BigInt(p.prefix) * 100n;
       if (n > base && n < base + BigInt(p.nextSeq)) throw conflict(`رقم البوليصة «${waybill}» محجوز لحساب إحدى الفتيات`);
@@ -335,7 +335,7 @@ salesRouter.patch(
   })
 );
 
-// حذف المنتج الثابت لا يمس الأوردرات السابقة (محتوياتها منسوخة واسمه محفوظ في البند)
+// حذف المنتج الثابت لا يمس الأوردرات المصدّرة أو اليدوية (محتوياتها منسوخة)، لكنه ممنوع إن كانت هناك مسودات غير مصدّرة تستخدمه
 salesRouter.delete(
   "/products/:id",
   requireSalesEdit,
@@ -343,6 +343,10 @@ salesRouter.delete(
     const id = idOf(req.params.id);
     const existing = await prisma().salesProduct.findUnique({ where: { id }, select: { id: true } });
     if (!existing) throw notFound("المنتج غير موجود");
+    const activeDraftRefs = await prisma().agentOrderLine.count({ where: { productId: id, order: { status: "DRAFT" } } });
+    if (activeDraftRefs > 0) {
+      throw conflict("لا يمكن حذف هذا المنتج لوجود مسودات أوردرات تستخدمه حالياً؛ يمكنك إيقاف تفعيله بدلاً من حذفه");
+    }
     await prisma().salesProduct.delete({ where: { id } });
     res.json({ ok: true });
   })
@@ -400,19 +404,24 @@ salesRouter.post(
   requireSalesEdit,
   asyncHandler(async (req, res) => {
     const body = createOrderSchema.parse(req.body);
-    await assertWaybillFree(body.waybill);
     const products = await loadActiveProducts(body.lines.map((l) => l.productId));
     const created = await prisma()
-      .salesOrder.create({
-        data: {
-          date: body.date,
-          waybill: body.waybill,
-          closerName: body.closerName,
-          notes: body.notes,
-          createdById: req.user!.id,
-          lines: { create: body.lines.map((l) => lineCreateData(products.get(l.productId)!, l.quantity)) },
-        },
-        include: salesOrderInclude,
+      .$transaction(async (tx) => {
+        if (body.waybill) {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`waybill:${body.waybill.toLowerCase()}`}))`;
+          await assertWaybillFree(body.waybill, undefined, tx);
+        }
+        return tx.salesOrder.create({
+          data: {
+            date: body.date,
+            waybill: body.waybill,
+            closerName: body.closerName,
+            notes: body.notes,
+            createdById: req.user!.id,
+            lines: { create: body.lines.map((l) => lineCreateData(products.get(l.productId)!, l.quantity)) },
+          },
+          include: salesOrderInclude,
+        });
       })
       .catch(mapWaybillViolation);
     res.status(201).json({ order: serializeOrderForUser(req, created) });
@@ -434,8 +443,6 @@ salesRouter.patch(
     }
     const existing = await getOrder(req.params.id);
     const body = updateOrderSchema.parse(req.body);
-    // أوردر فتاة ملغي بعد التصدير: لا تعديل ولا تنفيذ ولا تغيير حالة من أي مسار
-    if (existing.cancelledAt) throw conflict("هذا الأوردر ملغي ولا يمكن تعديله أو تنفيذه");
     // تغيير الحالة (تنفيذ/شحن/تسليم/مرتجع) مسموح للإدارة ومشرف المبيعات فقط
     if (!isStaff(req.user!) && role !== "SALES_SUPERVISOR" && (body.status !== undefined || body.damagedComponentIds !== undefined)) {
       throw forbidden();
@@ -444,35 +451,65 @@ salesRouter.patch(
     if (role === "SALES_SUPERVISOR" && (body.status === "SHIPPED" || body.status === "DELIVERED")) {
       throw forbidden("الشحن والتسليم من صلاحيات محاسب المبيعات");
     }
-    // أوردرات الفتيات: لا شحن ولا تسليم قبل «تم التنفيذ» (حتى لا يحدث الخصم عند الشحن/التسليم)، ولا تغيير حالة لأوردر مُلغى
-    if (body.status !== undefined) {
-      const link = await prisma().agentOrder.findFirst({ where: { salesOrderId: existing.id }, select: { status: true } });
-      if (link?.status === "CANCELLED") throw conflict("هذا الأوردر ملغي ولا يمكن تغيير حالته");
-      if (link && (body.status === "SHIPPED" || body.status === "DELIVERED") && !existing.stockDeducted) {
-        throw conflict("لا يمكن شحن أو تسليم أوردر لم يُنفَّذ بعد. اضغط «تم التنفيذ» أولاً.");
-      }
-    }
-    // بوليصة أوردر الفتاة مخصَّصة بتسلسلها: لا يعدّلها أحد (حتى الإدارة) من أي مسار
-    if (body.waybill !== undefined && body.waybill !== existing.waybill && existing.agentId) {
-      throw conflict("رقم بوليصة أوردر الفتاة مخصَّص بتسلسلها ولا يمكن تعديله");
-    }
-    if (body.waybill !== undefined && body.waybill !== existing.waybill) await assertWaybillFree(body.waybill, existing.id);
-    if (body.returnFlagged === true && (existing.status === "RETURNED" || body.status === "RETURNED")) throw badRequest("الأوردر مسجل كمرتجع بالفعل");
 
     const { order, transitions } = await prisma().$transaction(async (tx) => {
       await lockOrder(tx, existing.id);
-      // إعادة فحص بعد القفل: إلغاء متزامن لا يتسلل بين الفحص الأول والكتابة
-      const lockedState = await tx.salesOrder.findUniqueOrThrow({ where: { id: existing.id }, select: { cancelledAt: true } });
-      if (lockedState.cancelledAt) throw conflict("هذا الأوردر ملغي ولا يمكن تعديله أو تنفيذه");
-      let moved: LowStockTransition[] = [];
+      const locked = await tx.salesOrder.findUniqueOrThrow({
+        where: { id: existing.id },
+        select: { status: true, stockDeducted: true, returnFlagged: true, cancelledAt: true, shippedAt: true, deliveredAt: true, agentId: true, waybill: true },
+      });
+      if (locked.cancelledAt) throw conflict("هذا الأوردر ملغي ولا يمكن تعديله أو تنفيذه");
       if (body.status !== undefined) {
-        moved = await applyStatus(tx, existing.id, body.status, req.user!.id, body.damagedComponentIds);
-        if (body.status !== existing.status) {
-          await tx.salesOrderStatusLog.create({
-            data: { orderId: existing.id, event: "STATUS", fromValue: existing.status, toValue: body.status, byId: req.user!.id },
-          });
+        const link = await tx.agentOrder.findFirst({ where: { salesOrderId: existing.id }, select: { status: true } });
+        if (link?.status === "CANCELLED") throw conflict("هذا الأوردر ملغي ولا يمكن تغيير حالته");
+        if (link && (body.status === "SHIPPED" || body.status === "DELIVERED") && !locked.stockDeducted) {
+          throw conflict("لا يمكن شحن أو تسليم أوردر لم يُنفَّذ بعد. اضغط «تم التنفيذ» أولاً.");
         }
       }
+      if (body.waybill !== undefined && body.waybill !== locked.waybill) {
+        if (locked.agentId) throw conflict("رقم بوليصة أوردر الفتاة مخصَّص بتسلسلها ولا يمكن تعديله");
+        if (body.waybill) {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`waybill:${body.waybill.toLowerCase()}`}))`;
+          await assertWaybillFree(body.waybill, existing.id, tx);
+        }
+      }
+      if (body.returnFlagged === true && (locked.status === "RETURNED" || body.status === "RETURNED")) {
+        throw badRequest("الأوردر مسجل كمرتجع بالفعل");
+      }
+
+      let moved: LowStockTransition[] = [];
+      const statusTimestamps: { shippedAt?: Date | null; deliveredAt?: Date | null } = {};
+      if (body.status !== undefined) {
+        moved = await applyStatus(tx, existing.id, body.status, req.user!.id, body.damagedComponentIds);
+        if (body.status !== locked.status) {
+          await tx.salesOrderStatusLog.create({
+            data: { orderId: existing.id, event: "STATUS", fromValue: locked.status, toValue: body.status, byId: req.user!.id },
+          });
+          if (body.status === "SHIPPED") {
+            statusTimestamps.shippedAt = locked.shippedAt ?? new Date();
+            statusTimestamps.deliveredAt = null;
+          } else if (body.status === "DELIVERED") {
+            statusTimestamps.shippedAt = locked.shippedAt ?? new Date();
+            statusTimestamps.deliveredAt = new Date();
+          } else if (body.status === "REGISTERED" || body.status === "EXECUTED") {
+            statusTimestamps.shippedAt = null;
+            statusTimestamps.deliveredAt = null;
+          }
+        }
+      }
+
+      const nextFlagged =
+        body.status === "RETURNED" || body.returnFlagged === false
+          ? false
+          : body.returnFlagged === true
+            ? true
+            : locked.returnFlagged;
+      if (nextFlagged !== locked.returnFlagged) {
+        await tx.salesOrderStatusLog.create({
+          data: { orderId: existing.id, event: "RETURN_FLAG", fromValue: String(locked.returnFlagged), toValue: String(nextFlagged), byId: req.user!.id },
+        });
+      }
+
       await tx.salesOrder.update({
         where: { id: existing.id },
         data: {
@@ -480,12 +517,10 @@ salesRouter.patch(
           ...(body.waybill !== undefined ? { waybill: body.waybill } : {}),
           ...(body.closerName !== undefined ? { closerName: body.closerName } : {}),
           ...(body.notes !== undefined ? { notes: body.notes } : {}),
-          // التحويل إلى «مرتجع» يُنهي المراجعة فتُمسح العلامة؛ وإلا تتبع طلب المستخدم
-          ...(body.status === "RETURNED" || body.returnFlagged === false
-            ? { returnFlagged: false, returnFlaggedAt: null }
-            : body.returnFlagged === true && !existing.returnFlagged
-              ? { returnFlagged: true, returnFlaggedAt: new Date() }
-              : {}),
+          ...statusTimestamps,
+          ...(nextFlagged !== locked.returnFlagged
+            ? { returnFlagged: nextFlagged, returnFlaggedAt: nextFlagged ? new Date() : null }
+            : {}),
         },
       });
       const fresh = await tx.salesOrder.findUniqueOrThrow({ where: { id: existing.id }, include: salesOrderInclude });
@@ -531,6 +566,12 @@ async function withEditableOrder<T>(rawId: unknown, fn: (tx: Tx, orderId: string
   });
 }
 
+const compSignature = (list: { itemId: string; quantity: { toString(): string } | number }[]) =>
+  list
+    .map((c) => `${c.itemId}:${num3(c.quantity)}`)
+    .sort()
+    .join(",");
+
 salesRouter.post(
   "/orders/:id/lines",
   requireSalesEdit,
@@ -538,8 +579,14 @@ salesRouter.post(
     const body = addLineSchema.parse(req.body);
     const products = await loadActiveProducts([body.productId]);
     const product = products.get(body.productId)!;
+    const stdSig = compSignature(product.components);
     const order = await withEditableOrder(req.params.id, async (tx, orderId) => {
-      const sameLine = await tx.salesOrderLine.findFirst({ where: { orderId, productId: product.id } });
+      const candidates = await tx.salesOrderLine.findMany({
+        where: { orderId, productId: product.id },
+        select: { id: true, quantity: true, components: { select: { itemId: true, quantity: true } } },
+      });
+      // لا ندمج بنداً قياسياً مع بند عُدِّلت محتوياته (سواء من الفتاة أو منفّذ الأوردرات)
+      const sameLine = candidates.find((l) => compSignature(l.components) === stdSig);
       if (sameLine) {
         await tx.salesOrderLine.update({ where: { id: sameLine.id }, data: { quantity: Math.min(sameLine.quantity + body.quantity, 1000) } });
       } else {

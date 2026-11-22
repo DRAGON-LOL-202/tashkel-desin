@@ -1,4 +1,4 @@
-import { api } from "../lib/api";
+import { api, tokenStore } from "../lib/api";
 import type { ApiUser, CreateUserInput, TeamMember, UpdateProfileInput, UpdateUserInput, UserRole } from "../types";
 
 export const roleLabel: Record<UserRole, string> = {
@@ -66,7 +66,8 @@ export const usersService = {
 
   /** الملف الشخصي: الاسم/البريد/المسمى + تغيير كلمة المرور (بالحالية). لا دور ولا صلاحيات. */
   async updateMe(input: UpdateProfileInput): Promise<TeamMember> {
-    const { user } = await api<{ user: ApiUser }>("/users/me", { method: "PATCH", body: input });
+    const { user, token } = await api<{ user: ApiUser; token?: string }>("/users/me", { method: "PATCH", body: input });
+    if (token) tokenStore.set(token);
     return toMember(user);
   },
 };

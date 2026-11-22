@@ -4,6 +4,9 @@ import { useAuth } from "../components/auth/AuthProvider";
 import { usersService } from "../services/usersService";
 import { errorMessage } from "../lib/api";
 import { useLiveSync } from "./useLiveSync";
+import type { SyncChannel } from "../lib/liveSync";
+
+const USER_CHANNELS: SyncChannel[] = ["users"];
 
 /**
  * أعضاء الفريق يأتون من جدول Users (المفعّلون فقط) — أي مستخدم جديد يظهر تلقائياً بدون مهام وهمية.
@@ -47,7 +50,7 @@ export function useTeamMembers(board: TaskBoard = "design") {
       // نُبقي القائمة الحالية
     }
   }, [fetchMembers]);
-  useLiveSync(silentSync);
+  useLiveSync(silentSync, USER_CHANNELS);
 
   useEffect(() => {
     void load();

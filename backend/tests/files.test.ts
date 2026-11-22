@@ -66,14 +66,28 @@ describe("files: config و presign-upload", () => {
     expect(res.body.allowedTypes).toEqual(expect.arrayContaining(["image/png", "image/jpeg"]));
   });
 
-  it("presign-upload: المفتاح داخل نطاق المستخدم، والرابط يوقّع content-type", async () => {
+  it("presign-upload: المفتاح داخل نطاق المستخدم، والرابط يوقّع content-type و content-length", async () => {
     const res = await api(d1).post("/api/files/presign-upload").send({ scope: "tasks", mimeType: "image/png", size: 5000 });
     expect(res.status).toBe(200);
     expect(res.body.objectKey).toMatch(new RegExp(`^tasks/${d1Id}/[0-9a-f-]{36}\\.png$`));
     expect(res.body.uploadUrl).toContain("http://r2.test.invalid/test-bucket/tasks/");
-    expect(res.body.uploadUrl).toContain("X-Amz-SignedHeaders=content-type%3Bhost");
+    expect(res.body.uploadUrl).toContain("X-Amz-SignedHeaders=content-length%3Bcontent-type%3Bhost");
     expect(res.body.headers).toEqual({ "Content-Type": "image/png" });
     expect(res.body.previewUrl).toContain("X-Amz-Signature=");
+  });
+
+  it("مشرف المبيعات يرفع صور المخزون على R2 فقط ويُمنع من نطاقات أخرى", async () => {
+    await makeUser("fsup", "SALES_SUPERVISOR");
+    const sup = await login("fsup");
+    expect((await api(sup).get("/api/files/config")).status).toBe(200);
+    const ok = await api(sup).post("/api/files/presign-upload").send({ scope: "inventory", mimeType: "image/png", size: 1200 });
+    expect(ok.status).toBe(200);
+    expect((await api(sup).post("/api/files/presign-upload").send({ scope: "tasks", mimeType: "image/png", size: 1200 })).status).toBe(403);
+  });
+
+  it("يرفض SVG في المرفقات القديمة (base64)", async () => {
+    const svg = await mkTask(d1, [{ id: "svg1", name: "x.svg", dataUrl: "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=" }]);
+    expect(svg.status).toBe(400);
   });
 
   it("يرفض نوعاً غير مدعوم (svg/pdf/exe) ← 400", async () => {

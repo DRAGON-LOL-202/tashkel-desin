@@ -32,8 +32,18 @@ const agentOrderInclude = {
 } satisfies Prisma.AgentOrderInclude;
 type AgentOrderRow = Prisma.AgentOrderGetPayload<{ include: typeof agentOrderInclude }>;
 
+type AccountingSourceRow = {
+  status: AgentOrderRow["status"];
+  sellPrice: AgentOrderRow["sellPrice"];
+  salesOrder: {
+    status: string;
+    returnFlagged: boolean;
+    lines: Parameters<typeof orderSellCents>[0];
+  } | null;
+};
+
 /** سعر بيع الأوردر بالقروش: لا تدخله الفتاة. بعد التصدير يُقرأ من أوردر المبيعات (مثبَّت بعد التنفيذ)، وللمسودة من آخر حساب محفوظ. */
-const agentSellCents = (o: AgentOrderRow) => (o.salesOrder ? orderSellCents(o.salesOrder.lines) : toCents(o.sellPrice));
+const agentSellCents = (o: AccountingSourceRow) => (o.salesOrder ? orderSellCents(o.salesOrder.lines) : toCents(o.sellPrice));
 
 type LineRow = AgentOrderRow["lines"][number];
 /** محتويات البند الفعلية: المعدَّلة إن وُجدت، وإلا محتويات المنتج الثابت (أسطر أُنشئت قبل ميزة التعديل) */
@@ -69,7 +79,7 @@ export function serializeAgentOrder(o: AgentOrderRow) {
   };
 }
 
-export const toAccountingRow = (o: AgentOrderRow): AccountingRow => ({
+export const toAccountingRow = (o: AccountingSourceRow): AccountingRow => ({
   agentStatus: o.status,
   salesStatus: (o.salesOrder?.status ?? null) as AccountingRow["salesStatus"],
   returnFlagged: o.salesOrder?.returnFlagged ?? false,
@@ -145,7 +155,9 @@ async function getOwnOrder(agentId: string, rawId: unknown) {
 }
 
 async function lockOwnOrder(tx: Tx, agentId: string, orderId: string) {
-  const rows = await tx.$queryRaw<{ id: string; status: string }[]>`SELECT "id","status"::text AS "status" FROM "AgentOrder" WHERE "id" = ${orderId} AND "agentId" = ${agentId} FOR UPDATE`;
+  const rows = await tx.$queryRaw<{ id: string; status: string; salesOrderId: string | null }[]>`
+    SELECT "id","status"::text AS "status","salesOrderId" FROM "AgentOrder" WHERE "id" = ${orderId} AND "agentId" = ${agentId} FOR UPDATE
+  `;
   if (rows.length === 0) throw notFound("الأوردر غير موجود");
   return rows[0];
 }
@@ -205,6 +217,27 @@ agentRouter.get(
   })
 );
 
+function bucketWhere(bucket: Bucket): Prisma.AgentOrderWhereInput {
+  switch (bucket) {
+    case "all":
+      return {};
+    case "draft":
+      return { status: "DRAFT" };
+    case "exported":
+      return { status: "EXPORTED" };
+    case "cancelled":
+      return { status: "CANCELLED" };
+    case "returned":
+      return { status: "EXPORTED", salesOrder: { is: { OR: [{ status: "RETURNED" }, { returnFlagged: true }] } } };
+    case "delivered":
+      return { status: "EXPORTED", salesOrder: { is: { status: "DELIVERED", returnFlagged: false } } };
+    case "shipped":
+      return { status: "EXPORTED", salesOrder: { is: { status: "SHIPPED", returnFlagged: false } } };
+    case "executed":
+      return { status: "EXPORTED", salesOrder: { is: { status: { in: ["EXECUTED", "SHIPPED", "DELIVERED"] }, returnFlagged: false } } };
+  }
+}
+
 agentRouter.get(
   "/orders",
   asyncHandler(async (req, res) => {
@@ -214,6 +247,7 @@ agentRouter.get(
     const rows = await prisma().agentOrder.findMany({
       where: {
         agentId: req.user!.id,
+        ...bucketWhere(bucket),
         ...(q
           ? { OR: [{ waybill: { contains: q } }, { customerName: { contains: q, mode: "insensitive" as const } }, { customerPhone: { contains: q } }] }
           : {}),
@@ -229,7 +263,35 @@ agentRouter.get(
 agentRouter.get(
   "/dashboard",
   asyncHandler(async (req, res) => {
-    const rows = await prisma().agentOrder.findMany({ where: { agentId: req.user!.id }, include: agentOrderInclude });
+    const rows = await prisma().agentOrder.findMany({
+      where: { agentId: req.user!.id },
+      select: {
+        status: true,
+        sellPrice: true,
+        salesOrder: {
+          select: {
+            status: true,
+            returnFlagged: true,
+            lines: {
+              select: {
+                quantity: true,
+                components: {
+                  select: {
+                    id: true,
+                    itemId: true,
+                    quantity: true,
+                    unitCostSnapshot: true,
+                    unitSellSnapshot: true,
+                    damaged: true,
+                    item: { select: itemSelect },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
     res.json({ summary: summarize(rows.map(toAccountingRow)) });
   })
 );
@@ -374,26 +436,31 @@ agentRouter.post(
   })
 );
 
-// إلغاء بعد التصدير: سبب إلزامي + تأكيد، يُحفظ السجل ويبقى الأوردر ورقم بوليصته. لا حركة مخزون تلقائية.
+// إلغاء بعد التصدير وقبل التنفيذ فقط: سبب إلزامي + تأكيد، يُحفظ السجل ويبقى الأوردر ورقم بوليصته. بعد التنفيذ يُعالج عبر المرتجع من المشرف/الإدارة.
 agentRouter.post(
   "/orders/:id/cancel",
   asyncHandler(async (req, res) => {
     const body = cancelOrderSchema.parse(req.body);
     const agentId = req.user!.id;
-    const own = await getOwnOrder(agentId, req.params.id);
+    const orderId = idOf(req.params.id);
+    if (!orderId) throw notFound("الأوردر غير موجود");
     const updated = await prisma().$transaction(async (tx) => {
-      const locked = await lockOwnOrder(tx, agentId, own.id);
+      const locked = await lockOwnOrder(tx, agentId, orderId);
       if (locked.status === "DRAFT") throw conflict("الأوردر لم يُصدَّر بعد؛ يمكنك حذفه بدل إلغائه.");
       if (locked.status === "CANCELLED") throw conflict("الأوردر ملغي بالفعل");
       const now = new Date();
-      await tx.agentOrder.update({ where: { id: own.id }, data: { status: "CANCELLED", cancelledAt: now, cancelReason: body.reason, cancelledById: agentId } });
-      // مزامنة أوردر المبيعات الرئيسي في نفس المعاملة (لا تحديث جزئي): يظهر ملغياً ويُمنع تعديله/تنفيذه. لا حركة مخزون.
-      if (own.salesOrderId) {
-        await tx.$queryRaw`SELECT "id" FROM "SalesOrder" WHERE "id" = ${own.salesOrderId} FOR UPDATE`;
-        await tx.salesOrder.update({ where: { id: own.salesOrderId }, data: { cancelledAt: now, cancelReason: body.reason, cancelledById: agentId } });
-        await tx.salesOrderStatusLog.create({ data: { orderId: own.salesOrderId, event: "CANCEL", fromValue: null, toValue: body.reason.slice(0, 200), byId: agentId } });
+      // مزامنة أوردر المبيعات الرئيسي في نفس المعاملة بناءً على locked.salesOrderId المقروء بعد القفل (يمنع سباق التصدير والإلغاء)
+      if (locked.salesOrderId) {
+        await tx.$queryRaw`SELECT "id" FROM "SalesOrder" WHERE "id" = ${locked.salesOrderId} FOR UPDATE`;
+        const so = await tx.salesOrder.findUnique({ where: { id: locked.salesOrderId }, select: { status: true, stockDeducted: true } });
+        if (so && (so.stockDeducted || so.status !== "REGISTERED")) {
+          throw conflict("لا يمكن إلغاء أوردر بعد تنفيذه أو شحنه أو تسليمه. تواصل مع المشرف أو الإدارة لتسجيل مرتجع.");
+        }
+        await tx.salesOrder.update({ where: { id: locked.salesOrderId }, data: { cancelledAt: now, cancelReason: body.reason, cancelledById: agentId } });
+        await tx.salesOrderStatusLog.create({ data: { orderId: locked.salesOrderId, event: "CANCEL", fromValue: null, toValue: body.reason.slice(0, 200), byId: agentId } });
       }
-      return tx.agentOrder.findUniqueOrThrow({ where: { id: own.id }, include: agentOrderInclude });
+      await tx.agentOrder.update({ where: { id: locked.id }, data: { status: "CANCELLED", cancelledAt: now, cancelReason: body.reason, cancelledById: agentId } });
+      return tx.agentOrder.findUniqueOrThrow({ where: { id: locked.id }, include: agentOrderInclude });
     });
     res.json({ order: serializeAgentOrder(updated) });
   })

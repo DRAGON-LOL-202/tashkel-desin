@@ -14,7 +14,9 @@ import {
   isWithdrawOnlyAllowed,
 } from "../utils/inventoryAccess.js";
 import {
-  computeInventoryStats,
+  calcTotalValue,
+  computeInventoryStatsFromRows,
+  getStockStatus,
   inventoryItemInclude,
   movementInclude,
   num2,
@@ -24,6 +26,7 @@ import {
   serializeInventoryMovement,
   stripInventoryStatsPrices,
 } from "../utils/inventorySerialize.js";
+import { startOfTodayUtc, tzDayBoundsUtc } from "../utils/attendance.js";
 import { assertAttachmentsAllowed, deleteStoredObjects } from "../utils/attachments.js";
 import { keysOf, removedKeys } from "../utils/attachmentKeys.ts";
 import { handleLowStockTransition } from "../utils/inventoryLowStock.js";
@@ -135,23 +138,6 @@ function stripItemPrices<T extends { unitPrice: number; sellPrice: number; total
   return rest;
 }
 
-/** بداية اليوم الحالي لحساب عدد حركات اليوم */
-function startOfTodayUtc(): Date {
-  const now = new Date();
-  const tz = process.env.ATTENDANCE_TZ?.trim() || "Africa/Cairo";
-  try {
-    const isoDay = new Intl.DateTimeFormat("en-CA", {
-      timeZone: tz,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(now);
-    return new Date(`${isoDay}T00:00:00.000Z`);
-  } catch {
-    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  }
-}
-
 // ===== القائمة والإحصائيات =====
 inventoryRouter.get(
   "/",
@@ -181,30 +167,40 @@ inventoryRouter.get(
           }),
     ]);
 
-    const allSerialized = allItems.map(serializeInventoryItem);
-    // إحصاءات القيمة والإجمالي لا تُحسب ولا تُرسل لمن يملك «السحب فقط» أو منفّذ الأوردرات
-    const rawStats = withdrawOnly || editorPickerOnly ? undefined : computeInventoryStats(allSerialized, todayMovementsCount);
+    // الإحصاءات تُحسب قبل توقيع روابط الصور حتى لا نوقّع مرفقات أصناف لن تُعرَض بعد الفلترة
+    const rawStats = withdrawOnly || editorPickerOnly ? undefined : computeInventoryStatsFromRows(allItems, todayMovementsCount);
 
-    let rows = allSerialized.filter((i) => (includeInactive && !withdrawOnly && ! hidePrices ? true : i.isActive));
-    if (categoryId) rows = rows.filter((i) => i.categoryId === categoryId);
+    let matched = allItems.filter((i) => (includeInactive && !withdrawOnly && !hidePrices ? true : i.isActive));
+    if (categoryId) matched = matched.filter((i) => i.categoryId === categoryId);
     if (q) {
       const ql = q.toLowerCase();
-      rows = rows.filter((i) => i.name.toLowerCase().includes(ql) || (i.sku ?? "").toLowerCase().includes(ql));
+      matched = matched.filter((i) => i.name.toLowerCase().includes(ql) || (i.sku ?? "").toLowerCase().includes(ql));
     }
-    if (req.query.lowOnly === "true") rows = rows.filter((i) => i.isLow);
+    if (req.query.lowOnly === "true") {
+      matched = matched.filter((i) => {
+        const min = num3(i.minQuantity);
+        return min > 0 && num3(i.quantity) <= min;
+      });
+    }
     if (statusFilter === "AVAILABLE" || statusFilter === "LOW_STOCK" || statusFilter === "OUT_OF_STOCK") {
-      rows = rows.filter((i) => i.status === statusFilter);
+      matched = matched.filter((i) => getStockStatus(num3(i.quantity), num3(i.minQuantity)) === statusFilter);
     } else if (statusFilter === "SHORTAGE") {
-      rows = rows.filter((i) => i.isShortage);
+      matched = matched.filter((i) => getStockStatus(num3(i.quantity), num3(i.minQuantity)) !== "AVAILABLE");
     }
 
     if (sortBy === "quantity") {
-      rows.sort((a, b) => (a.quantity - b.quantity) * sortDir || a.name.localeCompare(b.name, "ar"));
+      matched.sort((a, b) => (num3(a.quantity) - num3(b.quantity)) * sortDir || a.name.localeCompare(b.name, "ar"));
     } else if (sortBy === "value" && !withdrawOnly && !hidePrices) {
-      rows.sort((a, b) => (a.totalValue - b.totalValue) * sortDir || a.name.localeCompare(b.name, "ar"));
+      matched.sort(
+        (a, b) =>
+          (calcTotalValue(num3(a.quantity), num2(a.unitPrice)) - calcTotalValue(num3(b.quantity), num2(b.unitPrice))) * sortDir ||
+          a.name.localeCompare(b.name, "ar")
+      );
     } else if (sortBy === "name" && sortDir === -1) {
-      rows.reverse();
+      matched.reverse();
     }
+
+    const rows = matched.map(serializeInventoryItem);
 
     if (withdrawOnly) {
       // لا أسعار ولا قيمة ولا اقتراح إعادة طلب في ردود «السحب فقط»
@@ -400,8 +396,8 @@ inventoryRouter.get(
       ...(from || to
         ? {
             createdAt: {
-              ...(from ? { gte: new Date(`${from}T00:00:00.000Z`) } : {}),
-              ...(to ? { lt: new Date(Date.parse(`${to}T00:00:00.000Z`) + 86_400_000) } : {}),
+              ...(from ? { gte: tzDayBoundsUtc(from).start } : {}),
+              ...(to ? { lt: tzDayBoundsUtc(to).end } : {}),
             },
           }
         : {}),
@@ -442,10 +438,13 @@ inventoryRouter.post(
 
     const movements = await prisma().$transaction(async (tx) => {
       if (body.requestId) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`withdraw:${batchId}`}))`;
+      }
+      await tx.$queryRaw`SELECT "id" FROM "InventoryItem" WHERE "id" = ANY(${ids}::text[]) ORDER BY "id" FOR UPDATE`;
+      if (body.requestId) {
         const dupBatch = await tx.inventoryMovement.findFirst({ where: { batchId }, select: { id: true } });
         if (dupBatch) throw conflict("تم تنفيذ عملية السحب هذه مسبقاً");
       }
-      await tx.$queryRaw`SELECT "id" FROM "InventoryItem" WHERE "id" = ANY(${ids}::text[]) ORDER BY "id" FOR UPDATE`;
       const allowedScope = isRestrictedRole(req.user!)
         ? new Set(await allowedCategoryIds(userId, tx))
         : null;

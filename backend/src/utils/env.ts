@@ -34,6 +34,8 @@ const schema = z
     VAPID_PRIVATE_KEY: optionalText,
     VAPID_SUBJECT: optionalText, // mailto:you@example.com أو https://موقعك
     R2_MAX_FILE_MB: z.coerce.number().positive().max(50).default(10),
+    ATTENDANCE_TZ: optionalText,
+    TASKS_REQUIRE_RANGE: optionalText,
   })
   .superRefine((v, ctx) => {
     const required = ["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET_NAME"] as const;

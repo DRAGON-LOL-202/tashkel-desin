@@ -138,6 +138,12 @@ export function isSalesRoleAllowed(role: Role, method: string, path: string, bod
   // نظام الفتيات: مساحة الفتاة لها وحدها، ومتابعة/حسابات المبيعات لمحاسب المبيعات وحده (فحص الدور يتكرر داخل الراوترات)
   if (role === "SALES_AGENT") return p === "/agent" || p.startsWith("/agent/");
   if (role === "SALES_ACCOUNTANT") return p === "/accounting" || p.startsWith("/accounting/");
+  // مشرف المبيعات يرفع ويحذف صور أصناف المخزون على R2 فقط (نطاق inventory)
+  if (role === "SALES_SUPERVISOR") {
+    if (method === "GET" && p === "/files/config") return true;
+    if (method === "POST" && p === "/files/presign-upload") return isPlainRecord(body) && body.scope === "inventory";
+    if (method === "DELETE" && p === "/files") return true;
+  }
   return false;
 }
 

@@ -13,25 +13,31 @@ declare module "express-serve-static-core" {
   }
 }
 
-export function signToken(user: Pick<User, "id" | "role">): string {
-  return jwt.sign({ sub: user.id, role: user.role }, env().JWT_SECRET, { expiresIn: "12h" });
+export function signToken(user: Pick<User, "id" | "role" | "tokenVersion">): string {
+  return jwt.sign({ sub: user.id, role: user.role, tv: user.tokenVersion }, env().JWT_SECRET, { expiresIn: "12h" });
 }
 
-// المستخدم الحالي يُحدَّد من قاعدة البيانات (الدور والتفعيل)، ولا يُوثق بمحتوى التوكن وحده.
-async function authenticate(req: Request): Promise<User> {
-  const header = req.headers.authorization;
-  if (!header?.startsWith("Bearer ")) throw unauthorized();
+// المستخدم الحالي يُحدَّد من قاعدة البيانات (الدور والتفعيل ونسخة الجلسة)، ولا يُوثق بمحتوى التوكن وحده.
+export async function authenticateToken(token: string): Promise<User> {
   let sub: string;
+  let tv: number;
   try {
-    const payload = jwt.verify(header.slice(7), env().JWT_SECRET) as jwt.JwtPayload;
-    if (typeof payload.sub !== "string") throw new Error("bad");
+    const payload = jwt.verify(token, env().JWT_SECRET) as jwt.JwtPayload;
+    if (typeof payload.sub !== "string" || typeof payload.tv !== "number") throw new Error("bad");
     sub = payload.sub;
+    tv = payload.tv;
   } catch {
     throw unauthorized("الجلسة غير صالحة أو منتهية");
   }
   const user = await prisma().user.findUnique({ where: { id: sub } });
-  if (!user || !user.isActive) throw unauthorized("الحساب غير متاح");
+  if (!user || !user.isActive || user.tokenVersion !== tv) throw unauthorized("الحساب غير متاح");
   return user;
+}
+
+async function authenticate(req: Request): Promise<User> {
+  const header = req.headers.authorization;
+  if (!header?.startsWith("Bearer ")) throw unauthorized();
+  return authenticateToken(header.slice(7));
 }
 
 // req.user لا يُضبط إلا من هذه الدوال (بعد التحقق من التوكن)، فإن وُجد من البوابة لا نعيد الاستعلام.

@@ -242,48 +242,54 @@ describe("علامة المرتجع والإلغاء وسعر الشحن وال�
     dash = (await api(t).get("/api/agent/dashboard")).body.summary;
     expect(dash.delivered).toBe(3);
 
-    // إلغاء بعد التصدير: سبب إلزامي وتأكيد، بلا حركة مخزون، ويُستبعد من الحساب ويبقى محفوظاً
-    expect((await api(t).post(`/api/agent/orders/${c.o.id}/cancel`).send({ confirm: true })).status).toBe(400);
-    expect((await api(t).post(`/api/agent/orders/${c.o.id}/cancel`).send({ reason: "  ", confirm: true })).status).toBe(400);
-    expect((await api(t).post(`/api/agent/orders/${c.o.id}/cancel`).send({ reason: "العميلة ألغت" })).status).toBe(400);
+    // لا إلغاء من الفتاة بعد التنفيذ أو التسليم (409)
+    expect((await api(t).post(`/api/agent/orders/${c.o.id}/cancel`).send({ reason: "بعد التسليم", confirm: true })).status).toBe(409);
+
+    // إلغاء بعد التصدير وقبل التنفيذ: سبب إلزامي وتأكيد، بلا حركة مخزون، ويُستبعد من الحساب ويبقى محفوظاً
+    const e = await mk(t, 150);
+    expect((await exportIds(t, [e.id])).status).toBe(200);
+    const eso = await salesOrderOf(e.id);
+    expect((await api(t).post(`/api/agent/orders/${e.id}/cancel`).send({ confirm: true })).status).toBe(400);
+    expect((await api(t).post(`/api/agent/orders/${e.id}/cancel`).send({ reason: "  ", confirm: true })).status).toBe(400);
+    expect((await api(t).post(`/api/agent/orders/${e.id}/cancel`).send({ reason: "العميلة ألغت" })).status).toBe(400);
     const mv2 = await movements();
-    const cancelled = await api(t).post(`/api/agent/orders/${c.o.id}/cancel`).send({ reason: "العميلة ألغت", confirm: true });
+    const cancelled = await api(t).post(`/api/agent/orders/${e.id}/cancel`).send({ reason: "العميلة ألغت", confirm: true });
     expect(cancelled.status).toBe(200);
     expect(cancelled.body.order.status).toBe("CANCELLED");
     expect(cancelled.body.order.cancelReason).toBe("العميلة ألغت");
-    expect(cancelled.body.order.waybill).toBe(c.o.waybill);
+    expect(cancelled.body.order.waybill).toBe(e.waybill);
     expect(await movements()).toBe(mv2);
-    expect((await api(t).post(`/api/agent/orders/${c.o.id}/cancel`).send({ reason: "تاني", confirm: true })).status).toBe(409);
+    expect((await api(t).post(`/api/agent/orders/${e.id}/cancel`).send({ reason: "تاني", confirm: true })).status).toBe(409);
     dash = (await api(t).get("/api/agent/dashboard")).body.summary;
-    expect(dash).toMatchObject({ delivered: 2, cancelled: 1, deliveredSales: 300, fixedFee: 14, commission: 9, totalDue: 23 });
+    expect(dash).toMatchObject({ delivered: 3, cancelled: 1, deliveredSales: 600.5, fixedFee: 21, commission: 18.02, totalDue: 39.02 });
     // لا تغيير حالة لأوردر ملغي
-    expect((await acctStatus(c.so, "SHIPPED")).status).toBe(409);
-    expect((await api(admin).patch(`/api/sales/orders/${c.so}`).send({ status: "RETURNED" })).status).toBe(409);
+    expect((await acctStatus(eso, "SHIPPED")).status).toBe(409);
+    expect((await api(admin).patch(`/api/sales/orders/${eso}`).send({ status: "RETURNED" })).status).toBe(409);
     // رقم البوليصة محفوظ ولا يُعاد استخدامه
     const next = await mk(t, 10);
-    expect(Number(next.waybill)).toBeGreaterThan(Number(d.waybill));
+    expect(Number(next.waybill)).toBeGreaterThan(Number(e.waybill));
   });
 
   it("لوحة المحاسب والحسابات العامة: كل الفتيات، التفاصيل، الشحن مرة واحدة، النسب", async () => {
     const all = await api(acct).get("/api/accounting/agents");
     expect(all.status).toBe(200);
     const calc = all.body.agents.find((a: any) => a.prefix === 800);
-    expect(calc).toMatchObject({ delivered: 2, deliveredSales: 300, fixedFee: 14, commission: 9, totalDue: 23 });
+    expect(calc).toMatchObject({ delivered: 3, deliveredSales: 600.5, fixedFee: 21, commission: 18.02, totalDue: 39.02 });
     expect(all.body.agents.length).toBeGreaterThanOrEqual(5);
     const detail = await api(acct).get(`/api/accounting/agents/${calc.agentId}?bucket=delivered`);
     expect(detail.status).toBe(200);
-    expect(detail.body.orders.length).toBe(2);
+    expect(detail.body.orders.length).toBe(3);
     const gen = (await api(acct).get("/api/accounting/general")).body.general;
-    // المسلَّم من الفتيات: 100+200 (calc) + 180 (agent_one، محسوب من مكونات البوكس) = 480 ؛ شحن 40 للأوردر 100 فقط
-    expect(gen.deliveredSales).toBe(480);
+    // المسلَّم من الفتيات: 100+200+300.5 (calc) + 180 (agent_one، محسوب من مكونات البوكس) = 780.5 ؛ شحن 40 للأوردر 100 فقط
+    expect(gen.deliveredSales).toBe(780.5);
     expect(gen.totalShipping).toBe(40);
-    expect(gen.grandTotal).toBe(520);
+    expect(gen.grandTotal).toBe(820.5);
     expect(gen.salesPercent + gen.shippingPercent).toBeCloseTo(100, 1);
     // تغيير حالة المسلَّم إلى شحن يعيد الاحتساب
     const so = (await api(acct).get(`/api/accounting/agents/${calc.agentId}?bucket=delivered`)).body.orders[0].id;
     expect((await acctStatus(so, "SHIPPED")).status).toBe(200);
     const again = (await api(acct).get("/api/accounting/agents")).body.agents.find((a: any) => a.prefix === 800);
-    expect(again.delivered).toBe(1);
+    expect(again.delivered).toBe(2);
   });
 
   it("سعر الشحن: يدخله المحاسب، يُعدَّل، ويمكن مسحه، وبعد التنفيذ فقط", async () => {

@@ -2,7 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import type { InventoryAccess, Role, User } from "../generated/prisma/client.ts";
 import { prisma } from "../db.js";
-import { requireAuth, requireStaff } from "../middleware/auth.js";
+import { requireAuth, requireStaff, signToken } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { badRequest, conflict, forbidden, HttpError, notFound } from "../utils/httpError.js";
 import { publicUser } from "../utils/serialize.js";
@@ -15,7 +15,9 @@ import { createUserSchema, statusSchema, updateProfileSchema, updateUserSchema }
 export const usersRouter = Router();
 usersRouter.use(requireAuth);
 
-type UserPatch = Partial<Pick<User, "name" | "username" | "email" | "role" | "jobTitle" | "passwordHash" | "inventoryAccess" | "showTaskCard" | "showProductionCard">>;
+type UserPatch = Partial<Pick<User, "name" | "username" | "email" | "role" | "jobTitle" | "passwordHash" | "inventoryAccess" | "showTaskCard" | "showProductionCard">> & {
+  tokenVersion?: { increment: number };
+};
 
 const ROLE_LABEL: Record<Role, string> = {
   ADMIN: "مدير النظام",
@@ -88,10 +90,12 @@ usersRouter.patch(
       const ok = await bcrypt.compare(body.currentPassword!, me.passwordHash);
       if (!ok) throw new HttpError(400, "كلمة المرور الحالية غير صحيحة", "BAD_PASSWORD");
       data.passwordHash = await bcrypt.hash(body.newPassword, 12);
+      // تغيير كلمة المرور يُبطل كل الجلسات السابقة، ونُعيد توكناً جديداً للجهاز الحالي
+      data.tokenVersion = { increment: 1 };
     }
     try {
       const updated = await prisma().user.update({ where: { id: me.id }, data });
-      res.json({ user: publicUser(updated) });
+      res.json({ user: publicUser(updated), ...(body.newPassword ? { token: signToken(updated) } : {}) });
     } catch (e) {
       if (isUniqueViolation(e)) throw conflict("البريد الإلكتروني مستخدم بالفعل");
       throw e;
@@ -219,7 +223,11 @@ usersRouter.patch(
     if (newAccess !== target.inventoryAccess) data.inventoryAccess = newAccess;
     const restricted = isRestrictedRole({ role: finalRole });
     const newGroupIds = restricted && body.allowedGroupIds !== undefined ? await validGroupIds(body.allowedGroupIds) : undefined;
-    if (body.password !== undefined) data.passwordHash = await bcrypt.hash(body.password, 12);
+    if (body.password !== undefined) {
+      data.passwordHash = await bcrypt.hash(body.password, 12);
+      // إعادة تعيين كلمة المرور من الإدارة تُبطل جلسات المستخدم القائمة فوراً
+      data.tokenVersion = { increment: 1 };
+    }
 
     if (body.username !== undefined || body.email !== undefined) {
       const dup = await db.user.findFirst({
@@ -277,7 +285,7 @@ usersRouter.delete(
 
     if (!purge) {
       // بيانات تاريخية مرتبطة ← التعطيل بدل الحذف (الواجهة تعرض خيار حذف الكل أو التعطيل)
-      const [tasks, logs, comments, feedback, goals, events, attendance, products, stockMoves, salesOrders] = await Promise.all([
+      const [tasks, logs, comments, feedback, goals, events, attendance, products, stockMoves, salesOrders, agentOrders, agentSalesOrders, salesLogs] = await Promise.all([
         db.task.count({ where: { OR: [{ createdById: target.id }, { assignedToId: target.id }] } }),
         db.taskTimeLog.count({ where: { userId: target.id } }),
         db.taskComment.count({ where: { userId: target.id } }),
@@ -288,13 +296,25 @@ usersRouter.delete(
         db.product.count({ where: { createdById: target.id } }),
         db.inventoryMovement.count({ where: { createdById: target.id } }),
         db.salesOrder.count({ where: { createdById: target.id } }),
+        db.agentOrder.count({ where: { OR: [{ agentId: target.id }, { exportedById: target.id }, { cancelledById: target.id }] } }),
+        db.salesOrder.count({ where: { agentId: target.id } }),
+        db.salesOrderStatusLog.count({ where: { byId: target.id } }),
       ]);
-      if (tasks + logs + comments + feedback + goals + events + attendance + products + stockMoves + salesOrders > 0) {
-        throw new HttpError(409, "لهذا المستخدم بيانات مرتبطة (مهام/ملاحظات/...). عطّل الحساب بدلاً من حذفه", "HAS_DATA");
+      if (tasks + logs + comments + feedback + goals + events + attendance + products + stockMoves + salesOrders + agentOrders + agentSalesOrders + salesLogs > 0) {
+        throw new HttpError(409, "لهذا المستخدم بيانات مرتبطة (مهام/ملاحظات/أوردرات/...). عطّل الحساب بدلاً من حذفه", "HAS_DATA");
       }
       await db.user.delete({ where: { id: target.id } });
       res.json({ ok: true });
       return;
+    }
+
+    // فتاة مبيعات لديها أوردرات مسجّلة: نحمي السجل المحاسبي وتسلسل البوالص من الفقد
+    const [ownedAgentOrders, linkedAgentSales] = await Promise.all([
+      db.agentOrder.count({ where: { agentId: target.id } }),
+      db.salesOrder.count({ where: { agentId: target.id } }),
+    ]);
+    if (ownedAgentOrders + linkedAgentSales > 0) {
+      throw conflict("لا يمكن حذف حساب فتاة مبيعات مرتبطة بأوردرات مسجّلة حفاظاً على دقة الحسابات؛ عطّل الحساب بدلاً من حذفه");
     }
 
     // ---- حذف الحساب مع كل بياناته ----
@@ -332,8 +352,12 @@ usersRouter.delete(
       db.product.updateMany({ where: { createdById: target.id }, data: { createdById: actor.id } }),
       // حركات المخزون سجل تدقيق مشترك: لا تُحذف، تُنقل نسبتها لمن يجري الحذف
       db.inventoryMovement.updateMany({ where: { createdById: target.id }, data: { createdById: actor.id } }),
-      // أوردرات المبيعات سجل مشترك: لا تُحذف، تُنقل نسبتها لمن يجري الحذف
+      // أوردرات المبيعات وسجل الحالات المشترك: تُنقل نسبتها لمن يجري الحذف
       db.salesOrder.updateMany({ where: { createdById: target.id }, data: { createdById: actor.id } }),
+      db.salesOrder.updateMany({ where: { cancelledById: target.id }, data: { cancelledById: actor.id } }),
+      db.agentOrder.updateMany({ where: { exportedById: target.id }, data: { exportedById: actor.id } }),
+      db.agentOrder.updateMany({ where: { cancelledById: target.id }, data: { cancelledById: actor.id } }),
+      db.salesOrderStatusLog.updateMany({ where: { byId: target.id }, data: { byId: actor.id } }),
       db.user.delete({ where: { id: target.id } }),
     ]);
     await deleteUnreferencedObjects(keys);

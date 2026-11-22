@@ -224,3 +224,28 @@ describe("كرت مهام الإنتاج (showProductionCard)", () => {
     expect((await api(me).get("/api/auth/me")).body.user.showProductionCard).toBe(true);
   });
 });
+
+describe("users: حماية حذف المبيعات والسجلات", () => {
+  it("حذف فتاة مبيعات لها أوردرات: مرفوض في الحذف العادي وpurge (409 لا 500)", async () => {
+    const ag = await makeUser("agent_del_guard", "SALES_AGENT");
+    await api(admin).put(`/api/sales-agents/${ag.id}/prefix`).send({ prefix: 910 });
+    const agTok = await login("agent_del_guard");
+    const cat = await prisma().inventoryCategory.create({ data: { name: "حذف-فتاة", groupId: "invgrp_accessories_gifts" } });
+    const item = await prisma().inventoryItem.create({ data: { name: "صنف فتاة", categoryId: cat.id, quantity: 10, sellPrice: 50 } });
+    const prod = await prisma().salesProduct.create({ data: { name: "بوكس حذف", components: { create: { itemId: item.id, quantity: 1 } } } });
+    expect((await api(agTok).post("/api/agent/orders").send({ date: "2026-11-01", customerName: "ع", lines: [{ productId: prod.id, quantity: 1 }] })).status).toBe(201);
+    expect((await api(manager).delete(`/api/users/${ag.id}`)).status).toBe(409);
+    expect((await api(manager).delete(`/api/users/${ag.id}?purge=true`)).status).toBe(409);
+    expect(await prisma().user.findUnique({ where: { id: ag.id } })).not.toBeNull();
+  });
+  it("مستخدم له سجل حالات مبيعات: الحذف العادي 409، وpurge=true ينقل السجل وينجح (لا 500)", async () => {
+    const u = await makeUser("acct_purge", "SALES_ACCOUNTANT");
+    const so = await prisma().salesOrder.create({ data: { date: "2026-11-01", waybill: "LOG-PURGE-1", createdById: u.id } });
+    await prisma().salesOrderStatusLog.create({ data: { orderId: so.id, event: "STATUS", fromValue: "EXECUTED", toValue: "SHIPPED", byId: u.id } });
+    expect((await api(manager).delete(`/api/users/${u.id}`)).status).toBe(409);
+    expect((await api(manager).delete(`/api/users/${u.id}?purge=true`)).status).toBe(200);
+    expect(await prisma().user.findUnique({ where: { id: u.id } })).toBeNull();
+    const log = await prisma().salesOrderStatusLog.findFirstOrThrow({ where: { orderId: so.id } });
+    expect(log.byId).not.toBe(u.id);
+  });
+});

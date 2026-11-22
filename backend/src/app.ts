@@ -1,6 +1,7 @@
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
 import { env } from "./utils/env.js";
 import { authRouter } from "./routes/auth.js";
 import { usersRouter } from "./routes/users.js";
@@ -19,9 +20,26 @@ import { inventoryRouter } from "./routes/inventory.js";
 import { salesRouter } from "./routes/sales.js";
 import { agentRouter, salesAgentsAdminRouter } from "./routes/agent.js";
 import { accountingRouter } from "./routes/accounting.js";
-import { bumpDataVersion } from "./utils/syncVersion.js";
+import { bumpDataVersion, type SyncChannel } from "./utils/syncVersion.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
 import { restrictedRoleGate } from "./middleware/auth.js";
+
+const LARGE_JSON_PREFIXES = ["/api/tasks", "/api/feedback", "/api/products", "/api/inventory"] as const;
+
+function channelsForWritePath(path: string): SyncChannel[] {
+  if (path.startsWith("/api/tasks")) return ["tasks", "notifications"];
+  if (path.startsWith("/api/attendance") || path.startsWith("/api/feedback") || path.startsWith("/api/goals") || path.startsWith("/api/calendar-events")) {
+    return ["tasks"];
+  }
+  if (path.startsWith("/api/users")) return ["users", "tasks", "notifications"];
+  if (path.startsWith("/api/inventory")) return ["inventory", "sales", "notifications"];
+  if (path.startsWith("/api/sales-agents")) return ["accounting", "sales"];
+  if (path.startsWith("/api/sales")) return ["sales", "inventory", "accounting", "notifications"];
+  if (path.startsWith("/api/agent")) return ["sales", "accounting"];
+  if (path.startsWith("/api/accounting")) return ["accounting", "sales"];
+  if (path.startsWith("/api/notifications")) return ["notifications"];
+  return ["general"];
+}
 
 export function createApp() {
   const app = express();
@@ -30,16 +48,34 @@ export function createApp() {
   app.use(helmet());
   const origins = env().FRONTEND_URL.split(",").map((s: string) => s.trim().replace(/\/$/, ""));
   app.use(cors({ origin: origins, methods: ["GET", "POST", "PATCH", "PUT", "DELETE"], maxAge: 600 }));
-  app.use(express.json({ limit: "15mb" }));
 
-  // أي عملية كتابة ناجحة (غير تسجيل الدخول) ترفع رقم نسخة البيانات ليعرف الجميع أن هناك تغييراً
+  // حد عام معتدل لحماية الذاكرة (1MB)، وحد أكبر (15MB) فقط للمسارات التي تقبل مرفقات base64 قديمة
+  const defaultJson = express.json({ limit: "1mb" });
+  const mediaJson = express.json({ limit: "15mb" });
+  app.use((req, res, next) => {
+    const needsLarge = LARGE_JSON_PREFIXES.some((p) => req.path === p || req.path.startsWith(`${p}/`));
+    return (needsLarge ? mediaJson : defaultJson)(req, res, next);
+  });
+
+  // حد عام خفيف على واجهة برمجة التطبيقات باستثناء الصحة والمؤقتات والبث المفتوح
+  const apiLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: env().NODE_ENV === "test" ? 100_000 : 600,
+    skip: (req) => req.path === "/health" || req.path.startsWith("/internal") || req.path === "/sync/stream",
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "طلبات كثيرة جداً، تمهل قليلاً", code: "RATE_LIMIT" },
+  });
+  app.use("/api", apiLimiter);
+
+  // أي عملية كتابة ناجحة (غير تسجيل الدخول) ترفع رقم النسخة للقنوات المتأثرة ليعرف المعنيون فقط أن هناك تغييراً
   const WRITE_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
   app.use((req, res, next) => {
     // اشتراكات الأجهزة وping المراقب لا تغيّر بيانات يراها الآخرون، فلا نوقظ كل الواجهات لإعادة التحميل بسببها
     const silent = req.path.startsWith("/api/auth") || req.path.startsWith("/api/push") || req.path.startsWith("/api/internal");
     if (WRITE_METHODS.has(req.method) && !silent) {
       res.on("finish", () => {
-        if (res.statusCode < 400) bumpDataVersion();
+        if (res.statusCode < 400) bumpDataVersion(channelsForWritePath(req.path));
       });
     }
     next();

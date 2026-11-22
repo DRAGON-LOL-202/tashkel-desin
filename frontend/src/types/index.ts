@@ -2,7 +2,6 @@ export * from "./attachment";
 export * from "./task";
 export * from "./feedback";
 export * from "./goal";
-export * from "./product";
 export * from "./inventory";
 export * from "./sales";
 export * from "./season";

@@ -32,6 +32,7 @@ interface LineDraft {
   /** محتويات البوكس القابلة للتعديل (للوحدة الواحدة) */
   components: CompDraft[];
   open: boolean;
+  itemQuery: string;
 }
 
 const toDraft = (c: AgentComponent): CompDraft => ({ itemId: c.itemId, itemName: c.itemName, unit: c.unit, quantity: String(c.quantity) });
@@ -42,7 +43,7 @@ const sig = (cs: { itemId: string; quantity: string | number }[]) =>
     .join(",");
 
 let lineKey = 0;
-const newLine = (productId = "", quantity = "1", components: CompDraft[] = [], open = false): LineDraft => ({ key: ++lineKey, productId, quantity, components, open });
+const newLine = (productId = "", quantity = "1", components: CompDraft[] = [], open = false): LineDraft => ({ key: ++lineKey, productId, quantity, components, open, itemQuery: "" });
 
 // نموذج إضافة/تعديل أوردر فتاة. رقم البوليصة يُولَّد تلقائياً في الباكند (لا إدخال يدوي). سعر البيع تُدخله الفتاة.
 export function AgentOrderModal({ open, onClose, products, items, editing, onSubmit }: AgentOrderModalProps) {
@@ -166,20 +167,33 @@ export function AgentOrderModal({ open, onClose, products, items, editing, onSub
                       ))}
                       {l.components.length === 0 && <p className="text-xs text-problem">أضف صنفاً واحداً على الأقل</p>}
                     </div>
-                    <div className="mt-2 flex items-center gap-2">
-                      <Select aria-label="إضافة صنف للبوكس" value="" onChange={(e) => addComp(l.key, e.target.value)} className="flex-1">
-                        <option value="">+ إضافة صنف…</option>
-                        {items.map((it) => (
-                          <option key={it.id} value={it.id}>
-                            {it.name}
-                          </option>
-                        ))}
-                      </Select>
-                      {isCustom(l) && (
-                        <Button type="button" variant="ghost" size="sm" icon={<RotateCcw size={14} />} onClick={() => setLine(l.key, { components: defaultsOf(l.productId) })}>
-                          الأصلي
-                        </Button>
+                    <div className="mt-2 flex flex-col gap-1.5">
+                      {items.length > 8 && (
+                        <Input
+                          aria-label="بحث عن صنف لإضافته"
+                          placeholder="ابحث عن صنف لإضافته..."
+                          value={l.itemQuery}
+                          onChange={(e) => setLine(l.key, { itemQuery: e.target.value })}
+                          className="!h-8 text-xs"
+                        />
                       )}
+                      <div className="flex items-center gap-2">
+                        <Select aria-label="إضافة صنف للبوكس" value="" onChange={(e) => { addComp(l.key, e.target.value); if (l.itemQuery) setLine(l.key, { itemQuery: "" }); }} className="flex-1">
+                          <option value="">+ إضافة صنف…</option>
+                          {items
+                            .filter((it) => !l.itemQuery.trim() || it.name.toLowerCase().includes(l.itemQuery.trim().toLowerCase()))
+                            .map((it) => (
+                              <option key={it.id} value={it.id}>
+                                {it.name}
+                              </option>
+                            ))}
+                        </Select>
+                        {isCustom(l) && (
+                          <Button type="button" variant="ghost" size="sm" icon={<RotateCcw size={14} />} onClick={() => setLine(l.key, { components: defaultsOf(l.productId) })}>
+                            الأصلي
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}

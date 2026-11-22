@@ -92,6 +92,7 @@ model User {
   jobTitle     String   @default("مصمم")
   isActive     Boolean  @default(true)
   isSystemUser Boolean  @default(false)
+  tokenVersion Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

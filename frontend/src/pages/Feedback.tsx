@@ -18,7 +18,9 @@ import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
 import { usePermissions } from "../hooks/usePermissions";
+import type { SyncChannel } from "../lib/liveSync";
 
+const FEEDBACK_CHANNELS: SyncChannel[] = ["tasks"];
 type FilterValue = "all" | FeedbackType;
 export default function FeedbackPage() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -31,7 +33,7 @@ export default function FeedbackPage() {
   const { show } = useToast();
   const run = useSafeAction();
   const { isStaff } = usePermissions();
-  const { data: items, loading, error, reload, retry } = useResource<FeedbackItem[]>(feedbackService.list, []);
+  const { data: items, loading, error, reload, retry } = useResource<FeedbackItem[]>(feedbackService.list, [], FEEDBACK_CHANNELS);
 
   const stats = useMemo(
     () => ({
