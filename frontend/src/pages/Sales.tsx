@@ -6,6 +6,7 @@ import { DateNavigator } from "../components/tasks/DateNavigator";
 import { SalesOrderCard } from "../components/sales/SalesOrderCard";
 import { NewOrderModal } from "../components/sales/NewOrderModal";
 import { ProductEditorModal } from "../components/sales/ProductEditorModal";
+import { SalesOrderWaybillModal } from "../components/sales/SalesOrderWaybillModal";
 import { SalesProductsModal } from "../components/sales/SalesProductsModal";
 import { SALES_STATUS_META, SALES_STATUS_ORDER } from "../components/sales/status";
 import { fmtMoney } from "../components/inventory/format";
@@ -53,6 +54,7 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
   const [productsOpen, setProductsOpen] = useState(false);
   const [editor, setEditor] = useState<{ editing: SalesProduct | null } | null>(null);
   const [deletingOrder, setDeletingOrder] = useState<SalesOrder | null>(null);
+  const [previewingOrderId, setPreviewingOrderId] = useState<string | null>(null);
   const [deletingProduct, setDeletingProduct] = useState<SalesProduct | null>(null);
   const [exporting, setExporting] = useState<"day" | "month" | null>(null);
 
@@ -86,6 +88,10 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
 
   const stale = orders.data.key !== key;
   const dayOrders = useMemo(() => (stale ? NO_ORDERS : orders.data.orders), [stale, orders.data.orders]);
+  const previewingOrder = useMemo(
+    () => (previewingOrderId ? dayOrders.find((o) => o.id === previewingOrderId) ?? null : null),
+    [previewingOrderId, dayOrders]
+  );
   const visible = useMemo(() => (statusFilter === "ALL" ? dayOrders : statusFilter === "FLAGGED" ? dayOrders.filter((o) => o.returnFlagged && o.status !== "RETURNED") : dayOrders.filter((o) => o.status === statusFilter)), [dayOrders, statusFilter]);
   const activeProducts = useMemo(() => products.data.filter((p) => p.isActive && p.components.length > 0), [products.data]);
   const activeItems = useMemo(() => stock.data.items.filter((i) => i.isActive), [stock.data.items]);
@@ -432,6 +438,8 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
                   canFlagReturn={canFlagReturn}
                   canEditOrder={canEditSalesOrders}
                   canDeleteOrder={canDeleteSalesOrders}
+                  canPreviewWaybill={ordersOnly}
+                  onPreviewWaybill={ordersOnly ? (ord) => setPreviewingOrderId(ord.id) : undefined}
                   canChangeStatus={canChangeSalesOrderStatus}
                   canShipDeliver={canShipDeliver}
                 />
@@ -439,6 +447,14 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
             </div>
           )}
         </div>
+      )}
+
+      {ordersOnly && (
+        <SalesOrderWaybillModal
+          open={!!previewingOrder}
+          order={previewingOrder}
+          onClose={() => setPreviewingOrderId(null)}
+        />
       )}
 
       {newOrderOpen && canEditSalesOrders && <NewOrderModal open onClose={() => setNewOrderOpen(false)} date={date} products={products.data} closers={closers.data} onSubmit={createOrder} hideMoney={ordersOnly} />}

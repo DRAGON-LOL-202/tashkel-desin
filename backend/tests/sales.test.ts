@@ -886,5 +886,38 @@ describe("sales roles: الأدوار الثلاثة المحصورة في ال�
     expect((await api(agTok).post("/api/agent/orders").send({ date: "2026-11-02", customerName: "ع", lines: [{ productId: draftProd.id, quantity: 1 }] })).status).toBe(201);
     expect((await api(manager).delete(`/api/sales/products/${draftProd.id}`)).status).toBe(409);
   });
+
+  it("معاينة أوردر مبيعات إلكترونية: يُرجع بيانات العميل ومحتويات البوكس للمنفّذ والمشرف دون تسريب أي مبالغ", async () => {
+    const ag = await makeUser("sales_preview_ag", "SALES_AGENT");
+    await api(admin).put(`/api/sales-agents/${ag.id}/prefix`).send({ prefix: 930 });
+    const agTok = await login("sales_preview_ag");
+    const created = await api(agTok).post("/api/agent/orders").send({
+      date: "2026-11-23",
+      customerName: "سارة محمود",
+      customerPhone: "01012345678 / 01198765432",
+      customerAddress: "القاهرة - مدينة نصر",
+      notes: "تغليف هدية",
+      shippingPrice: 60,
+      lines: [{ productId: bigBox.id, quantity: 2, boxPrice: 450 }],
+    });
+    expect(created.status).toBe(201);
+    const exportRes = await api(agTok).post("/api/agent/orders/export").send({ ids: [created.body.order.id], confirm: true });
+    expect(exportRes.status).toBe(200);
+
+    for (const [label, tok] of [["SALES_EDITOR", editor], ["SALES_SUPERVISOR", supervisor]] as const) {
+      const list = await api(tok).get("/api/sales/orders?date=2026-11-23");
+      expect(list.status, label).toBe(200);
+      assertNoMoneyLeak(list.body, `${label} GET /sales/orders waybill preview fields`);
+      const ord = list.body.orders.find((x: { waybill: string }) => x.waybill === created.body.order.waybill);
+      expect(ord).toMatchObject({
+        customerName: "سارة محمود",
+        customerPhone: "01012345678 / 01198765432",
+        customerAddress: "القاهرة - مدينة نصر",
+        customerNotes: "تغليف هدية",
+        fromAgent: true,
+      });
+      expect(ord.lines[0].components.length).toBeGreaterThan(0);
+    }
+  });
 });
 

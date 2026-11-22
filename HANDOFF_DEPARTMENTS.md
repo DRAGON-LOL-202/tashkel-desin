@@ -47,6 +47,7 @@
   - إعادة بناء العرض كجدول متابعة منظم عبر [FollowOrdersTable.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/FollowOrdersTable.tsx) يضم: تحديداً متعدداً للبوالص، رقم البوليصة، اسم العميل وهاتفه، الأوردر والقيمة، التاريخ، الحالة كقائمة منسدلة (`تم التنفيذ` ← `شحن` / `تم التسليم`)، الفتاة، سعر الشحن، وزرّي معاينة البوليصة والطباعة مع علامة المرتجع وسجل التغييرات.
   - إضافة [WaybillSheet.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/WaybillSheet.tsx) و[WaybillPreviewModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/WaybillPreviewModal.tsx) و[waybillPdf.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/lib/waybillPdf.ts) لمعاينة البوليصة بمقاس A6 لدى الفتاة (معاينة فقط بدون طباعة/PDF ومع إخفاء بطاقات العمولات من `AgentOrders.tsx`)، ولدى محاسب المبيعات والإدارة مع أزرار **«طباعة»** و**«تحميل المحدد PDF»** لعدة بوالص في ملف واحد.
   - إثراء `GET /api/accounting/orders` في `backend/src/routes/accounting.ts` بتفاصيل العميل والبنود والبحث بالاسم/الهاتف وعدّادات الحالات مع بقاء صلاحيات `SALES_ACCOUNTANT` محصورة كما هي دون أي تسرب لتكاليف المخزون.
+  - إضافة معاينة بوليصة تجهيز مستقلة لصفحة «أوردرات مبيعات إلكترونية» (`/sales-orders`, `ordersOnly`) عبر [SalesOrderWaybillSheet.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/sales/SalesOrderWaybillSheet.tsx) و[SalesOrderWaybillModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/sales/SalesOrderWaybillModal.tsx) مع تمرير بيانات العميل غير المالية في [salesSerialize.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/src/utils/salesSerialize.ts) لعرض اسم البوكس والمحتويات المحددة أسفل كل بوكس دون أي مبالغ ودون أي ارتباط ببوالص الفتيات أو محاسب المبيعات.
 - **فاتورة الفتاة وسعر البوكس والحسابات العامة (`0026_agent_line_price_shipping`)**:
   - تحديث [AgentOrderModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/AgentOrderModal.tsx) وكروت [AgentOrders.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/AgentOrders.tsx) لتطابق حقول الفاتورة (التاريخ، اسم العميل، العنوان، التليفون حتى 60 حرفاً، اسم الصنف، الكمية، **سعر كل بوكس**، **م شحن** اختياري، والإجمالي بالشحن، والملاحظات).
   - إضافة migration `0026_agent_line_price_shipping` لحقول `boxPrice` و`shippingPrice` ونقلها عند التصدير في `agent.ts` و`validators/agent.ts`.
@@ -85,6 +86,8 @@
 - `frontend/src/components/agent/FollowOrdersTable.tsx`
 - `frontend/src/components/agent/WaybillPreviewModal.tsx`
 - `frontend/src/components/agent/WaybillSheet.tsx`
+- `frontend/src/components/sales/SalesOrderWaybillModal.tsx`
+- `frontend/src/components/sales/SalesOrderWaybillSheet.tsx`
 - `frontend/src/components/ui/ErrorBoundary.tsx`
 - `frontend/src/components/ui/PaginationBar.tsx`
 - `frontend/src/pages/Workspace.tsx`
@@ -112,6 +115,7 @@
 - `backend/src/utils/inventorySerialize.ts`
 - `backend/src/utils/notify.ts`
 - `backend/src/utils/r2Client.ts`
+- `backend/src/utils/salesSerialize.ts`
 - `backend/src/utils/syncVersion.ts`
 - `backend/src/validators/agent.ts`
 - `backend/src/validators/attachments.ts`
@@ -149,6 +153,7 @@
 - `frontend/src/lib/permissions.ts`
 - `frontend/src/types/agent.ts`
 - `frontend/src/types/index.ts`
+- `frontend/src/types/sales.ts`
 - `frontend/src/pages/AgentAccounts.tsx`
 - `frontend/src/pages/AgentOrders.tsx`
 - `frontend/src/pages/Dashboard.tsx`
@@ -188,11 +193,11 @@
 | الفحص | الأمر | النتيجة | التفاصيل المرصودة |
 | --- | --- | --- | --- |
 | فحص أنواع Backend | `cd backend && npm run typecheck` | **PASS** | `tsc -p tsconfig.json --noEmit` — خروج برمز 0 (0 أخطاء) |
-| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **28 ملفاً نجح / 28**، **448 اختباراً نجح / 448** (0 فشل، 0 تخطي) في `75.76s` |
-| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (299ms) + `tsc -p tsconfig.json` — خروج برمز 0 |
+| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **28 ملفاً نجح / 28**، **449 اختباراً نجح / 449** (0 فشل، 0 تخطي) في `213.47s` |
+| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (766ms) + `tsc -p tsconfig.json` — خروج برمز 0 |
 | اختبار قبول الإدارات والصلاحيات | `tsx verify_departments.ts` | **PASS** | طباعة `ALL_DEPARTMENTS_ACCEPTANCE_CHECKS_PASSED` (تحقق من `/workspace` و`manageUsers` لـ `admin`/`manager` فقط، إزالة `/products` من `Workspace`/`App`/`Sidebar`، عدّ الروابط `6/8/3/1`، وثبات `departmentsForPath`) |
-| فحص Frontend Lint | `cd frontend && npm run lint` | **PASS** | `oxlint` — `0 errors`, `20 warnings` (على 175 ملفاً في `84ms`) |
-| بناء Frontend | `cd frontend && npm run build` | **PASS** | `tsc -b && vite build` — 3066 وحدة في `2.10s`؛ الحزمة الرئيسية `230.71 kB` (مع تحميل `jspdf` و`html2canvas` كحزم منفصلة كسولة) |
+| فحص Frontend Lint | `cd frontend && npm run lint` | **PASS** | `oxlint` — `0 errors`, `20 warnings` (على 177 ملفاً في `135ms`) |
+| بناء Frontend | `cd frontend && npm run build` | **PASS** | `tsc -b && vite build` — اكتمل في `9.00s`؛ الحزمة الرئيسية `230.71 kB` (مع تحميل `jspdf` و`html2canvas` كحزم منفصلة كسولة) |
 | اختبار المتصفح الحي (E2E) | — | **NOT RUN** | لم يُشغَّل متصفح فعلي للنقر البصري |
 
 ---

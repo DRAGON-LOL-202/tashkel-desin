@@ -42,6 +42,9 @@ interface SalesOrderCardProps {
   canEditOrder?: boolean;
   /** صلاحية حذف الأوردر نهائياً: لمدير النظام فقط */
   canDeleteOrder?: boolean;
+  /** معاينة بوليصة التجهيز بمحتوياتها (لصفحة «أوردرات مبيعات إلكترونية» فقط) */
+  canPreviewWaybill?: boolean;
+  onPreviewWaybill?: (order: SalesOrder) => void;
   /** صلاحية تغيير حالة الأوردر (تنفيذ/شحن/تسليم/مرتجع فعلي) */
   canChangeStatus?: boolean;
   /** زرا «شحن» و«تم التسليم»: للإدارة فقط (المحاسب من صفحة المتابعة)؛ المشرف والمنفّذ بدونهما */
@@ -63,7 +66,7 @@ const GREEN_SHADOW = "0 10px 18px -10px rgba(10, 90, 51, 0.7)";
 const PREVIEW_CHIPS = 3;
 
 // كرت أوردر: رقم وحالة ومن أضافه، ثم رقم البوليصة والمقفل، شريط المنتجات، التكلفة وسعر البيع والربح، وأزرار الحالة.
-export function SalesOrderCard({ order, index, showDate, products, closers, onPatch, onStatus, onReturn, onMove, onDelete, onAddLine, onSetLineQty, onRemoveLine, items, onAddComponent, onSetComponentQty, onRemoveComponent, hideMoney, canFlagReturn: canFlagReturnProp = true, canEditOrder: canEditOrderProp = true, canDeleteOrder = false, canChangeStatus: canChangeStatusProp = true, canShipDeliver = true }: SalesOrderCardProps) {
+export function SalesOrderCard({ order, index, showDate, products, closers, onPatch, onStatus, onReturn, onMove, onDelete, onAddLine, onSetLineQty, onRemoveLine, items, onAddComponent, onSetComponentQty, onRemoveComponent, hideMoney, canFlagReturn: canFlagReturnProp = true, canEditOrder: canEditOrderProp = true, canDeleteOrder = false, canPreviewWaybill = false, onPreviewWaybill, canChangeStatus: canChangeStatusProp = true, canShipDeliver = true }: SalesOrderCardProps) {
   // أوردر فتاة ملغي بعد التصدير: عرض فقط (الباكند يرفض أي تعديل/تنفيذ/تغيير حالة أيضاً)
   const cancelled = order.cancelled === true;
   const canFlagReturn = canFlagReturnProp && !cancelled;
@@ -174,6 +177,18 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
           >
             <CalendarDays size={16} className="text-primary-deep" />
             نقل ليوم
+          </button>
+        )}
+        {canPreviewWaybill && onPreviewWaybill && (
+          <button
+            type="button"
+            onClick={() => onPreviewWaybill(order)}
+            aria-label={`معاينة بوليصة الأوردر ${order.waybill || index}`}
+            title="معاينة البوليصة"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-primary-deep/40 bg-primary/10 px-3 text-xs font-semibold text-primary-deep transition-colors hover:bg-primary/20"
+          >
+            <Eye size={15} />
+            معاينة البوليصة
           </button>
         )}
         {canDeleteOrder && (

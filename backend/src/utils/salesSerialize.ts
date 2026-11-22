@@ -9,6 +9,7 @@ export const salesProductInclude = {
 
 export const salesOrderInclude = {
   createdBy: { select: { id: true, name: true } },
+  agentOrder: { select: { customerName: true, customerPhone: true, customerAddress: true, notes: true } },
   lines: {
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     include: { components: { include: { item: { select: itemSelect } }, orderBy: { id: "asc" } } },
@@ -157,6 +158,10 @@ export function serializeSalesOrder(o: SalesOrderRow, opts?: { hideMoney?: boole
     /** أوردر فتاة مصدَّر: بوليصته من تسلسلها ولا تُدخَل يدوياً */
     fromAgent: o.agentId != null,
     closerName: o.closerName,
+    customerName: o.agentOrder?.customerName ?? "",
+    customerPhone: o.agentOrder?.customerPhone ?? "",
+    customerAddress: o.agentOrder?.customerAddress ?? "",
+    customerNotes: o.agentOrder?.notes ?? "",
     status: o.status,
     stockDeducted: o.stockDeducted,
     notes: o.notes,

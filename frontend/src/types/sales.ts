@@ -62,6 +62,10 @@ export interface SalesOrder {
   fromAgent: boolean;
   /** اسم المقفل */
   closerName: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  customerNotes?: string;
   status: SalesOrderStatus;
   /** هل خُصمت المكونات من المخزون فعلاً */
   stockDeducted: boolean;
