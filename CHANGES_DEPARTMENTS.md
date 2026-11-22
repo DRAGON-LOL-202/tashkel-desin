@@ -15,7 +15,10 @@
 ## 2. إصلاحات الأمان والموثوقية والـ Backend
 - **إبطال التوكن الفعلي**: إضافة `tokenVersion` (`prisma/migrations/0025_user_token_version/migration.sql`) للتحقق في `authenticateToken`، وإبطال التوكن عند `POST /api/auth/logout` وتغيير/إعادة تعيين كلمة المرور مع إرجاع توكن جديد في `PATCH /users/me`.
 - **تقييد المعدّل والأحجام**: فصل محدّد محاولات الدخول (`ipLimiter` + `accountLimiter`) وإضافة محدد عام على `/api` وحدود JSON لكل مسار، وحظر `data:image/svg+xml`.
-- **حذف المستخدمين والمنتجات**: معالجة `agentOrder`/`salesOrderStatusLog` عند `DELETE /api/users/:id` و`purge=true`، وحظر حذف منتج مرتبط بمسودة فتاة (`409`).
+- **حذف المستخدمين والمنتجات والأوردرات (حصر الحذف النهائي بمدير النظام `ADMIN`)**:
+  - معالجة `agentOrder`/`salesOrderStatusLog` عند `DELETE /api/users/:id` و`purge=true`، وحظر حذف منتج مرتبط بمسودة فتاة (`409`).
+  - السماح لمدير النظام (`ADMIN` فقط) بـ «حذف الحساب وكل بياناته» (`DELETE /api/users/:id?purge=true`) لفتاة مبيعات حتى لو كانت لها أوردرات منفّذة/مسلّمة (مع إعادة المخزون المخصوم تلقائياً عبر `backend/src/utils/salesStock.ts` وحذف أوردراتها وسجلها داخل معاملة واحدة، مع استمرار منع `MANAGER` برمز `409`)، وتحديث وصف `DeleteUserDialog.tsx`.
+  - حصر حذف أوردرات المبيعات (`DELETE /api/sales/orders/:id`) بمدير النظام (`ADMIN` فقط — `403` لغيره في `sales.ts` و`inventoryAccess.ts`)، وتمكينه من حذف أي أوردر (يدوي أو مصدّر من فتاة أو ملغي أو منفّذ) مع إعادة المخزون المخصوم وحذف سجل الفتاة المرتبط، وإظهار زر الحذف لـ `ADMIN` فقط في `SalesOrderCard.tsx` و`FollowOrdersTable.tsx` و`SalesFollowUp.tsx` عبر `canDeleteSalesOrders` في `usePermissions.ts`.
 - **السباقات الزمنية (Concurrency)**: استخدام `pg_advisory_xact_lock` لفحص البوليصة (`sales.ts`) وسحب المخزون idempotency (`inventory.ts`)، وقفل المهام `FOR UPDATE` في `tasks.ts` مع تنظيف المؤقت عند الإنهاء.
 - **دقة المبيعات وحسابات الفتيات**: منع إلغاء الفتاة لأوردر بعد تنفيذه، فلترة `bucket` في قاعدة البيانات واستعلام لوحة خفيف في `agent.ts`، عدم دمج بند قياسي مع بند مُعدّل المكوّنات، تسجيل `shippedAt`/`deliveredAt` و`RETURN_FLAG` في `sales.ts`، وإدراج الفتيات اللاتي تغير دورهن لاحقاً في `accounting.ts`.
 - **الملفات والوقت والمزامنة**: السماح لـ `SALES_SUPERVISOR` بـ `presign-upload` لنطاق `inventory` فقط وتوقيع `content-length` في `r2Client.ts`؛ حساب حدود اليوم بتوقيت `ATTENDANCE_TZ`؛ وتصفية المخزون قبل توقيع R2.

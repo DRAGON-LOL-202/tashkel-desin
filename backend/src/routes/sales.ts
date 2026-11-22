@@ -1,13 +1,14 @@
 import { Router, type Request } from "express";
 import type { Prisma, SalesOrderStatus } from "../generated/prisma/client.ts";
 import { prisma } from "../db.js";
-import { isStaff, requireAuth, requireRole, requireStaff } from "../middleware/auth.js";
+import { isStaff, requireAdmin, requireAuth, requireRole, requireStaff } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { badRequest, conflict, forbidden, notFound } from "../utils/httpError.js";
 import { isSalesRole, isSalesRouteAllowed } from "../utils/inventoryAccess.js";
 import { num2, num3 } from "../utils/inventorySerialize.js";
 import { handleLowStockTransition, type LowStockTransition } from "../utils/inventoryLowStock.js";
 import { salesOrderInclude, salesProductInclude, serializeSalesOrder, serializeSalesProduct } from "../utils/salesSerialize.js";
+import { lockItems, neededByItem, orderLabel, restoreOrderStock } from "../utils/salesStock.js";
 import {
   addLineSchema,
   addOrderComponentSchema,
@@ -85,26 +86,6 @@ function mapWaybillViolation(e: unknown): never {
   throw e;
 }
 
-/** المكوّنات المطلوبة من المخزون لأوردر (مجمّعة لكل صنف) بالألف من الوحدة لتفادي أخطاء الفاصلة العائمة */
-function neededByItem(order: { lines: { quantity: number; components: { id: string; itemId: string; quantity: { toString(): string } }[] }[] }, skip?: Set<string>) {
-  const needs = new Map<string, number>();
-  for (const l of order.lines) {
-    for (const c of l.components) {
-      if (skip?.has(c.id)) continue; // مكوّن تالف: لا يُحتسب ضمن ما يعود للمخزون
-      needs.set(c.itemId, (needs.get(c.itemId) ?? 0) + Math.round(num3(c.quantity) * 1000) * l.quantity);
-    }
-  }
-  return needs;
-}
-
-const orderLabel = (o: { id: string; waybill: string }) => (o.waybill ? `بوليصة ${o.waybill}` : `أوردر ${o.id.slice(-6)}`);
-
-async function lockItems(tx: Tx, ids: string[]) {
-  if (ids.length === 0) return [];
-  await tx.$queryRaw`SELECT "id" FROM "InventoryItem" WHERE "id" = ANY(${ids}::text[]) ORDER BY "id" FOR UPDATE`;
-  return tx.inventoryItem.findMany({ where: { id: { in: ids } } });
-}
-
 /** خصم مكونات الأوردر من المخزون (كله أو لا شيء) وتثبيت الأسعار */
 async function deductStock(tx: Tx, order: Awaited<ReturnType<typeof getOrder>>, userId: string): Promise<LowStockTransition[]> {
   const needs = neededByItem(order);
@@ -167,57 +148,6 @@ async function deductStock(tx: Tx, order: Awaited<ReturnType<typeof getOrder>>, 
   return transitions;
 }
 
-/** إعادة المكونات المخصومة إلى المخزون (حركة RETURN) */
-async function restoreStock(
-  tx: Tx,
-  order: Awaited<ReturnType<typeof getOrder>>,
-  userId: string,
-  reason: string,
-  clearSnapshots: boolean,
-  damaged?: Set<string>
-): Promise<LowStockTransition[]> {
-  const needs = neededByItem(order, damaged);
-  const ids = [...needs.keys()].sort();
-  const byId = new Map((await lockItems(tx, ids)).map((i) => [i.id, i]));
-  const transitions: LowStockTransition[] = [];
-  for (const id of ids) {
-    const item = byId.get(id);
-    if (!item) continue;
-    const back = (needs.get(id) ?? 0) / 1000;
-    const before = num3(item.quantity);
-    const after = round3(before + back);
-    await tx.inventoryItem.update({ where: { id }, data: { quantity: after } });
-    await tx.inventoryMovement.create({
-      data: {
-        itemId: id,
-        type: "RETURN",
-        previousBalance: before,
-        delta: back,
-        balanceAfter: after,
-        unitPriceSnapshot: num2(item.unitPrice),
-        reason: `${reason} — ${orderLabel(order)}`,
-        referenceId: `sales:${order.id}`,
-        note: damaged && damaged.size > 0 ? "إعادة تلقائية للمخزون (باستثناء التالف)" : "إعادة تلقائية للمخزون",
-        createdById: userId,
-      },
-    });
-    transitions.push({
-      id,
-      name: item.name,
-      unit: item.unit,
-      beforeQty: before,
-      afterQty: after,
-      minQty: num3(item.minQuantity),
-      wasAlertSent: item.lowAlertSent,
-      isActive: item.isActive,
-    });
-  }
-  if (clearSnapshots) {
-    await tx.salesOrderComponent.updateMany({ where: { line: { orderId: order.id } }, data: { unitCostSnapshot: null, unitSellSnapshot: null } });
-  }
-  return transitions;
-}
-
 /** تغيير حالة الأوردر مع ما يلزم من خصم/إعادة. يُستدعى داخل معاملة والأوردر مقفول. */
 async function applyStatus(tx: Tx, orderId: string, target: SalesOrderStatus, userId: string, damagedIds: string[] = []): Promise<LowStockTransition[]> {
   const order = await tx.salesOrder.findUniqueOrThrow({ where: { id: orderId }, include: salesOrderInclude });
@@ -234,7 +164,7 @@ async function applyStatus(tx: Tx, orderId: string, target: SalesOrderStatus, us
   if (wantDeducted && !order.stockDeducted) {
     transitions = await deductStock(tx, order, userId);
   } else if (!wantDeducted && order.stockDeducted) {
-    transitions = await restoreStock(tx, order, userId, target === "RETURNED" ? "مرتجع مبيعات" : "إلغاء تنفيذ أوردر", target === "REGISTERED", damaged);
+    transitions = await restoreOrderStock(tx, order, userId, target === "RETURNED" ? "مرتجع مبيعات" : "إلغاء تنفيذ أوردر", target === "REGISTERED", damaged);
   } else if (target === "REGISTERED") {
     await tx.salesOrderComponent.updateMany({ where: { line: { orderId } }, data: { unitCostSnapshot: null, unitSellSnapshot: null } });
   }
@@ -531,18 +461,17 @@ salesRouter.patch(
   })
 );
 
+// حذف الأوردرات (بما فيها المنفّذة وأوردرات الفتيات المصدَّرة) يقتصر على مدير النظام فقط، مع إعادة المخزون المخصوم وتنظيف سجل الفتاة
 salesRouter.delete(
   "/orders/:id",
-  requireSalesEdit,
+  requireAdmin,
   asyncHandler(async (req, res) => {
     const existing = await getOrder(req.params.id);
-    // أوردر مصدَّر من فتاة لا يُحذف أبداً (يُلغى من مساحة الفتاة بسبب مسجّل)
-    const linked = await prisma().agentOrder.findFirst({ where: { salesOrderId: existing.id }, select: { id: true } });
-    if (linked) throw conflict("هذا أوردر مصدَّر من حساب فتاة ولا يمكن حذفه. يمكن إلغاؤه من حسابها مع ذكر السبب.");
     const transitions = await prisma().$transaction(async (tx) => {
       await lockOrder(tx, existing.id);
       const order = await tx.salesOrder.findUniqueOrThrow({ where: { id: existing.id }, include: salesOrderInclude });
-      const moved = order.stockDeducted ? await restoreStock(tx, order, req.user!.id, "حذف أوردر", false) : [];
+      const moved = order.stockDeducted ? await restoreOrderStock(tx, order, req.user!.id, "حذف أوردر", false) : [];
+      await tx.agentOrder.deleteMany({ where: { salesOrderId: order.id } });
       await tx.salesOrder.delete({ where: { id: order.id } });
       return moved;
     });

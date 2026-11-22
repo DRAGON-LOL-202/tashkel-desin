@@ -69,8 +69,10 @@ describe("2.1 مزامنة الإلغاء مع أوردر المبيعات ال�
     expect((await execute(o.soId)).status).toBe(409);
     expect((await api(admin).patch(`/api/sales/orders/${o.soId}`).send({ notes: "تعديل" })).status).toBe(409);
     expect((await api(admin).post(`/api/sales/orders/${o.soId}/lines`).send({ productId: box.id, quantity: 1 })).status).toBe(409);
-    // لا حذف نهائي بعد التصدير
-    expect((await api(admin).delete(`/api/sales/orders/${o.soId}`)).status).toBe(409);
+    // غير ADMIN لا يحذف أوردر فتاة بعد التصدير حتى مع الإلغاء (403)
+    const mgrTok = await login("amr");
+    expect((await api(mgrTok).delete(`/api/sales/orders/${o.soId}`)).status).toBe(403);
+    expect((await api(acct).delete(`/api/sales/orders/${o.soId}`)).status).toBe(403);
 
     // سجل الأحداث: تصدير + إلغاء بهوية الفاعل
     const logs = await prisma().salesOrderStatusLog.findMany({ where: { orderId: o.soId }, orderBy: { createdAt: "asc" } });
@@ -78,6 +80,11 @@ describe("2.1 مزامنة الإلغاء مع أوردر المبيعات ال�
     expect(logs[1].byId).toBe(ag1Id);
     expect(await stock()).toBe(beforeStock);
     expect(await movements()).toBe(beforeMoves);
+
+    // ADMIN فقط يملك حذف الأوردر الملغي نهائياً مع تنظيف سجل الفتاة
+    expect((await api(admin).delete(`/api/sales/orders/${o.soId}`)).status).toBe(200);
+    expect(await prisma().salesOrder.findUnique({ where: { id: o.soId } })).toBeNull();
+    expect(await prisma().agentOrder.findUnique({ where: { id: o.id } })).toBeNull();
   });
 
   it("منع إلغاء الفتاة بعد التنفيذ/الشحن/التسليم (409)، والعودة لحالة مسجل غير مسموحة للفتاة", async () => {

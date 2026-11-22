@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, Eye, Flag, History, Phone, Printer } from "lucide-react";
+import { ChevronDown, Eye, Flag, History, Phone, Printer, Trash2 } from "lucide-react";
 import { Badge } from "../ui/Badge";
 import { fmtMoney } from "../inventory/format";
 import { formatArabicDate } from "../../lib/date";
@@ -13,6 +13,7 @@ import type { FollowOrder } from "../../types";
 interface FollowOrdersTableProps {
   orders: FollowOrder[];
   canAct: boolean;
+  canDeleteOrder?: boolean;
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: (checked: boolean) => void;
@@ -20,6 +21,7 @@ interface FollowOrdersTableProps {
   onFlag: (o: FollowOrder, flagged: boolean) => Promise<void>;
   onShipping: (o: FollowOrder, price: number | null) => Promise<boolean>;
   onPrintOne: (o: FollowOrder) => void;
+  onDelete?: (o: FollowOrder) => void;
 }
 
 function initialChar(name: string): string {
@@ -31,6 +33,7 @@ function initialChar(name: string): string {
 export function FollowOrdersTable({
   orders,
   canAct,
+  canDeleteOrder = false,
   selectedIds,
   onToggleSelect,
   onToggleSelectAll,
@@ -38,6 +41,7 @@ export function FollowOrdersTable({
   onFlag,
   onShipping,
   onPrintOne,
+  onDelete,
 }: FollowOrdersTableProps) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [previewState, setPreviewState] = useState<{ id: string; tab: "preview" | "details" | "log" } | null>(null);
@@ -285,6 +289,18 @@ export function FollowOrdersTable({
                       >
                         <History size={13} />
                       </button>
+                      {canDeleteOrder && onDelete && (
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => onDelete(o)}
+                          aria-label={`حذف الأوردر ${o.waybill || o.id}`}
+                          title="حذف الأوردر نهائياً"
+                          className="flex h-8 w-8 items-center justify-center rounded-control border border-problem/40 text-problem transition-colors hover:bg-problem/15 disabled:opacity-60"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

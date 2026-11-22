@@ -58,7 +58,7 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
 
   const { show } = useToast();
   const run = useSafeAction();
-  const { isStaff, canFlagReturn, canEditSalesOrders, canChangeSalesOrderStatus, canShipDeliver, canManageSalesProducts } = usePermissions();
+  const { isStaff, canFlagReturn, canEditSalesOrders, canDeleteSalesOrders, canChangeSalesOrderStatus, canShipDeliver, canManageSalesProducts } = usePermissions();
 
   useEffect(() => {
     const t = setTimeout(() => setQ(searchInput.trim()), 300);
@@ -431,6 +431,7 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
                   hideMoney={ordersOnly}
                   canFlagReturn={canFlagReturn}
                   canEditOrder={canEditSalesOrders}
+                  canDeleteOrder={canDeleteSalesOrders}
                   canChangeStatus={canChangeSalesOrderStatus}
                   canShipDeliver={canShipDeliver}
                 />
@@ -463,7 +464,11 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
         onClose={() => setDeletingOrder(null)}
         onConfirm={() => void confirmDeleteOrder()}
         title="حذف الأوردر؟"
-        description={deletingOrder?.stockDeducted ? "الأوردر منفّذ؛ ستُعاد مكوناته المخصومة إلى المخزون ثم يُحذف." : "سيُحذف الأوردر نهائياً (لم يُخصم منه شيء من المخزون)."}
+        description={
+          deletingOrder?.stockDeducted
+            ? "الأوردر منفّذ؛ ستُعاد مكوناته المخصومة إلى المخزون ثم يُحذف نهائياً (ومعه سجل الفتاة إن وُجد)."
+            : "سيُحذف الأوردر نهائياً (ومعه سجل الفتاة إن وُجد دون مساس بالمخزون)."
+        }
         confirmLabel="حذف"
       />
       <ConfirmDialog

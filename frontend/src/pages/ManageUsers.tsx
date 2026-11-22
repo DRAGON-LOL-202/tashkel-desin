@@ -265,6 +265,7 @@ export default function ManageUsersPage() {
 
       <DeleteUserDialog
         target={deleteTarget}
+        actorIsAdmin={actor.accessRole === "admin"}
         onClose={() => setDeleteTarget(null)}
         onDeleteAll={(t) => void handleDeleteAll(t)}
         onDisable={(t) => void handleDisableInstead(t)}

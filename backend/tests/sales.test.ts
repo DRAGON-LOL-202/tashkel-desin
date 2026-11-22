@@ -236,17 +236,19 @@ describe("sales: الأوردرات والخصم من المخزون", () => {
     expect((await api(manager).patch(`/api/sales/orders/${o.id}/lines/${lineId}`).send({ quantity: 1 })).status).toBe(200);
   });
 
-  it("حذف أوردر منفّذ يعيد المخزون، وحذف المسجل لا يمسه", async () => {
+  it("حذف الأوردر يقتصر على ADMIN فقط، وحذف المنفّذ يعيد المخزون، وحذف المسجل لا يمسه", async () => {
     const a = await mkOrder({ waybill: "W-106" });
     const w0 = await qty(watch.id);
     await setStatus(a.id, "SHIPPED");
     expect(await qty(watch.id)).toBe(w0 - 1);
-    expect((await api(manager).delete(`/api/sales/orders/${a.id}`)).status).toBe(200);
+    expect((await api(manager).delete(`/api/sales/orders/${a.id}`)).status).toBe(403);
+    expect((await api(admin).delete(`/api/sales/orders/${a.id}`)).status).toBe(200);
     expect(await qty(watch.id)).toBe(w0);
     const b = await mkOrder({ waybill: "W-107" });
-    expect((await api(manager).delete(`/api/sales/orders/${b.id}`)).status).toBe(200);
+    expect((await api(manager).delete(`/api/sales/orders/${b.id}`)).status).toBe(403);
+    expect((await api(admin).delete(`/api/sales/orders/${b.id}`)).status).toBe(200);
     expect(await qty(watch.id)).toBe(w0);
-    expect((await api(manager).delete(`/api/sales/orders/${b.id}`)).status).toBe(404);
+    expect((await api(admin).delete(`/api/sales/orders/${b.id}`)).status).toBe(404);
   });
 
   it("حذف صنف مخزون داخل منتج/أوردر مبيعات ← 409 برسالة واضحة (لا 500)", async () => {
@@ -689,8 +691,10 @@ describe("sales roles: الأدوار الثلاثة المحصورة في ال�
     expect(delL.status).toBe(200);
     assertNoMoneyLeak(delL.body, "SALES_EDITOR DELETE line");
 
-    // حذف الأوردر مسموح
-    expect((await api(editor).delete(`/api/sales/orders/${orderId}`)).status).toBe(200);
+    // حذف الأوردر محصور على مدير النظام ADMIN فقط (ممنوع لغيره 403)
+    expect((await api(editor).delete(`/api/sales/orders/${orderId}`)).status).toBe(403);
+    expect((await api(manager).delete(`/api/sales/orders/${orderId}`)).status).toBe(403);
+    expect((await api(admin).delete(`/api/sales/orders/${orderId}`)).status).toBe(200);
 
     // قراءة الأصناف والتصنيفات لاختيار المكونات مسموحة وبلا أي سعر أو إحصاءات مالية، وكل عمليات المخزون الأخرى ← 403
     const invForPicker = await api(editor).get("/api/inventory");

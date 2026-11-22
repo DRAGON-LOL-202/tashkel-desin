@@ -161,10 +161,14 @@ describe("التصدير وتدفق المخزون", () => {
     expect(both.every((x) => x.status === 200)).toBe(true);
     expect(await prisma().salesOrder.count({ where: { waybill: o.waybill } })).toBe(1);
   });
-  it("بعد التصدير: لا تعديل ولا حذف (409)، والإدارة لا تحذف أوردر فتاة", async () => {
+  it("بعد التصدير: لا تعديل ولا حذف من الفتاة (409)، وغير ADMIN ممنوع من حذف أوردر المبيعات (403)", async () => {
+    const mgrTok = await login("amr");
     expect((await api(ag1).patch(`/api/agent/orders/${o.id}`).send({ notes: "x" })).status).toBe(409);
     expect((await api(ag1).delete(`/api/agent/orders/${o.id}`)).status).toBe(409);
-    expect((await api(admin).delete(`/api/sales/orders/${so}`)).status).toBe(409);
+    expect((await api(mgrTok).delete(`/api/sales/orders/${so}`)).status).toBe(403);
+    expect((await api(sup).delete(`/api/sales/orders/${so}`)).status).toBe(403);
+    expect((await api(edit).delete(`/api/sales/orders/${so}`)).status).toBe(403);
+    expect((await api(acct).delete(`/api/sales/orders/${so}`)).status).toBe(403);
   });
   it("لا شحن ولا تسليم قبل «تم التنفيذ»", async () => {
     expect((await acctStatus(so, "SHIPPED")).status).toBe(409);
@@ -575,5 +579,30 @@ describe("سعر كل بوكس من الفتاة + مصاريف الشحن + ا�
     });
     expect(follow.body.orders[0].lines[0]).toMatchObject({ boxPrice: 650, lineTotal: 650 });
     expect(JSON.stringify(follow.body)).not.toMatch(/unitCost|unitPrice|unitSell|costTotal|profit|available/);
+  });
+
+  it("مدير النظام ADMIN فقط يحذف أوردر فتاة منفّذ من المبيعات مع إعادة المخزون وحذف سجل الفتاة", async () => {
+    const mgrTok = await login("amr");
+    const ord = await mk(ag1, 180);
+    expect((await exportIds(ag1, [ord.id])).status).toBe(200);
+    const soId = await salesOrderOf(ord.id);
+    const sBefore = await stock();
+    expect((await execute(soId)).status).toBe(200);
+    expect((await acctStatus(soId, "DELIVERED")).status).toBe(200);
+    expect(await stock()).toBe(sBefore - 1);
+
+    // غير ADMIN مرفوض دائماً
+    expect((await api(mgrTok).delete(`/api/sales/orders/${soId}`)).status).toBe(403);
+    expect((await api(sup).delete(`/api/sales/orders/${soId}`)).status).toBe(403);
+    expect((await api(edit).delete(`/api/sales/orders/${soId}`)).status).toBe(403);
+    expect((await api(acct).delete(`/api/sales/orders/${soId}`)).status).toBe(403);
+    expect((await api(ag1).delete(`/api/sales/orders/${soId}`)).status).toBe(403);
+
+    // ADMIN يحذف نهائياً ويعيد المخزون ويزيل سجل الفتاة
+    const del = await api(admin).delete(`/api/sales/orders/${soId}`);
+    expect(del.status).toBe(200);
+    expect(await stock()).toBe(sBefore);
+    expect(await prisma().salesOrder.findUnique({ where: { id: soId } })).toBeNull();
+    expect(await prisma().agentOrder.findUnique({ where: { id: ord.id } })).toBeNull();
   });
 });

@@ -38,8 +38,10 @@ interface SalesOrderCardProps {
   hideMoney?: boolean;
   /** صلاحية زر علامة «مرتجع» */
   canFlagReturn?: boolean;
-  /** صلاحية تعديل بيانات الأوردر ومحتوياته ونقله وحذفه */
+  /** صلاحية تعديل بيانات الأوردر ومحتوياته ونقله */
   canEditOrder?: boolean;
+  /** صلاحية حذف الأوردر نهائياً: لمدير النظام فقط */
+  canDeleteOrder?: boolean;
   /** صلاحية تغيير حالة الأوردر (تنفيذ/شحن/تسليم/مرتجع فعلي) */
   canChangeStatus?: boolean;
   /** زرا «شحن» و«تم التسليم»: للإدارة فقط (المحاسب من صفحة المتابعة)؛ المشرف والمنفّذ بدونهما */
@@ -61,7 +63,7 @@ const GREEN_SHADOW = "0 10px 18px -10px rgba(10, 90, 51, 0.7)";
 const PREVIEW_CHIPS = 3;
 
 // كرت أوردر: رقم وحالة ومن أضافه، ثم رقم البوليصة والمقفل، شريط المنتجات، التكلفة وسعر البيع والربح، وأزرار الحالة.
-export function SalesOrderCard({ order, index, showDate, products, closers, onPatch, onStatus, onReturn, onMove, onDelete, onAddLine, onSetLineQty, onRemoveLine, items, onAddComponent, onSetComponentQty, onRemoveComponent, hideMoney, canFlagReturn: canFlagReturnProp = true, canEditOrder: canEditOrderProp = true, canChangeStatus: canChangeStatusProp = true, canShipDeliver = true }: SalesOrderCardProps) {
+export function SalesOrderCard({ order, index, showDate, products, closers, onPatch, onStatus, onReturn, onMove, onDelete, onAddLine, onSetLineQty, onRemoveLine, items, onAddComponent, onSetComponentQty, onRemoveComponent, hideMoney, canFlagReturn: canFlagReturnProp = true, canEditOrder: canEditOrderProp = true, canDeleteOrder = false, canChangeStatus: canChangeStatusProp = true, canShipDeliver = true }: SalesOrderCardProps) {
   // أوردر فتاة ملغي بعد التصدير: عرض فقط (الباكند يرفض أي تعديل/تنفيذ/تغيير حالة أيضاً)
   const cancelled = order.cancelled === true;
   const canFlagReturn = canFlagReturnProp && !cancelled;
@@ -172,6 +174,18 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
           >
             <CalendarDays size={16} className="text-primary-deep" />
             نقل ليوم
+          </button>
+        )}
+        {canDeleteOrder && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onDelete(order)}
+            aria-label="حذف الأوردر نهائياً"
+            title="حذف الأوردر نهائياً"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-problem/40 bg-problem/10 text-problem transition-colors hover:bg-problem/20 disabled:opacity-60"
+          >
+            <Trash2 size={15} />
           </button>
         )}
         <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background/60 px-3 text-xs font-medium text-text">
@@ -496,9 +510,6 @@ export function SalesOrderCard({ order, index, showDate, products, closers, onPa
             aria-label="ملاحظات الأوردر"
             className="pp-input !h-10 min-w-0 flex-1 text-sm"
           />
-          <button type="button" onClick={() => onDelete(order)} disabled={busy} aria-label="حذف الأوردر" title="حذف الأوردر" className="task-icon-btn task-icon-btn--danger">
-            <Trash2 size={16} />
-          </button>
         </div>
       )}
     </article>

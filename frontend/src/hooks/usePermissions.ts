@@ -7,6 +7,7 @@ import { useAuth } from "../components/auth/AuthProvider";
 export function usePermissions() {
   const { user } = useAuth();
   const role = user?.accessRole;
+  const isAdmin = role === "admin";
   const isStaff = role === "admin" || role === "manager";
   const isSalesAccountant = role === "sales_accountant";
   const isSalesAgent = role === "sales_agent";
@@ -14,6 +15,7 @@ export function usePermissions() {
   const isSalesSupervisor = role === "sales_supervisor";
   const isSalesRestricted = isSalesAccountant || isSalesEditor || isSalesSupervisor || isSalesAgent;
   return {
+    isAdmin,
     isStaff,
     userId: user?.id,
     /** تعديل/حذف المهام ونقلها بين الأعضاء */
@@ -29,8 +31,10 @@ export function usePermissions() {
     hideInventoryPrices: isSalesRestricted,
     /** المبيعات: زر علامة «مرتجع» للمراجعة */
     canFlagReturn: isStaff || isSalesAccountant || isSalesEditor || isSalesSupervisor,
-    /** المبيعات: إضافة/حذف/تعديل الأوردر وبنوده ومكوّناته وإنشاء منتج ثابت جديد */
+    /** المبيعات: إضافة/تعديل الأوردر وبنوده ومكوّناته ونقله وإنشاء منتج ثابت جديد */
     canEditSalesOrders: isStaff || isSalesEditor || isSalesSupervisor,
+    /** حذف أوردرات المبيعات (بما فيها المنفّذة وأوردرات الفتيات): لمدير النظام فقط */
+    canDeleteSalesOrders: isAdmin,
     /** المبيعات: تغيير حالة الأوردر (تنفيذ/شحن/تسليم/مرتجع فعلي) — الإدارة + مشرف المبيعات (تخصم/تعيد المخزون) */
     canChangeSalesOrderStatus: isStaff || isSalesSupervisor,
     /** شحن / تم التسليم: الإدارة فقط هنا (المحاسب من صفحة المتابعة؛ المشرف والمنفّذ بلا هذين الزرين) */

@@ -8,8 +8,11 @@ import { badRequest, conflict, forbidden, HttpError, notFound } from "../utils/h
 import { publicUser } from "../utils/serialize.js";
 import { isRestrictedRole, isSalesRole } from "../utils/inventoryAccess.js";
 import { deleteUnreferencedObjects } from "../utils/attachments.js";
+import { handleLowStockTransition, type LowStockTransition } from "../utils/inventoryLowStock.js";
 import { notify, staffIds } from "../utils/notify.js";
 import { keysOf } from "../utils/attachmentKeys.ts";
+import { salesOrderInclude } from "../utils/salesSerialize.js";
+import { restoreOrderStock } from "../utils/salesStock.js";
 import { createUserSchema, statusSchema, updateProfileSchema, updateUserSchema } from "../validators/users.js";
 
 export const usersRouter = Router();
@@ -308,13 +311,13 @@ usersRouter.delete(
       return;
     }
 
-    // فتاة مبيعات لديها أوردرات مسجّلة: نحمي السجل المحاسبي وتسلسل البوالص من الفقد
+    // فتاة مبيعات لديها أوردرات مسجّلة: الحذف النهائي متاح لمدير النظام فقط (ADMIN) ويعيد أي مخزون مخصوم
     const [ownedAgentOrders, linkedAgentSales] = await Promise.all([
       db.agentOrder.count({ where: { agentId: target.id } }),
       db.salesOrder.count({ where: { agentId: target.id } }),
     ]);
-    if (ownedAgentOrders + linkedAgentSales > 0) {
-      throw conflict("لا يمكن حذف حساب فتاة مبيعات مرتبطة بأوردرات مسجّلة حفاظاً على دقة الحسابات؛ عطّل الحساب بدلاً من حذفه");
+    if (ownedAgentOrders + linkedAgentSales > 0 && actor.role !== "ADMIN") {
+      throw conflict("حذف حساب فتاة مبيعات مرتبطة بأوردرات مسجّلة متاح لمدير النظام فقط؛ عطّل الحساب بدلاً من حذفه");
     }
 
     // ---- حذف الحساب مع كل بياناته ----
@@ -338,28 +341,68 @@ usersRouter.delete(
     const feedbackRows = await db.feedback.findMany({ where: { createdById: target.id }, select: { attachments: true } });
     keys.push(...feedbackRows.flatMap((r) => keysOf(r.attachments)));
 
-    await db.$transaction([
-      // مهام المستخدم (أنشأها أو مُسندة إليه): الفرعية والسجلات والتعليقات تُحذف بالـ cascade
-      db.task.deleteMany({ where: { OR: [{ createdById: target.id }, { assignedToId: target.id }] } }),
-      // سجلاته وتعليقاته على مهام الآخرين
-      db.taskTimeLog.deleteMany({ where: { userId: target.id } }),
-      db.taskComment.deleteMany({ where: { userId: target.id } }),
-      db.feedback.deleteMany({ where: { createdById: target.id } }),
-      db.goal.deleteMany({ where: { createdById: target.id } }),
-      db.calendarEvent.deleteMany({ where: { createdById: target.id } }),
-      db.attendanceSession.deleteMany({ where: { userId: target.id } }),
-      // المنتجات كتالوج مشترك: لا تُحذف، تُنقل نسبتها لمن يجري الحذف
-      db.product.updateMany({ where: { createdById: target.id }, data: { createdById: actor.id } }),
-      // حركات المخزون سجل تدقيق مشترك: لا تُحذف، تُنقل نسبتها لمن يجري الحذف
-      db.inventoryMovement.updateMany({ where: { createdById: target.id }, data: { createdById: actor.id } }),
-      // أوردرات المبيعات وسجل الحالات المشترك: تُنقل نسبتها لمن يجري الحذف
-      db.salesOrder.updateMany({ where: { createdById: target.id }, data: { createdById: actor.id } }),
-      db.salesOrder.updateMany({ where: { cancelledById: target.id }, data: { cancelledById: actor.id } }),
-      db.agentOrder.updateMany({ where: { exportedById: target.id }, data: { exportedById: actor.id } }),
-      db.agentOrder.updateMany({ where: { cancelledById: target.id }, data: { cancelledById: actor.id } }),
-      db.salesOrderStatusLog.updateMany({ where: { byId: target.id }, data: { byId: actor.id } }),
-      db.user.delete({ where: { id: target.id } }),
-    ]);
+    const transitions = await db.$transaction(
+      async (tx) => {
+        const allTransitions: LowStockTransition[] = [];
+        // لمدير النظام: نحذف أوردرات الفتاة وسجلها ونعيد أي مخزون خُصم قبل حذف الحساب
+        const foundAgentSales = await tx.salesOrder.findMany({
+          where: { OR: [{ agentId: target.id }, { agentOrder: { agentId: target.id } }] },
+          select: { id: true },
+          orderBy: { id: "asc" },
+        });
+        const agentSalesIds = foundAgentSales.map((s) => s.id);
+        if (agentSalesIds.length > 0) {
+          await tx.$queryRaw`SELECT "id" FROM "SalesOrder" WHERE "id" = ANY(${agentSalesIds}::text[]) ORDER BY "id" FOR UPDATE`;
+          const lockedSales = await tx.salesOrder.findMany({
+            where: { id: { in: agentSalesIds } },
+            include: salesOrderInclude,
+            orderBy: { id: "asc" },
+          });
+          for (const so of lockedSales) {
+            if (so.stockDeducted) {
+              allTransitions.push(
+                ...(await restoreOrderStock(tx, so, actor.id, "حذف حساب فتاة مبيعات", false))
+              );
+            }
+          }
+        }
+        await tx.agentOrder.deleteMany({
+          where: {
+            OR: [
+              { agentId: target.id },
+              ...(agentSalesIds.length > 0 ? [{ salesOrderId: { in: agentSalesIds } }] : []),
+            ],
+          },
+        });
+        if (agentSalesIds.length > 0) {
+          await tx.salesOrder.deleteMany({ where: { id: { in: agentSalesIds } } });
+        }
+
+        // مهام المستخدم (أنشأها أو مُسندة إليه): الفرعية والسجلات والتعليقات تُحذف بالـ cascade
+        await tx.task.deleteMany({ where: { OR: [{ createdById: target.id }, { assignedToId: target.id }] } });
+        // سجلاته وتعليقاته على مهام الآخرين
+        await tx.taskTimeLog.deleteMany({ where: { userId: target.id } });
+        await tx.taskComment.deleteMany({ where: { userId: target.id } });
+        await tx.feedback.deleteMany({ where: { createdById: target.id } });
+        await tx.goal.deleteMany({ where: { createdById: target.id } });
+        await tx.calendarEvent.deleteMany({ where: { createdById: target.id } });
+        await tx.attendanceSession.deleteMany({ where: { userId: target.id } });
+        // المنتجات كتالوج مشترك: لا تُحذف، تُنقل نسبتها لمن يجري الحذف
+        await tx.product.updateMany({ where: { createdById: target.id }, data: { createdById: actor.id } });
+        // حركات المخزون سجل تدقيق مشترك: لا تُحذف، تُنقل نسبتها لمن يجري الحذف
+        await tx.inventoryMovement.updateMany({ where: { createdById: target.id }, data: { createdById: actor.id } });
+        // أوردرات المبيعات وسجل الحالات المشترك المتبقي: تُنقل نسبتها لمن يجري الحذف
+        await tx.salesOrder.updateMany({ where: { createdById: target.id }, data: { createdById: actor.id } });
+        await tx.salesOrder.updateMany({ where: { cancelledById: target.id }, data: { cancelledById: actor.id } });
+        await tx.agentOrder.updateMany({ where: { exportedById: target.id }, data: { exportedById: actor.id } });
+        await tx.agentOrder.updateMany({ where: { cancelledById: target.id }, data: { cancelledById: actor.id } });
+        await tx.salesOrderStatusLog.updateMany({ where: { byId: target.id }, data: { byId: actor.id } });
+        await tx.user.delete({ where: { id: target.id } });
+        return allTransitions;
+      },
+      { timeout: 15_000 }
+    );
+    await handleLowStockTransition(transitions);
     await deleteUnreferencedObjects(keys);
     res.json({ ok: true });
   })

@@ -226,17 +226,36 @@ describe("كرت مهام الإنتاج (showProductionCard)", () => {
 });
 
 describe("users: حماية حذف المبيعات والسجلات", () => {
-  it("حذف فتاة مبيعات لها أوردرات: مرفوض في الحذف العادي وpurge (409 لا 500)", async () => {
+  it("حذف فتاة مبيعات لها أوردرات: مرفوض للمدير حتى مع purge (409)، ومتاح لمدير النظام ADMIN فقط مع إعادة المخزون", async () => {
     const ag = await makeUser("agent_del_guard", "SALES_AGENT");
     await api(admin).put(`/api/sales-agents/${ag.id}/prefix`).send({ prefix: 910 });
     const agTok = await login("agent_del_guard");
     const cat = await prisma().inventoryCategory.create({ data: { name: "حذف-فتاة", groupId: "invgrp_accessories_gifts" } });
     const item = await prisma().inventoryItem.create({ data: { name: "صنف فتاة", categoryId: cat.id, quantity: 10, sellPrice: 50 } });
     const prod = await prisma().salesProduct.create({ data: { name: "بوكس حذف", components: { create: { itemId: item.id, quantity: 1 } } } });
-    expect((await api(agTok).post("/api/agent/orders").send({ date: "2026-11-01", customerName: "ع", lines: [{ productId: prod.id, quantity: 1 }] })).status).toBe(201);
+
+    const draftRes = await api(agTok).post("/api/agent/orders").send({ date: "2026-11-01", customerName: "مسودة", lines: [{ productId: prod.id, quantity: 1 }] });
+    const expOrderRes = await api(agTok).post("/api/agent/orders").send({ date: "2026-11-01", customerName: "منفذ", lines: [{ productId: prod.id, quantity: 2 }] });
+    expect(draftRes.status).toBe(201);
+    expect(expOrderRes.status).toBe(201);
+    expect((await api(agTok).post("/api/agent/orders/export").send({ ids: [expOrderRes.body.order.id], confirm: true })).status).toBe(200);
+    const linked = await prisma().agentOrder.findUniqueOrThrow({ where: { id: expOrderRes.body.order.id } });
+    expect((await api(admin).patch(`/api/sales/orders/${linked.salesOrderId}`).send({ status: "EXECUTED" })).status).toBe(200);
+    expect(Number((await prisma().inventoryItem.findUniqueOrThrow({ where: { id: item.id } })).quantity)).toBe(8);
+
+    // MANAGER مرفوض في الحالتين
     expect((await api(manager).delete(`/api/users/${ag.id}`)).status).toBe(409);
     expect((await api(manager).delete(`/api/users/${ag.id}?purge=true`)).status).toBe(409);
     expect(await prisma().user.findUnique({ where: { id: ag.id } })).not.toBeNull();
+
+    // ADMIN بلا purge مرفوض 409 لتجنب الحذف العرضي
+    expect((await api(admin).delete(`/api/users/${ag.id}`)).status).toBe(409);
+    // ADMIN مع purge=true يحذف الحساب وأوردراتها ويعيد المخزون المخصوم (2 قطعة -> يعود 10)
+    expect((await api(admin).delete(`/api/users/${ag.id}?purge=true`)).status).toBe(200);
+    expect(await prisma().user.findUnique({ where: { id: ag.id } })).toBeNull();
+    expect(await prisma().agentOrder.count({ where: { agentId: ag.id } })).toBe(0);
+    expect(await prisma().salesOrder.findUnique({ where: { id: linked.salesOrderId! } })).toBeNull();
+    expect(Number((await prisma().inventoryItem.findUniqueOrThrow({ where: { id: item.id } })).quantity)).toBe(10);
   });
   it("مستخدم له سجل حالات مبيعات: الحذف العادي 409، وpurge=true ينقل السجل وينجح (لا 500)", async () => {
     const u = await makeUser("acct_purge", "SALES_ACCOUNTANT");

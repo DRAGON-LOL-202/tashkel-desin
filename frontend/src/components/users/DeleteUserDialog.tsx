@@ -5,6 +5,7 @@ import type { TeamMember } from "../../types";
 
 interface DeleteUserDialogProps {
   target: TeamMember | null;
+  actorIsAdmin?: boolean;
   busy?: boolean;
   onClose: () => void;
   /** حذف الحساب مع كل بياناته نهائياً */
@@ -13,7 +14,14 @@ interface DeleteUserDialogProps {
   onDisable: (target: TeamMember) => void;
 }
 
-export function DeleteUserDialog({ target, busy = false, onClose, onDeleteAll, onDisable }: DeleteUserDialogProps) {
+export function DeleteUserDialog({ target, actorIsAdmin = false, busy = false, onClose, onDeleteAll, onDisable }: DeleteUserDialogProps) {
+  const isSalesAgent = target?.accessRole === "sales_agent";
+  const deleteHint = isSalesAgent
+    ? actorIsAdmin
+      ? "بصفتك مدير النظام: سيُحذف حساب الفتاة مع كل أوردراتها (بما فيها المصدَّرة والمنفّذة) نهائياً، مع إعادة أي مكونات مخصومة من المخزون تلقائياً ولا يمكن التراجع."
+      : "إذا كانت للفتاة أوردرات مسجّلة، فالحذف النهائي متاح لمدير النظام فقط؛ استخدم خيار تعطيل الحساب أدناه."
+    : "تُحذف مهامه وسجلات وقته وتعليقاته وملاحظاته وأهدافه وأحداثه وحضوره نهائياً ولا يمكن التراجع. المنتجات التي أضافها تبقى في الكتالوج، وحركات المخزون التي نفّذها تبقى وتُنسب إليك.";
+
   return (
     <Modal
       open={!!target}
@@ -34,9 +42,7 @@ export function DeleteUserDialog({ target, busy = false, onClose, onDeleteAll, o
             <Trash2 size={18} className="mt-0.5 shrink-0 text-problem" />
             <span>
               <span className="block text-sm font-semibold text-problem">حذف الحساب وكل بياناته</span>
-              <span className="block text-xs text-muted">
-                تُحذف مهامه وسجلات وقته وتعليقاته وملاحظاته وأهدافه وأحداثه وحضوره نهائياً ولا يمكن التراجع. المنتجات التي أضافها تبقى في الكتالوج، وحركات المخزون التي نفّذها تبقى وتُنسب إليك.
-              </span>
+              <span className="block text-xs text-muted">{deleteHint}</span>
             </span>
           </button>
 

@@ -31,7 +31,7 @@ export function channelsForWritePath(path: string): SyncChannel[] {
   if (path.startsWith("/api/attendance") || path.startsWith("/api/feedback") || path.startsWith("/api/goals") || path.startsWith("/api/calendar-events")) {
     return ["tasks"];
   }
-  if (path.startsWith("/api/users")) return ["users", "tasks", "notifications", "accounting", "sales"];
+  if (path.startsWith("/api/users")) return ["users", "tasks", "notifications", "accounting", "sales", "inventory"];
   if (path.startsWith("/api/inventory")) return ["inventory", "sales", "notifications"];
   if (path.startsWith("/api/sales-agents")) return ["accounting", "sales", "users"];
   if (path.startsWith("/api/sales")) return ["sales", "inventory", "accounting", "notifications"];

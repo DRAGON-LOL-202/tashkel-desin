@@ -28,8 +28,9 @@
   - إضافة عمود `tokenVersion Int @default(0)` لنموذج `User` مع migration رقم `0025_user_token_version`.
   - تضمين `tv: user.tokenVersion` في JWT والتحقق منها في `authenticateToken`؛ يتم زيادة `tokenVersion` عند تسجيل الخروج (`POST /api/auth/logout`) وتغيير كلمة المرور (`PATCH /api/users/me` مع إعادة توكن جديد) وإعادة التعيين من الإدارة (`PATCH /api/users/:id`).
   - تقسيم محدد محاولات الدخول (`rateLimit`) في `auth.ts` إلى `ipLimiter` + `accountLimiter` (`ipKeyGenerator(req.ip):username`) وإضافة محدد عام على `/api` وحدود JSON لكل مسار (1MB افتراضي، 15MB لمسارات الصور).
-- **سلامة الحذف والمرجعيات**:
-  - منع 500 `P2003` في `DELETE /api/users/:id` عبر التحقق من `agentOrder`, `salesOrder.agentId`, `salesOrderStatusLog` قبل الحذف، وحظر حذف/تفريغ `SALES_AGENT` لها أوردرات (`409`)، ونقل `exportedById`/`cancelledById`/`byId` عند `purge=true`.
+- **سلامة الحذف والمرجعيات وصلاحية الحذف الحصرية لمدير النظام (`ADMIN`)**:
+  - منع 500 `P2003` في `DELETE /api/users/:id` عبر التحقق من `agentOrder`, `salesOrder.agentId`, `salesOrderStatusLog` قبل الحذف، وحظر حذف/تفريغ `SALES_AGENT` لها أوردرات على `MANAGER` (`409`)، مع السماح لمدير النظام (`ADMIN` فقط) بـ **«حذف الحساب وكل بياناته» (`?purge=true`)** لفتاة المبيعات حتى لو كانت لها أوردرات منفّذة/مسلّمة، مع إعادة أي مخزون مخصوم تلقائياً عبر [salesStock.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/src/utils/salesStock.ts) وحذف أوردراتها وسجلها داخل معاملة واحدة، ونقل `exportedById`/`cancelledById`/`byId` عند `purge=true`.
+  - حصر حذف أوردرات المبيعات (`DELETE /api/sales/orders/:id`) بمدير النظام (`ADMIN` فقط — `403` لـ `MANAGER` و`SALES_EDITOR` و`SALES_SUPERVISOR` و`SALES_ACCOUNTANT` و`SALES_AGENT`)، مع تمكين `ADMIN` من حذف أي أوردر (يدوي أو مصدّر من فتاة أو ملغي أو منفّذ/مشحون/مسلّم) وإعادة المخزون المخصوم وتنظيف سجل الفتاة، وإظهار زر الحذف لـ `ADMIN` فقط في [SalesOrderCard.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/sales/SalesOrderCard.tsx) و[FollowOrdersTable.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/FollowOrdersTable.tsx) و[SalesFollowUp.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/SalesFollowUp.tsx).
   - منع حذف `SalesProduct` المرتبط بمسودة `DRAFT` (`409`).
 - **سلامة المخزون والمبيعات وأوردرات الفتيات والحسابات**:
   - تسلسل التحقق من بوليصة الشحن الفريدة (`pg_advisory_xact_lock` + `assertWaybillFree`) في `POST /orders` و`PATCH /orders/:id`، مما عالج تعثر اتصال الاختبار المتزامن في `tests/agentIntegrity.test.ts`.
@@ -73,6 +74,7 @@
 - `backend/prisma/migrations/0025_user_token_version/migration.sql`
 - `backend/prisma/migrations/0026_agent_line_price_shipping/migration.sql`
 - `backend/prisma/migrations/0027_performance_indexes/migration.sql`
+- `backend/src/utils/salesStock.ts`
 - `backend/tests/sync.test.ts`
 - `backend/tests/performance.test.ts`
 - `frontend/.env.example`
@@ -133,10 +135,13 @@
 - `frontend/src/components/agent/AgentOrderModal.tsx`
 - `frontend/src/components/agent/FollowOrderRow.tsx`
 - `frontend/src/components/auth/AuthProvider.tsx`
+- `frontend/src/components/sales/SalesOrderCard.tsx`
 - `frontend/src/components/sidebar/Sidebar.tsx`
 - `frontend/src/components/ui/ImageAttachments.tsx`
 - `frontend/src/components/ui/StatusViews.tsx`
+- `frontend/src/components/users/DeleteUserDialog.tsx`
 - `frontend/src/hooks/useLiveSync.ts`
+- `frontend/src/hooks/usePermissions.ts`
 - `frontend/src/hooks/useResource.ts`
 - `frontend/src/hooks/useTeamMembers.ts`
 - `frontend/src/lib/api.ts`
@@ -183,11 +188,11 @@
 | الفحص | الأمر | النتيجة | التفاصيل المرصودة |
 | --- | --- | --- | --- |
 | فحص أنواع Backend | `cd backend && npm run typecheck` | **PASS** | `tsc -p tsconfig.json --noEmit` — خروج برمز 0 (0 أخطاء) |
-| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **28 ملفاً نجح / 28**، **447 اختباراً نجح / 447** (0 فشل، 0 تخطي) في `61.96s` |
-| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (202ms) + `tsc -p tsconfig.json` — خروج برمز 0 |
+| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **28 ملفاً نجح / 28**، **448 اختباراً نجح / 448** (0 فشل، 0 تخطي) في `75.76s` |
+| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (299ms) + `tsc -p tsconfig.json` — خروج برمز 0 |
 | اختبار قبول الإدارات والصلاحيات | `tsx verify_departments.ts` | **PASS** | طباعة `ALL_DEPARTMENTS_ACCEPTANCE_CHECKS_PASSED` (تحقق من `/workspace` و`manageUsers` لـ `admin`/`manager` فقط، إزالة `/products` من `Workspace`/`App`/`Sidebar`، عدّ الروابط `6/8/3/1`، وثبات `departmentsForPath`) |
-| فحص Frontend Lint | `cd frontend && npm run lint` | **PASS** | `oxlint` — `0 errors`, `20 warnings` (على 175 ملفاً في `71ms`) |
-| بناء Frontend | `cd frontend && npm run build` | **PASS** | `tsc -b && vite build` — 3066 وحدة في `1.53s`؛ الحزمة الرئيسية `230.72 kB` (مع تحميل `jspdf` و`html2canvas` كحزم منفصلة كسولة) |
+| فحص Frontend Lint | `cd frontend && npm run lint` | **PASS** | `oxlint` — `0 errors`, `20 warnings` (على 175 ملفاً في `84ms`) |
+| بناء Frontend | `cd frontend && npm run build` | **PASS** | `tsc -b && vite build` — 3066 وحدة في `2.10s`؛ الحزمة الرئيسية `230.71 kB` (مع تحميل `jspdf` و`html2canvas` كحزم منفصلة كسولة) |
 | اختبار المتصفح الحي (E2E) | — | **NOT RUN** | لم يُشغَّل متصفح فعلي للنقر البصري |
 
 ---

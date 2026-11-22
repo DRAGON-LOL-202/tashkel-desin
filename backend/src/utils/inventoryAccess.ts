@@ -79,7 +79,6 @@ export function isSalesRouteAllowed(role: Role, method: string, path: string, bo
       if (role === "SALES_SUPERVISOR" && isPlainRecord(body) && (body.status === "SHIPPED" || body.status === "DELIVERED")) return false;
       return true;
     }
-    if (method === "DELETE" && /^\/orders\/[^/]+$/.test(p)) return true;
     if (method === "POST" && /^\/orders\/[^/]+\/lines$/.test(p)) return true;
     if ((method === "PATCH" || method === "DELETE") && /^\/orders\/[^/]+\/lines\/[^/]+$/.test(p)) return true;
     if (method === "POST" && /^\/orders\/[^/]+\/lines\/[^/]+\/components$/.test(p)) return true;

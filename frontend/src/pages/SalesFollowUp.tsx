@@ -4,6 +4,7 @@ import { AppLayout } from "../components/layout/AppLayout";
 import { Header } from "../components/header/Header";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
+import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Input, Select } from "../components/ui/Field";
 import { PaginationBar } from "../components/ui/PaginationBar";
@@ -12,10 +13,12 @@ import { useToast } from "../components/ui/ToastProvider";
 import { FollowOrdersTable } from "../components/agent/FollowOrdersTable";
 import { SALES_STATUS_META } from "../components/sales/status";
 import { downloadWaybillsPdf, printWaybills, waybillFromFollowOrder } from "../lib/waybillPdf";
+import { usePermissions } from "../hooks/usePermissions";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
 import type { SyncChannel } from "../lib/liveSync";
 import { accountingService } from "../services/agentService";
+import { salesService } from "../services/salesService";
 import type { AgentAccountRow, AgentAccountTotals, FollowList, FollowOrder } from "../types";
 
 const NO_ORDERS: FollowList = {
@@ -39,7 +42,9 @@ export default function SalesFollowUpPage() {
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [busyPdf, setBusyPdf] = useState(false);
+  const [deletingOrder, setDeletingOrder] = useState<FollowOrder | null>(null);
   const { show } = useToast();
+  const { canDeleteSalesOrders } = usePermissions();
   const run = useSafeAction();
 
   const q = search.trim();
@@ -91,6 +96,22 @@ export default function SalesFollowUpPage() {
     if (r.ok) show("تم حفظ سعر الشحن");
     await orders.reload();
     return r.ok;
+  };
+  const confirmDeleteOrder = async () => {
+    if (!deletingOrder) return;
+    const target = deletingOrder;
+    setDeletingOrder(null);
+    const r = await run(() => salesService.removeOrder(target.id));
+    if (r.ok) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(target.id);
+        return next;
+      });
+      const restored = target.status === "EXECUTED" || target.status === "SHIPPED" || target.status === "DELIVERED";
+      show(restored ? "حُذف الأوردر نهائياً وأُعيدت مكوناته إلى المخزون" : "حُذف الأوردر نهائياً");
+    }
+    await orders.reload();
   };
 
   const handlePrintList = async (list: FollowOrder[]) => {
@@ -340,6 +361,7 @@ export default function SalesFollowUpPage() {
           <FollowOrdersTable
             orders={orders.data.orders}
             canAct
+            canDeleteOrder={canDeleteSalesOrders}
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
             onToggleSelectAll={toggleSelectAll}
@@ -347,6 +369,7 @@ export default function SalesFollowUpPage() {
             onFlag={flag}
             onShipping={shipping}
             onPrintOne={(o) => void handlePrintList([o])}
+            onDelete={setDeletingOrder}
           />
           <PaginationBar
             page={page}
@@ -359,6 +382,19 @@ export default function SalesFollowUpPage() {
           />
         </Card>
       )}
+
+      <ConfirmDialog
+        open={!!deletingOrder}
+        onClose={() => setDeletingOrder(null)}
+        onConfirm={() => void confirmDeleteOrder()}
+        title="حذف الأوردر نهائياً؟"
+        description={
+          deletingOrder
+            ? `سيُحذف الأوردر ${deletingOrder.waybill || ""} نهائياً (ومعه سجل الفتاة إن وُجد)، مع إعادة أي مكونات مخصومة من المخزون تلقائياً.`
+            : undefined
+        }
+        confirmLabel="حذف نهائياً"
+      />
     </AppLayout>
   );
 }
