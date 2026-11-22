@@ -1,7 +1,8 @@
-import { useCallback, useState } from "react";
-import { RotateCcw, Search } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { Download, Printer, RotateCcw, Search, X } from "lucide-react";
 import { AppLayout } from "../components/layout/AppLayout";
 import { Header } from "../components/header/Header";
+import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Input, Select } from "../components/ui/Field";
@@ -9,6 +10,7 @@ import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { useToast } from "../components/ui/ToastProvider";
 import { FollowOrdersTable } from "../components/agent/FollowOrdersTable";
 import { SALES_STATUS_META } from "../components/sales/status";
+import { downloadWaybillsPdf, printWaybills, waybillFromFollowOrder } from "../lib/waybillPdf";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
 import type { SyncChannel } from "../lib/liveSync";
@@ -25,14 +27,15 @@ const NO_AGENTS: { agents: AgentAccountRow[]; totals: AgentAccountTotals | null 
 const STATUS_TABS = ["", "EXECUTED", "SHIPPED", "DELIVERED", "RETURNED"] as const;
 const ACCOUNTING_CHANNELS: SyncChannel[] = ["accounting"];
 
-// متابعة أوردرات المبيعات: كل أوردر وصل «تم التنفيذ» فما بعد في أوردرات مبيعات إلكترونية (يدوي أو من الفتيات)، كجدول متابعة منظم.
-// المحاسب يغيّر الحالة (شحن/تسليم) من القائمة المنسدلة ويعلّم المرتجع ويدخل سعر الشحن ويعرض تفاصيل العميل والأوردر — بلا خصم مخزون ولا تعديل لمحتوى الأوردر.
+// متابعة أوردرات المبيعات: جدول متابعة، تغيير الحالة من القائمة المنسدلة، سعر الشحن، معاينة/طباعة البوليصة، وتحديد عدة بوالص لتحميلها كـ PDF.
 export default function SalesFollowUpPage() {
   const [status, setStatus] = useState<(typeof STATUS_TABS)[number]>("");
   const [agentId, setAgentId] = useState("");
   const [search, setSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [busyPdf, setBusyPdf] = useState(false);
   const { show } = useToast();
   const run = useSafeAction();
 
@@ -41,6 +44,22 @@ export default function SalesFollowUpPage() {
   const orders = useResource<FollowList>(loader, NO_ORDERS, ACCOUNTING_CHANNELS);
   const agentsLoader = useCallback(async () => ({ ...(await accountingService.agents({})) }), []);
   const agents = useResource(agentsLoader, NO_AGENTS, ACCOUNTING_CHANNELS);
+
+  const selectedOrders = useMemo(
+    () => orders.data.orders.filter((o) => selectedIds.has(o.id)),
+    [orders.data.orders, selectedIds]
+  );
+
+  const toggleSelect = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const toggleSelectAll = (checked: boolean) =>
+    setSelectedIds(checked ? new Set(orders.data.orders.map((o) => o.id)) : new Set());
 
   const changeStatus = async (o: FollowOrder, next: "SHIPPED" | "DELIVERED") => {
     const r = await run(() => accountingService.setStatus(o.id, next));
@@ -57,6 +76,28 @@ export default function SalesFollowUpPage() {
     if (r.ok) show("تم حفظ سعر الشحن");
     await orders.reload();
     return r.ok;
+  };
+
+  const handlePrintList = async (list: FollowOrder[]) => {
+    if (list.length === 0) return;
+    try {
+      await printWaybills(list.map(waybillFromFollowOrder));
+    } catch {
+      show("تعذّر تجهيز الطباعة", "error");
+    }
+  };
+
+  const handleDownloadPdfList = async (list: FollowOrder[]) => {
+    if (list.length === 0 || busyPdf) return;
+    setBusyPdf(true);
+    try {
+      await downloadWaybillsPdf(list.map(waybillFromFollowOrder));
+      show(`تم تحميل ${list.length === 1 ? "البوليصة" : `${list.length} بوليصة`} كملف PDF`);
+    } catch {
+      show("تعذّر إنشاء ملف PDF", "error");
+    } finally {
+      setBusyPdf(false);
+    }
   };
 
   const tabCount = (tab: (typeof STATUS_TABS)[number]) => {
@@ -79,12 +120,12 @@ export default function SalesFollowUpPage() {
       headerSlot={(openMobileNav) => (
         <Header
           title="متابعة أوردرات المبيعات"
-          description="متابعة كل أوردر بعد «تم التنفيذ»: الحالة، الشحن، الفتاة، وتفاصيل العميل"
+          description="متابعة كل أوردر بعد «تم التنفيذ»: الحالة، الشحن، الفتاة، المعاينة، والطباعة PDF"
           onOpenMobileNav={openMobileNav}
         />
       )}
     >
-      {/* شريط تبويبات الحالة بأسلوب لوحة المتابعة */}
+      {/* شريط تبويبات الحالة */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
         <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="حالة الأوردر">
           {STATUS_TABS.map((s) => {
@@ -162,6 +203,58 @@ export default function SalesFollowUpPage() {
         </div>
       </Card>
 
+      {/* شريط التحديد المتعدد وتحميل PDF / طباعة المحدد */}
+      {!orders.loading && orders.data.orders.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-control border border-border bg-surface px-3.5 py-2.5 text-xs">
+          <div className="flex items-center gap-2.5">
+            <label className="inline-flex cursor-pointer items-center gap-2 font-medium text-text">
+              <input
+                type="checkbox"
+                checked={orders.data.orders.length > 0 && orders.data.orders.every((o) => selectedIds.has(o.id))}
+                onChange={(e) => toggleSelectAll(e.target.checked)}
+                className="h-4 w-4 cursor-pointer accent-primary-deep"
+              />
+              <span>تحديد عدة بوالص للتحميل PDF</span>
+            </label>
+            {selectedOrders.length > 0 && (
+              <span className="rounded-full bg-primary/15 px-2.5 py-0.5 font-bold tabular-nums text-primary-deep">
+                تم تحديد {selectedOrders.length} بوليصة
+              </span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              icon={<Download size={14} />}
+              disabled={selectedOrders.length === 0 || busyPdf}
+              onClick={() => void handleDownloadPdfList(selectedOrders)}
+            >
+              {busyPdf ? "جارٍ تجهيز PDF..." : `تحميل المحدد PDF (${selectedOrders.length})`}
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={<Printer size={14} />}
+              disabled={selectedOrders.length === 0}
+              onClick={() => void handlePrintList(selectedOrders)}
+            >
+              طباعة المحدد ({selectedOrders.length})
+            </Button>
+            {selectedOrders.length > 0 && (
+              <button
+                type="button"
+                aria-label="إلغاء تحديد البوالص"
+                onClick={() => setSelectedIds(new Set())}
+                className="inline-flex h-8 items-center gap-1 rounded-control border border-border px-2.5 text-xs text-muted hover:text-text"
+              >
+                <X size={13} />
+                <span>إلغاء التحديد</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {orders.loading ? (
         <LoadingState />
       ) : orders.error ? (
@@ -175,7 +268,17 @@ export default function SalesFollowUpPage() {
         </Card>
       ) : (
         <Card className="overflow-hidden">
-          <FollowOrdersTable orders={orders.data.orders} canAct onStatus={changeStatus} onFlag={flag} onShipping={shipping} />
+          <FollowOrdersTable
+            orders={orders.data.orders}
+            canAct
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelect}
+            onToggleSelectAll={toggleSelectAll}
+            onStatus={changeStatus}
+            onFlag={flag}
+            onShipping={shipping}
+            onPrintOne={(o) => void handlePrintList([o])}
+          />
           {orders.data.hasMore && (
             <p className="border-t border-border px-3 py-2 text-center text-xs text-muted" role="status">
               يعرض أول {orders.data.orders.length} من {orders.data.total} أوردر — ضيّق البحث أو الفترة لعرض الباقي.

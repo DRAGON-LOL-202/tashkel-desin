@@ -42,9 +42,9 @@
   - حساب حدود اليوم بتوقيت `ATTENDANCE_TZ` عبر `tzDayBoundsUtc`/`startOfTodayUtc`.
   - تصفية أصناف المخزون قبل توقيع روابط R2، ودفع فلتر `bucket` في `agent.ts` لـ Prisma، وتنظيف مؤقت المهمة عند الإكمال وقفل `FOR UPDATE` عند بدء المؤقت.
   - قنوات `liveSync` مقسّمة (`tasks`, `inventory`, `sales`, `accounting`, `users`, `notifications`, `general`) مع debounce 350ms، وتقسيم حزم Vite عبر `React.lazy` و`Suspense` و`ErrorBoundary`، وإصلاح عرض محتويات البوكسات والبحث في الأصناف وإلغاء الأوردر فقط قبل التنفيذ في `AgentOrders.tsx`/`AgentOrderModal.tsx`.
-- **تحديث صفحة «متابعة أوردرات المبيعات» (`/sales-follow-up`)**:
-  - إعادة بناء العرض كجدول متابعة منظم عبر [FollowOrdersTable.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/FollowOrdersTable.tsx) يضم: رقم البوليصة، اسم العميل وهاتفه، الأوردر والقيمة، التاريخ، الحالة كقائمة منسدلة (`تم التنفيذ` ← `شحن` / `تم التسليم`)، الفتاة، سعر الشحن، وزر «التفاصيل» مع أزرار علامة المرتجع وسجل التغييرات.
-  - إضافة نافذة [OrderDetailsModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/OrderDetailsModal.tsx) لعرض كامل تفاصيل الأوردر المدخلة من الفتاة (اسم العميل، الهاتف مع زر نسخ، العنوان، الملاحظات، البوكسات ومكوّناتها، والتواريخ والمبالغ) وإتاحتها أيضاً من صفوف `FollowOrderRow`.
+- **تحديث صفحة «متابعة أوردرات المبيعات» (`/sales-follow-up`) ومعاينة/طباعة البوليصة A6**:
+  - إعادة بناء العرض كجدول متابعة منظم عبر [FollowOrdersTable.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/FollowOrdersTable.tsx) يضم: تحديداً متعدداً للبوالص، رقم البوليصة، اسم العميل وهاتفه، الأوردر والقيمة، التاريخ، الحالة كقائمة منسدلة (`تم التنفيذ` ← `شحن` / `تم التسليم`)، الفتاة، سعر الشحن، وزرّي معاينة البوليصة والطباعة مع علامة المرتجع وسجل التغييرات.
+  - إضافة [WaybillSheet.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/WaybillSheet.tsx) و[WaybillPreviewModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/WaybillPreviewModal.tsx) و[waybillPdf.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/lib/waybillPdf.ts) لمعاينة البوليصة بمقاس A6 لدى الفتاة (معاينة فقط بدون طباعة/PDF ومع إخفاء بطاقات العمولات من `AgentOrders.tsx`)، ولدى محاسب المبيعات والإدارة مع أزرار **«طباعة»** و**«تحميل المحدد PDF»** لعدة بوالص في ملف واحد.
   - إثراء `GET /api/accounting/orders` في `backend/src/routes/accounting.ts` بتفاصيل العميل والبنود والبحث بالاسم/الهاتف وعدّادات الحالات مع بقاء صلاحيات `SALES_ACCOUNTANT` محصورة كما هي دون أي تسرب لتكاليف المخزون.
 - **فاتورة الفتاة وسعر البوكس والحسابات العامة (`0026_agent_line_price_shipping`)**:
   - تحديث [AgentOrderModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/AgentOrderModal.tsx) وكروت [AgentOrders.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/AgentOrders.tsx) لتطابق حقول الفاتورة (التاريخ، اسم العميل، العنوان، التليفون حتى 60 حرفاً، اسم الصنف، الكمية، **سعر كل بوكس**، **م شحن** اختياري، والإجمالي بالشحن، والملاحظات).
@@ -65,9 +65,11 @@
 - `backend/prisma/migrations/0026_agent_line_price_shipping/migration.sql`
 - `frontend/.env.example`
 - `frontend/src/lib/departments.ts`
+- `frontend/src/lib/waybillPdf.ts`
 - `frontend/src/components/departments/DepartmentProvider.tsx`
 - `frontend/src/components/agent/FollowOrdersTable.tsx`
-- `frontend/src/components/agent/OrderDetailsModal.tsx`
+- `frontend/src/components/agent/WaybillPreviewModal.tsx`
+- `frontend/src/components/agent/WaybillSheet.tsx`
 - `frontend/src/components/ui/ErrorBoundary.tsx`
 - `frontend/src/pages/Workspace.tsx`
 - `HANDOFF_DEPARTMENTS.md`
@@ -110,6 +112,7 @@
 - `backend/tests/users.test.ts`
 
 ### ملفات معدّلة في Frontend
+- `frontend/package.json` & `frontend/package-lock.json` (إضافة `jspdf` و`html2canvas`)
 - `frontend/src/App.tsx` (تضمين `/workspace` وتقسيم الحزم وإزالة مسار `/products`)
 - `frontend/src/components/agent/AgentOrderModal.tsx`
 - `frontend/src/components/agent/FollowOrderRow.tsx`
@@ -160,11 +163,11 @@
 | الفحص | الأمر | النتيجة | التفاصيل المرصودة |
 | --- | --- | --- | --- |
 | فحص أنواع Backend | `cd backend && npm run typecheck` | **PASS** | `tsc -p tsconfig.json --noEmit` — خروج برمز 0 (0 أخطاء) |
-| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **26 ملفاً نجح / 26**، **440 اختباراً نجح / 440** (0 فشل، 0 تخطي) في `124.65s` |
-| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (407ms) + `tsc -p tsconfig.json` — خروج برمز 0 |
+| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **26 ملفاً نجح / 26**، **440 اختباراً نجح / 440** (0 فشل، 0 تخطي) في `46.02s` |
+| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (212ms) + `tsc -p tsconfig.json` — خروج برمز 0 |
 | اختبار قبول الإدارات والصلاحيات | `tsx verify_departments.ts` | **PASS** | طباعة `ALL_DEPARTMENTS_ACCEPTANCE_CHECKS_PASSED` (تحقق من `/workspace` و`manageUsers` لـ `admin`/`manager` فقط، إزالة `/products` من `Workspace`/`App`/`Sidebar`، عدّ الروابط `6/8/3/1`، وثبات `departmentsForPath`) |
-| فحص Frontend Lint | `cd frontend && npm run lint` | **PASS** | `oxlint` — `0 errors`, `20 warnings` (على 171 ملفاً في `75ms`) |
-| بناء Frontend | `cd frontend && npm run build` | **PASS** | `tsc -b && vite build` — 2863 وحدة في `2.38s`؛ الحزمة الرئيسية `230.37 kB` (مقارنة بـ `775.92 kB` قبل تقسيم `React.lazy`) |
+| فحص Frontend Lint | `cd frontend && npm run lint` | **PASS** | `oxlint` — `0 errors`, `20 warnings` (على 173 ملفاً في `58ms`) |
+| بناء Frontend | `cd frontend && npm run build` | **PASS** | `tsc -b && vite build` — 3064 وحدة في `1.49s`؛ الحزمة الرئيسية `230.60 kB` (مع تحميل `jspdf` و`html2canvas` كحزم منفصلة كسولة) |
 | اختبار المتصفح الحي (E2E) | — | **NOT RUN** | لم يُشغَّل متصفح فعلي للنقر البصري |
 
 ---

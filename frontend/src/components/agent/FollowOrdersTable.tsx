@@ -1,21 +1,25 @@
 import { useState } from "react";
-import { ChevronDown, Eye, Flag, History, Phone } from "lucide-react";
+import { ChevronDown, Eye, Flag, History, Phone, Printer } from "lucide-react";
 import { Badge } from "../ui/Badge";
 import { fmtMoney } from "../inventory/format";
 import { formatArabicDate } from "../../lib/date";
+import { waybillFromFollowOrder } from "../../lib/waybillPdf";
 import { SALES_STATUS_META } from "../sales/status";
 import { rowBadge } from "./meta";
 import { ShippingCell } from "./ShippingCell";
-import { OrderLogModal } from "./OrderLogModal";
-import { OrderDetailsModal } from "./OrderDetailsModal";
+import { WaybillPreviewModal } from "./WaybillPreviewModal";
 import type { FollowOrder } from "../../types";
 
 interface FollowOrdersTableProps {
   orders: FollowOrder[];
   canAct: boolean;
+  selectedIds: Set<string>;
+  onToggleSelect: (id: string) => void;
+  onToggleSelectAll: (checked: boolean) => void;
   onStatus: (o: FollowOrder, status: "SHIPPED" | "DELIVERED") => Promise<void>;
   onFlag: (o: FollowOrder, flagged: boolean) => Promise<void>;
   onShipping: (o: FollowOrder, price: number | null) => Promise<boolean>;
+  onPrintOne: (o: FollowOrder) => void;
 }
 
 function initialChar(name: string): string {
@@ -23,14 +27,23 @@ function initialChar(name: string): string {
   return clean ? clean[0] : "؟";
 }
 
-// جدول متابعة أوردرات المبيعات: التاريخ، اسم العميل، رقم البوليصة، الحالة (قائمة منسدلة)، الفتاة، الشحن، وزر التفاصيل
-export function FollowOrdersTable({ orders, canAct, onStatus, onFlag, onShipping }: FollowOrdersTableProps) {
+// جدول متابعة أوردرات المبيعات: تحديد متعدد لتحميل PDF، رقم البوليصة، العميل، الأوردر، التاريخ، الحالة، الفتاة، الشحن، وأزرار المعاينة والطباعة
+export function FollowOrdersTable({
+  orders,
+  canAct,
+  selectedIds,
+  onToggleSelect,
+  onToggleSelectAll,
+  onStatus,
+  onFlag,
+  onShipping,
+  onPrintOne,
+}: FollowOrdersTableProps) {
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
-  const [logOrder, setLogOrder] = useState<FollowOrder | null>(null);
+  const [previewState, setPreviewState] = useState<{ id: string; tab: "preview" | "details" | "log" } | null>(null);
 
-  // نربط النافذة بأحدث نسخة من الصف بعد أي تحديث (شحن/مرتجع/سعر شحن)
-  const detailOrder = detailOrderId ? orders.find((x) => x.id === detailOrderId) ?? null : null;
+  const previewOrder = previewState ? orders.find((x) => x.id === previewState.id) ?? null : null;
+  const allSelected = orders.length > 0 && orders.every((o) => selectedIds.has(o.id));
 
   const runRow = async (id: string, fn: () => Promise<void>) => {
     setBusyId(id);
@@ -44,17 +57,26 @@ export function FollowOrdersTable({ orders, canAct, onStatus, onFlag, onShipping
   return (
     <>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[920px] border-collapse text-right text-sm">
+        <table className="w-full min-w-[980px] border-collapse text-right text-sm">
           <thead>
             <tr className="border-b border-border bg-primary/10 text-xs font-semibold text-muted dark:bg-[#0c2720]">
-              <th className="whitespace-nowrap px-4 py-3">رقم البوليصة</th>
+              <th className="w-10 px-3 py-3 text-center">
+                <input
+                  type="checkbox"
+                  aria-label="تحديد كل البوالص المعروضة"
+                  checked={allSelected}
+                  onChange={(e) => onToggleSelectAll(e.target.checked)}
+                  className="h-4 w-4 cursor-pointer accent-primary-deep"
+                />
+              </th>
+              <th className="whitespace-nowrap px-3 py-3">رقم البوليصة</th>
               <th className="whitespace-nowrap px-4 py-3">اسم العميل</th>
               <th className="whitespace-nowrap px-4 py-3">الأوردر والقيمة</th>
               <th className="whitespace-nowrap px-4 py-3">التاريخ</th>
               <th className="whitespace-nowrap px-4 py-3">الحالة</th>
               <th className="whitespace-nowrap px-4 py-3">الفتاة</th>
               <th className="whitespace-nowrap px-4 py-3">سعر الشحن</th>
-              <th className="whitespace-nowrap px-4 py-3">الإجراء</th>
+              <th className="whitespace-nowrap px-4 py-3">إجراء</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border/70">
@@ -62,6 +84,7 @@ export function FollowOrdersTable({ orders, canAct, onStatus, onFlag, onShipping
               const badge = rowBadge(o.status, o.returnFlagged, o.cancelled);
               const locked = o.cancelled || o.status === "RETURNED";
               const isBusy = busyId === o.id;
+              const isChecked = selectedIds.has(o.id);
               const statusColor = SALES_STATUS_META[o.status].color;
               const displayCustomer =
                 o.customerName || (o.source === "MANUAL" ? o.closerName || "أوردر يدوي" : "—");
@@ -75,11 +98,26 @@ export function FollowOrdersTable({ orders, canAct, onStatus, onFlag, onShipping
                 <tr
                   key={o.id}
                   className={`transition-colors hover:bg-primary/5 dark:hover:bg-[#103027]/70 ${
-                    o.returnFlagged && o.status !== "RETURNED" ? "bg-problem/[0.04]" : ""
+                    isChecked
+                      ? "bg-primary/10 dark:bg-[#12372c]/70"
+                      : o.returnFlagged && o.status !== "RETURNED"
+                        ? "bg-problem/[0.04]"
+                        : ""
                   }`}
                 >
+                  {/* تحديد البوليصة للطباعة / PDF */}
+                  <td className="px-3 py-3 text-center align-middle">
+                    <input
+                      type="checkbox"
+                      aria-label={`تحديد بوليصة ${o.waybill || o.id}`}
+                      checked={isChecked}
+                      onChange={() => onToggleSelect(o.id)}
+                      className="h-4 w-4 cursor-pointer accent-primary-deep"
+                    />
+                  </td>
+
                   {/* رقم البوليصة */}
-                  <td className="whitespace-nowrap px-4 py-3 align-middle">
+                  <td className="whitespace-nowrap px-3 py-3 align-middle">
                     <div className="flex flex-col items-start gap-0.5">
                       <span className="font-bold tabular-nums text-primary-deep">{o.waybill || "—"}</span>
                       {o.source === "MANUAL" && (
@@ -113,7 +151,7 @@ export function FollowOrdersTable({ orders, canAct, onStatus, onFlag, onShipping
                     </div>
                   </td>
 
-                  {/* البوكس والقيمة */}
+                  {/* الأوردر والقيمة */}
                   <td className="max-w-[230px] px-4 py-3 align-middle">
                     <p className="truncate font-medium text-text" title={o.boxName}>
                       {o.boxName || "—"}
@@ -128,7 +166,7 @@ export function FollowOrdersTable({ orders, canAct, onStatus, onFlag, onShipping
                     {formatArabicDate(o.date, "EEEE، d MMMM yyyy")}
                   </td>
 
-                  {/* الحالة: قائمة منسدلة لتغيير الحالة للشحن/التسليم (مع الحفاظ على صلاحيات المحاسب) */}
+                  {/* الحالة (قائمة منسدلة) */}
                   <td className="whitespace-nowrap px-4 py-3 align-middle">
                     <div className="flex flex-col items-start gap-1">
                       {canAct && !locked ? (
@@ -201,16 +239,26 @@ export function FollowOrdersTable({ orders, canAct, onStatus, onFlag, onShipping
                     )}
                   </td>
 
-                  {/* الإجراء: زر التفاصيل + علامة المرتجع + سجل التغييرات */}
+                  {/* إجراء: معاينة البوليصة + طباعة + مرتجع + سجل */}
                   <td className="whitespace-nowrap px-4 py-3 align-middle">
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
-                        onClick={() => setDetailOrderId(o.id)}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-control border border-primary-deep/30 bg-primary/10 px-2.5 text-xs font-semibold text-primary-deep transition-colors hover:bg-primary/20"
+                        aria-label={`معاينة بوليصة ${o.waybill || o.id}`}
+                        title="معاينة البوليصة"
+                        onClick={() => setPreviewState({ id: o.id, tab: "preview" })}
+                        className="flex h-8 w-8 items-center justify-center rounded-control border border-border text-muted transition-colors hover:border-primary-deep/50 hover:bg-primary/10 hover:text-primary-deep"
                       >
-                        <Eye size={13} />
-                        <span>التفاصيل</span>
+                        <Eye size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`طباعة بوليصة ${o.waybill || o.id}`}
+                        title="طباعة البوليصة"
+                        onClick={() => onPrintOne(o)}
+                        className="flex h-8 w-8 items-center justify-center rounded-control border border-border text-muted transition-colors hover:border-primary-deep/50 hover:bg-primary/10 hover:text-primary-deep"
+                      >
+                        <Printer size={15} />
                       </button>
                       {canAct && !o.cancelled && o.status !== "RETURNED" && (
                         <button
@@ -232,7 +280,7 @@ export function FollowOrdersTable({ orders, canAct, onStatus, onFlag, onShipping
                         type="button"
                         aria-label="سجل التغييرات"
                         title="سجل التغييرات"
-                        onClick={() => setLogOrder(o)}
+                        onClick={() => setPreviewState({ id: o.id, tab: "log" })}
                         className="flex h-8 w-8 items-center justify-center rounded-control border border-border text-muted transition-colors hover:border-primary-deep/40 hover:text-text"
                       >
                         <History size={13} />
@@ -246,27 +294,18 @@ export function FollowOrdersTable({ orders, canAct, onStatus, onFlag, onShipping
         </table>
       </div>
 
-      {detailOrder && (
-        <OrderDetailsModal
+      {previewOrder && previewState && (
+        <WaybillPreviewModal
+          key={`${previewOrder.id}-${previewState.tab}`}
           open
-          order={detailOrder}
+          waybill={waybillFromFollowOrder(previewOrder)}
+          canPrint
+          canDownloadPdf
+          followOrder={previewOrder}
           canAct={canAct}
-          onClose={() => setDetailOrderId(null)}
           onFlag={onFlag}
-          onOpenLog={() => {
-            const target = detailOrder;
-            setDetailOrderId(null);
-            setLogOrder(target);
-          }}
-        />
-      )}
-
-      {logOrder && (
-        <OrderLogModal
-          open
-          orderId={logOrder.id}
-          waybill={logOrder.waybill}
-          onClose={() => setLogOrder(null)}
+          initialTab={previewState.tab}
+          onClose={() => setPreviewState(null)}
         />
       )}
     </>

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { Ban, ChevronDown, ChevronUp, Pencil, Plus, Search, Send, Trash2 } from "lucide-react";
+import { Ban, ChevronDown, ChevronUp, Eye, Pencil, Plus, Search, Send, Trash2 } from "lucide-react";
 import { AppLayout } from "../components/layout/AppLayout";
 import { Header } from "../components/header/Header";
 import { Badge } from "../components/ui/Badge";
@@ -12,7 +12,8 @@ import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { useToast } from "../components/ui/ToastProvider";
 import { AgentOrderModal } from "../components/agent/AgentOrderModal";
 import { CancelModal, ExportModal } from "../components/agent/ExportCancelModals";
-import { StatTile } from "../components/agent/StatTile";
+import { WaybillPreviewModal } from "../components/agent/WaybillPreviewModal";
+import { waybillFromAgentOrder } from "../lib/waybillPdf";
 import { BUCKET_LABEL, BUCKET_ORDER, agentOrderBadge } from "../components/agent/meta";
 import { fmtMoney } from "../components/inventory/format";
 import { formatArabicDate } from "../lib/date";
@@ -20,36 +21,22 @@ import type { SyncChannel } from "../lib/liveSync";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
 import { agentService } from "../services/agentService";
-import type { AgentBucket, AgentItem, AgentOrder, AgentOrderInput, AgentProduct, AgentProfile, AgentSummary } from "../types";
+import type { AgentBucket, AgentItem, AgentOrder, AgentOrderInput, AgentProduct, AgentProfile } from "../types";
 
 const NO_ORDERS: AgentOrder[] = [];
 const NO_PRODUCTS: AgentProduct[] = [];
 const NO_ITEMS: AgentItem[] = [];
-const EMPTY_SUMMARY: AgentSummary = {
-  total: 0,
-  unexported: 0,
-  exported: 0,
-  executed: 0,
-  shipped: 0,
-  delivered: 0,
-  returned: 0,
-  cancelled: 0,
-  deliveredSales: 0,
-  deliveredCount: 0,
-  fixedFee: 0,
-  commission: 0,
-  totalDue: 0,
-};
 
 const ORDER_SYNC_CHANNELS: SyncChannel[] = ["sales", "accounting"];
 const CATALOG_SYNC_CHANNELS: SyncChannel[] = ["sales", "inventory"];
 const PROFILE_SYNC_CHANNELS: SyncChannel[] = ["accounting"];
 
-// أوردراتي: مساحة الفتاة. ترى أوردراتها وحسابها فقط (العزل في الباكند). الأوردر يبقى هنا حتى تصدّره بعد التأكيد.
+// أوردراتي: مساحة الفتاة. ترى أوردراتها فقط وتدخل بيانات الفاتورة وتعاين البوليصة (بدون بطاقات العمولات، وبدون طباعة/PDF).
 export default function AgentOrdersPage() {
   const [bucket, setBucket] = useState<AgentBucket>("all");
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<AgentOrder | "new" | null>(null);
+  const [previewing, setPreviewing] = useState<AgentOrder | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expandedBoxes, setExpandedBoxes] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState<AgentOrder[] | null>(null);
@@ -62,14 +49,13 @@ export default function AgentOrdersPage() {
   const q = search.trim();
   const ordersLoader = useCallback(() => agentService.orders(bucket, q), [bucket, q]);
   const orders = useResource<AgentOrder[]>(ordersLoader, NO_ORDERS, ORDER_SYNC_CHANNELS);
-  const dashboard = useResource<AgentSummary>(agentService.dashboard, EMPTY_SUMMARY, ORDER_SYNC_CHANNELS);
   const products = useResource<AgentProduct[]>(agentService.products, NO_PRODUCTS, CATALOG_SYNC_CHANNELS);
   const items = useResource<AgentItem[]>(agentService.items, NO_ITEMS, CATALOG_SYNC_CHANNELS);
   const profile = useResource<AgentProfile | null>(agentService.me, null, PROFILE_SYNC_CHANNELS);
 
   const refresh = useCallback(async () => {
-    await Promise.all([orders.reload(), dashboard.reload(), profile.reload()]);
-  }, [orders, dashboard, profile]);
+    await Promise.all([orders.reload(), profile.reload()]);
+  }, [orders, profile]);
 
   const drafts = useMemo(() => orders.data.filter((o) => o.status === "DRAFT"), [orders.data]);
   const selectedDrafts = useMemo(() => drafts.filter((o) => selected.has(o.id)), [drafts, selected]);
@@ -125,8 +111,6 @@ export default function AgentOrdersPage() {
     return r.ok;
   };
 
-  const s = dashboard.data;
-
   return (
     <AppLayout
       headerSlot={(openMobileNav) => (
@@ -146,17 +130,6 @@ export default function AgentOrdersPage() {
         <p className="mb-4 rounded-control border border-operational/40 bg-operational/10 px-4 py-3 text-sm text-text" role="alert">
           لم تحدد الإدارة Prefix لحسابك بعد، لذلك لا يمكن إضافة أوردرات. تواصل مع الإدارة.
         </p>
-      )}
-
-      {!dashboard.loading && !dashboard.error && (
-        <section aria-label="ملخص حسابي" className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
-          <StatTile label="إجمالي الأوردرات" value={s.total} onClick={() => setBucket("all")} active={bucket === "all"} />
-          <StatTile label="المسلّمة" value={s.delivered} color="#1E8E5A" onClick={() => setBucket("delivered")} active={bucket === "delivered"} />
-          <StatTile label="مبيعات مسلّمة" value={fmtMoney(s.deliveredSales)} />
-          <StatTile label="المقابل الثابت" value={fmtMoney(s.fixedFee)} hint="7 ج × المسلّمة" />
-          <StatTile label="عمولة 3%" value={fmtMoney(s.commission)} />
-          <StatTile label="إجمالي المستحقات" value={fmtMoney(s.totalDue)} color="#1E8E5A" />
-        </section>
       )}
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -273,31 +246,55 @@ export default function AgentOrdersPage() {
                   </div>
                 )}
 
-                {(isDraft || canCancelOrder) && (
-                  <div className="mt-2.5 flex flex-wrap justify-end gap-1.5">
-                    {isDraft ? (
-                      <>
-                        <Button size="sm" variant="secondary" icon={<Pencil size={13} />} onClick={() => setEditing(o)}>
-                          تعديل
-                        </Button>
-                        <Button size="sm" variant="secondary" icon={<Send size={13} />} onClick={() => setExporting([o])}>
-                          تصدير
-                        </Button>
-                        <Button size="sm" variant="danger" icon={<Trash2 size={13} />} onClick={() => setDeleting(o)}>
-                          حذف
-                        </Button>
-                      </>
-                    ) : (
-                      <Button size="sm" variant="danger" icon={<Ban size={13} />} onClick={() => setCancelling(o)}>
-                        إلغاء الأوردر
+                <div className="mt-2.5 flex flex-wrap justify-end gap-1.5">
+                  <Button size="sm" variant="secondary" icon={<Eye size={14} />} onClick={() => setPreviewing(o)}>
+                    معاينة البوليصة
+                  </Button>
+                  {isDraft && (
+                    <>
+                      <Button size="sm" variant="secondary" icon={<Pencil size={13} />} onClick={() => setEditing(o)}>
+                        تعديل
                       </Button>
-                    )}
-                  </div>
-                )}
+                      <Button size="sm" variant="secondary" icon={<Send size={13} />} onClick={() => setExporting([o])}>
+                        تصدير
+                      </Button>
+                      <Button size="sm" variant="danger" icon={<Trash2 size={13} />} onClick={() => setDeleting(o)}>
+                        حذف
+                      </Button>
+                    </>
+                  )}
+                  {canCancelOrder && (
+                    <Button size="sm" variant="danger" icon={<Ban size={13} />} onClick={() => setCancelling(o)}>
+                      إلغاء الأوردر
+                    </Button>
+                  )}
+                </div>
               </Card>
             );
           })}
         </div>
+      )}
+
+      {previewing && (
+        <WaybillPreviewModal
+          key={previewing.id}
+          open
+          waybill={waybillFromAgentOrder(previewing)}
+          canPrint={false}
+          canDownloadPdf={false}
+          statusLabel={agentOrderBadge(previewing).label}
+          statusColor={agentOrderBadge(previewing).color}
+          onEdit={
+            previewing.status === "DRAFT"
+              ? () => {
+                  const target = previewing;
+                  setPreviewing(null);
+                  setEditing(target);
+                }
+              : undefined
+          }
+          onClose={() => setPreviewing(null)}
+        />
       )}
 
       {editing && (

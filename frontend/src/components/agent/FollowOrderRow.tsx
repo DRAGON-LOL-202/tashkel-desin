@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { Eye, History, Truck, PackageCheck, Flag } from "lucide-react";
+import { Eye, Flag, History, PackageCheck, Printer, Truck } from "lucide-react";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { fmtMoney } from "../inventory/format";
 import { formatArabicDate } from "../../lib/date";
+import { printWaybills, waybillFromFollowOrder } from "../../lib/waybillPdf";
 import { rowBadge } from "./meta";
 import { ShippingCell } from "./ShippingCell";
-import { OrderLogModal } from "./OrderLogModal";
-import { OrderDetailsModal } from "./OrderDetailsModal";
+import { WaybillPreviewModal } from "./WaybillPreviewModal";
 import type { FollowOrder } from "../../types";
 
 interface FollowOrderRowProps {
@@ -20,11 +20,10 @@ interface FollowOrderRowProps {
   showAgent?: boolean;
 }
 
-// سطر في قائمة المتابعة / نافذة تفاصيل حساب فتاة: بوليصة، عميل، بوكس، تاريخ، سعر بيع، شحن، حالة، إجراءات
+// سطر في نافذة تفاصيل حساب فتاة: بوليصة، عميل، بوكس، تاريخ، سعر خروج، شحن، حالة، ومعاينة/طباعة
 export function FollowOrderRow({ order: o, canAct, onStatus, onFlag, onShipping, showAgent = true }: FollowOrderRowProps) {
   const [busy, setBusy] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [logOpen, setLogOpen] = useState(false);
+  const [previewTab, setPreviewTab] = useState<"preview" | "details" | "log" | null>(null);
   const badge = rowBadge(o.status, o.returnFlagged, o.cancelled);
   const locked = o.cancelled || o.status === "RETURNED";
   const act = async (fn: () => Promise<void>) => {
@@ -71,27 +70,30 @@ export function FollowOrderRow({ order: o, canAct, onStatus, onFlag, onShipping,
             {o.returnFlagged ? "إزالة علامة المرتجع" : "تعليم كمرتجع"}
           </Button>
         )}
-        <button type="button" aria-label="تفاصيل الأوردر" title="تفاصيل الأوردر" onClick={() => setDetailsOpen(true)} className="flex h-8 w-8 items-center justify-center rounded-control text-muted hover:bg-border/50 hover:text-text">
+        <button type="button" aria-label="معاينة البوليصة" title="معاينة البوليصة" onClick={() => setPreviewTab("preview")} className="flex h-8 w-8 items-center justify-center rounded-control text-muted hover:bg-border/50 hover:text-text">
           <Eye size={15} />
         </button>
-        <button type="button" aria-label="سجل التغييرات" title="سجل التغييرات" onClick={() => setLogOpen(true)} className="flex h-8 w-8 items-center justify-center rounded-control text-muted hover:bg-border/50 hover:text-text">
+        <button type="button" aria-label="طباعة البوليصة" title="طباعة البوليصة" onClick={() => void printWaybills([waybillFromFollowOrder(o)])} className="flex h-8 w-8 items-center justify-center rounded-control text-muted hover:bg-border/50 hover:text-text">
+          <Printer size={15} />
+        </button>
+        <button type="button" aria-label="سجل التغييرات" title="سجل التغييرات" onClick={() => setPreviewTab("log")} className="flex h-8 w-8 items-center justify-center rounded-control text-muted hover:bg-border/50 hover:text-text">
           <History size={15} />
         </button>
       </div>
-      {detailsOpen && (
-        <OrderDetailsModal
+      {previewTab && (
+        <WaybillPreviewModal
+          key={`${o.id}-${previewTab}`}
           open
-          order={o}
+          waybill={waybillFromFollowOrder(o)}
+          canPrint
+          canDownloadPdf
+          followOrder={o}
           canAct={canAct}
-          onClose={() => setDetailsOpen(false)}
           onFlag={onFlag}
-          onOpenLog={() => {
-            setDetailsOpen(false);
-            setLogOpen(true);
-          }}
+          initialTab={previewTab}
+          onClose={() => setPreviewTab(null)}
         />
       )}
-      {logOpen && <OrderLogModal open orderId={o.id} waybill={o.waybill} onClose={() => setLogOpen(false)} />}
     </div>
   );
 }
