@@ -1,7 +1,7 @@
 // Service Worker: يجعل الموقع قابلًا للتثبيت ويسرّع التحميل، ويستقبل إشعارات Web Push حتى والموقع مغلق.
 // لا يخزّن أي طلبات API ولا أي بيانات مستخدم — فقط ملفات الواجهة الثابتة.
 // غيّر رقم الإصدار عند الحاجة لإجبار مسح الكاش القديم.
-const CACHE = "tashkeel-shell-v1";
+const CACHE = "tashkeel-shell-v2";
 const SHELL = ["/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {

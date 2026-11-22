@@ -88,7 +88,12 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
 
   let response: Response;
   try {
-    response = await fetch(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    response = await fetch(url, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      cache: "no-store",
+    });
   } catch {
     throw new ApiError("تعذّر الاتصال بالخادم، تحقق من الاتصال بالإنترنت", 0);
   }

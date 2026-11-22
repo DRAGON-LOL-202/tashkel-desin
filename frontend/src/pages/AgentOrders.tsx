@@ -29,7 +29,7 @@ const NO_ITEMS: AgentItem[] = [];
 
 const ORDER_SYNC_CHANNELS: SyncChannel[] = ["sales", "accounting"];
 const CATALOG_SYNC_CHANNELS: SyncChannel[] = ["sales", "inventory"];
-const PROFILE_SYNC_CHANNELS: SyncChannel[] = ["accounting"];
+const PROFILE_SYNC_CHANNELS: SyncChannel[] = ["accounting", "users"];
 
 // أوردراتي: مساحة الفتاة. ترى أوردراتها فقط وتدخل بيانات الفاتورة وتعاين البوليصة (بدون بطاقات العمولات، وبدون طباعة/PDF).
 export default function AgentOrdersPage() {

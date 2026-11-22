@@ -18,10 +18,10 @@ interface Subscriber {
 }
 
 const POLL_INTERVAL_MS = 4000;
-const STREAM_SILENCE_LIMIT_MS = 60_000; // الخادم يرسل نبضة كل 25 ثانية
+const STREAM_SILENCE_LIMIT_MS = 40_000; // الخادم يرسل نبضة كل 25 ثانية
 const RECONNECT_MIN_MS = 1000;
 const RECONNECT_MAX_MS = 15_000;
-const DEBOUNCE_MS = 350;
+const DEBOUNCE_MS = 200;
 
 const subscribers = new Set<Subscriber>();
 let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -33,6 +33,7 @@ let checking = false;
 let controller: AbortController | null = null;
 let streamConnected = false;
 let lastActivity = 0;
+let connectStartedAt = 0;
 let reconnectDelay = RECONNECT_MIN_MS;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -54,6 +55,7 @@ function handleSnapshot(payload: SyncPayload) {
   const rebooted = lastBootId !== null && bootId !== lastBootId;
   const prevChannels = lastChannels;
   const nextChannels = payload.channels ?? {};
+  const generalChanged = nextChannels.general !== prevChannels.general;
 
   lastVersion = version;
   lastBootId = bootId;
@@ -61,7 +63,7 @@ function handleSnapshot(payload: SyncPayload) {
   if (!changed) return;
 
   subscribers.forEach((sub) => {
-    if (!rebooted && sub.channels && sub.channels.length > 0 && payload.channels) {
+    if (!rebooted && !generalChanged && sub.channels && sub.channels.length > 0 && payload.channels) {
       const relevantChanged = sub.channels.some((ch) => nextChannels[ch] !== prevChannels[ch]);
       if (!relevantChanged) return;
     }
@@ -84,7 +86,7 @@ async function check(): Promise<void> {
 }
 
 function parseEvents(chunk: string, buffer: { text: string }) {
-  buffer.text += chunk;
+  buffer.text = (buffer.text + chunk).replace(/\r\n/g, "\n").replace(/\r(?!$)/g, "\n");
   let boundary: number;
   while ((boundary = buffer.text.indexOf("\n\n")) !== -1) {
     const rawEvent = buffer.text.slice(0, boundary);
@@ -104,12 +106,12 @@ async function runStream(signal: AbortSignal): Promise<void> {
   const token = tokenStore.get();
   if (!token) throw new Error("no token");
   const url = new URL(`${API_URL}/sync/stream`, window.location.origin);
-  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: "text/event-stream" }, signal });
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "text/event-stream" },
+    cache: "no-store",
+    signal,
+  });
   if (!response.ok || !response.body) throw new Error(`stream ${response.status}`);
-
-  streamConnected = true;
-  lastActivity = Date.now();
-  reconnectDelay = RECONNECT_MIN_MS;
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -118,8 +120,12 @@ async function runStream(signal: AbortSignal): Promise<void> {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      lastActivity = Date.now();
-      parseEvents(decoder.decode(value, { stream: true }), buffer);
+      if (value && value.byteLength > 0) {
+        streamConnected = true;
+        lastActivity = Date.now();
+        reconnectDelay = RECONNECT_MIN_MS;
+        parseEvents(decoder.decode(value, { stream: true }), buffer);
+      }
     }
   } finally {
     streamConnected = false;
@@ -139,6 +145,7 @@ function connect() {
   if (controller || subscribers.size === 0 || document.hidden || !tokenStore.get()) return;
   const current = new AbortController();
   controller = current;
+  connectStartedAt = Date.now();
   runStream(current.signal)
     .catch(() => undefined)
     .finally(() => {
@@ -159,13 +166,18 @@ function disconnect() {
 }
 
 function tick() {
-  // اتصال "ميت" بصمت (وسيط قطعه دون إشعار): نعيد الاتصال
-  if (controller && streamConnected && Date.now() - lastActivity > STREAM_SILENCE_LIMIT_MS) {
+  // اتصال "ميت" بصمت (وسيط قطعه أو حجزه دون إشعار): نعيد الاتصال ونفحص فوراً
+  if (
+    controller &&
+    ((streamConnected && Date.now() - lastActivity > STREAM_SILENCE_LIMIT_MS) ||
+      (!streamConnected && Date.now() - connectStartedAt > STREAM_SILENCE_LIMIT_MS))
+  ) {
     disconnect();
     connect();
+    void check();
     return;
   }
-  // الفحص الدوري يعمل فقط عند غياب الاتصال المفتوح
+  // الفحص الدوري يعمل فقط عند غياب الاتصال المفتوح الفعلي
   if (!streamConnected) void check();
 }
 
@@ -203,6 +215,15 @@ function stop() {
   window.removeEventListener("focus", onWake);
   window.removeEventListener("online", onWake);
   disconnect();
+}
+
+export function resetLiveSync(): void {
+  disconnect();
+  lastVersion = null;
+  lastBootId = null;
+  lastChannels = {};
+  reconnectDelay = RECONNECT_MIN_MS;
+  connectStartedAt = 0;
 }
 
 export function subscribeLiveSync(notify: () => void | Promise<unknown>, channels?: readonly SyncChannel[]): () => void {

@@ -26,14 +26,14 @@ import { restrictedRoleGate } from "./middleware/auth.js";
 
 const LARGE_JSON_PREFIXES = ["/api/tasks", "/api/feedback", "/api/products", "/api/inventory"] as const;
 
-function channelsForWritePath(path: string): SyncChannel[] {
+export function channelsForWritePath(path: string): SyncChannel[] {
   if (path.startsWith("/api/tasks")) return ["tasks", "notifications"];
   if (path.startsWith("/api/attendance") || path.startsWith("/api/feedback") || path.startsWith("/api/goals") || path.startsWith("/api/calendar-events")) {
     return ["tasks"];
   }
-  if (path.startsWith("/api/users")) return ["users", "tasks", "notifications"];
+  if (path.startsWith("/api/users")) return ["users", "tasks", "notifications", "accounting", "sales"];
   if (path.startsWith("/api/inventory")) return ["inventory", "sales", "notifications"];
-  if (path.startsWith("/api/sales-agents")) return ["accounting", "sales"];
+  if (path.startsWith("/api/sales-agents")) return ["accounting", "sales", "users"];
   if (path.startsWith("/api/sales")) return ["sales", "inventory", "accounting", "notifications"];
   if (path.startsWith("/api/agent")) return ["sales", "accounting"];
   if (path.startsWith("/api/accounting")) return ["accounting", "sales"];
@@ -71,13 +71,25 @@ export function createApp() {
   // أي عملية كتابة ناجحة (غير تسجيل الدخول) ترفع رقم النسخة للقنوات المتأثرة ليعرف المعنيون فقط أن هناك تغييراً
   const WRITE_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
   app.use((req, res, next) => {
-    // اشتراكات الأجهزة وping المراقب لا تغيّر بيانات يراها الآخرون، فلا نوقظ كل الواجهات لإعادة التحميل بسببها
-    const silent = req.path.startsWith("/api/auth") || req.path.startsWith("/api/push") || req.path.startsWith("/api/internal");
+    // نلتقط المسار الكامل قبل next() لأن الراوترات الفرعية تقص البادئة من req.url فيُصبح req.path ناقصاً عند finish
+    const writePath = req.path;
+    // اشتراكات الأجهزة وping المراقب ورفع/حذف الملفات المؤقت لا تغيّر بيانات يراها الآخرون
+    const silent =
+      writePath.startsWith("/api/auth") ||
+      writePath.startsWith("/api/push") ||
+      writePath.startsWith("/api/internal") ||
+      writePath.startsWith("/api/files");
     if (WRITE_METHODS.has(req.method) && !silent) {
+      const affectedChannels = channelsForWritePath(writePath);
       res.on("finish", () => {
-        if (res.statusCode < 400) bumpDataVersion(channelsForWritePath(req.path));
+        if (res.statusCode < 400) bumpDataVersion(affectedChannels);
       });
     }
+    next();
+  });
+
+  app.use("/api", (_req, res, next) => {
+    res.setHeader("Cache-Control", "no-store");
     next();
   });
 

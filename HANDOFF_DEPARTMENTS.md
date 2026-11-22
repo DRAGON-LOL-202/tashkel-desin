@@ -50,9 +50,13 @@
   - تحديث [AgentOrderModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/AgentOrderModal.tsx) وكروت [AgentOrders.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/AgentOrders.tsx) لتطابق حقول الفاتورة (التاريخ، اسم العميل، العنوان، التليفون حتى 60 حرفاً، اسم الصنف، الكمية، **سعر كل بوكس**، **م شحن** اختياري، والإجمالي بالشحن، والملاحظات).
   - إضافة migration `0026_agent_line_price_shipping` لحقول `boxPrice` و`shippingPrice` ونقلها عند التصدير في `agent.ts` و`validators/agent.ts`.
   - تحديث `agentMath.ts` و`accounting.ts` و[GeneralAccounts.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/GeneralAccounts.tsx) لتعرض: **«سعر الخروج من المخزون»**، و**«سعر الخروج»** (من الفتاة)، و**«إجمالي الشحن»**، و**«الإجمالي الكلي»** (`سعر الخروج + الشحن`)، و**«فرق صرف»** كنسبة مئوية بينهما.
+- **قنوات المزامنة اللحظية ومنع الكاش (`liveSync` / `SSE` / Express `res.on("finish")`)**:
+  - إصلاح عطل جوهري في [app.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/src/app.ts) حيث كانت `channelsForWritePath(req.path)` تُستدعى داخل `res.on("finish")` بعد قصّ الراوترات الفرعية للبادئة من `req.url`، مما كان يسقط جميع الكتابات في قناة `general` فقط ولا يُشغّل أي تحديثات على الصفحات المشتركة في القنوات المتخصصة (`tasks`, `inventory`, `sales`, `accounting`, `users`, `notifications`)؛ تم التقاط `writePath = req.path` وحساب `affectedChannels` قبل `next()` وتصدير `channelsForWritePath` وتحديث قناة `/api/users` و`/api/sales-agents` مع إسكات `/api/files`.
+  - إضافة ترويسة `Cache-Control: no-store` لاستجابات `/api` وتمرير `cache: "no-store"` في [api.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/lib/api.ts) و`runStream` في [liveSync.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/lib/liveSync.ts).
+  - تقوية [liveSync.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/lib/liveSync.ts) (انتظار أول حزمة بيانات فعلية قبل اعتبار `streamConnected = true` حتى لا يتوقف الفحص الاحتياطي عند تخزين الوسيط للـ SSE، تقليص مهلة الصمت إلى `40_000ms` وdebounce إلى `200ms`، توحيد نهايات الأسطر `\r\n`، بث قناة `general` كشبكة أمان، وإضافة `resetLiveSync()` المستدعى في [AuthProvider.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/auth/AuthProvider.tsx) عند الخروج أو `401`)، مع عدّاد تسلسل `requestSeq` في [useResource.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/hooks/useResource.ts)، وإضافة قناة `"users"` لملف الفتاة في [AgentOrders.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/AgentOrders.tsx)، ورفع رقم كاش الـ Service Worker في [sw.js](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/public/sw.js) إلى `tashkeel-shell-v2`.
 - **ملفات المستودع والاختبارات**:
   - إضافة `.env.example` في `backend/` و`frontend/` وملف `.github/workflows/ci.yml`.
-  - إصلاح وإضافة اختبارات التغطية في `backend/tests/` (شاملةً اختبارات تفاصيل المتابعة وعدم تسرب التكاليف).
+  - إضافة [sync.test.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/tests/sync.test.ts) وإصلاح وإضافة اختبارات التغطية في `backend/tests/` (شاملةً اختبارات القنوات والبث اللحظي SSE وتفاصيل المتابعة وعدم تسرب التكاليف).
 
 ---
 
@@ -108,10 +112,12 @@
 - `backend/tests/inventory.test.ts`
 - `backend/tests/r2Client.test.ts`
 - `backend/tests/sales.test.ts`
+- `backend/tests/sync.test.ts` (جديد)
 - `backend/tests/tasks.test.ts`
 - `backend/tests/users.test.ts`
 
 ### ملفات معدّلة في Frontend
+- `frontend/public/sw.js` (تحديث `CACHE` إلى `tashkeel-shell-v2`)
 - `frontend/package.json` & `frontend/package-lock.json` (إضافة `jspdf` و`html2canvas`)
 - `frontend/src/App.tsx` (تضمين `/workspace` وتقسيم الحزم وإزالة مسار `/products`)
 - `frontend/src/components/agent/AgentOrderModal.tsx`
@@ -121,6 +127,7 @@
 - `frontend/src/hooks/useLiveSync.ts`
 - `frontend/src/hooks/useResource.ts`
 - `frontend/src/hooks/useTeamMembers.ts`
+- `frontend/src/lib/api.ts`
 - `frontend/src/lib/liveSync.ts`
 - `frontend/src/lib/permissions.ts`
 - `frontend/src/types/agent.ts`
@@ -163,11 +170,11 @@
 | الفحص | الأمر | النتيجة | التفاصيل المرصودة |
 | --- | --- | --- | --- |
 | فحص أنواع Backend | `cd backend && npm run typecheck` | **PASS** | `tsc -p tsconfig.json --noEmit` — خروج برمز 0 (0 أخطاء) |
-| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **26 ملفاً نجح / 26**، **440 اختباراً نجح / 440** (0 فشل، 0 تخطي) في `46.02s` |
-| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (212ms) + `tsc -p tsconfig.json` — خروج برمز 0 |
+| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **27 ملفاً نجح / 27**، **444 اختباراً نجح / 444** (0 فشل، 0 تخطي) في `47.58s` |
+| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (216ms) + `tsc -p tsconfig.json` — خروج برمز 0 |
 | اختبار قبول الإدارات والصلاحيات | `tsx verify_departments.ts` | **PASS** | طباعة `ALL_DEPARTMENTS_ACCEPTANCE_CHECKS_PASSED` (تحقق من `/workspace` و`manageUsers` لـ `admin`/`manager` فقط، إزالة `/products` من `Workspace`/`App`/`Sidebar`، عدّ الروابط `6/8/3/1`، وثبات `departmentsForPath`) |
-| فحص Frontend Lint | `cd frontend && npm run lint` | **PASS** | `oxlint` — `0 errors`, `20 warnings` (على 173 ملفاً في `58ms`) |
-| بناء Frontend | `cd frontend && npm run build` | **PASS** | `tsc -b && vite build` — 3064 وحدة في `1.49s`؛ الحزمة الرئيسية `230.60 kB` (مع تحميل `jspdf` و`html2canvas` كحزم منفصلة كسولة) |
+| فحص Frontend Lint | `cd frontend && npm run lint` | **PASS** | `oxlint` — `0 errors`, `20 warnings` (على 173 ملفاً في `67ms`) |
+| بناء Frontend | `cd frontend && npm run build` | **PASS** | `tsc -b && vite build` — 3064 وحدة في `1.51s`؛ الحزمة الرئيسية `230.60 kB` (مع تحميل `jspdf` و`html2canvas` كحزم منفصلة كسولة) |
 | اختبار المتصفح الحي (E2E) | — | **NOT RUN** | لم يُشغَّل متصفح فعلي للنقر البصري |
 
 ---
@@ -200,5 +207,6 @@
 
 ## 6. مخاطر وملاحظات مهمة للمراجعة
 - **تسجيل خروج لمرة واحدة بعد الترحيل `0025`**: لأن `authenticateToken` يفرض وجود رقم `tv` مطابق لـ `user.tokenVersion` داخل JWT، فإن أي توكن صدر *قبل* نشر التحديث `0025_user_token_version` لن يحتوي على `tv` وسيعيد `401` حتى يعيد المستخدم تسجيل الدخول مرة واحدة.
+- **بيئة البث اللحظي SSE على الإنتاج**: رقم نسخة التزامن وقنواتها (`syncVersion.ts`) يعملان في ذاكرة عملية Node، مما يتطلب تشغيل نسخة خادم واحدة على Render (Single Instance) لتصل إشعارات `SSE /api/sync/stream` الفورية لجميع المستخدمين.
 - **مستخدم `ADMIN` أو `MANAGER` لديه `showTaskCard` أو `showProductionCard`**: نقطة الدخول بعد التسجيل لهما هي `/workspace` دائماً، ويمكنهما فتح `/daily-tasks` أو `/production-tasks` من بطاقتَي «إدارة التصميم» و«إدارة الإنتاج والمخزون».
 - **تحذيرات `oxlint` المتبقية (`20 warnings`)**: كلها تحذيرات React Compiler / `exhaustive-deps` موجودة أساساً في الملفات القائمة مسبقاً، بالإضافة إلى تحذيرَي `only-export-components` في `DepartmentProvider.tsx` (بسبب تصدير `clearStoredDepartment` و`useDepartment` مع المكوّن) دون أي أخطاء (`0 errors`).

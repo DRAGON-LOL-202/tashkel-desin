@@ -13,31 +13,37 @@ export function useResource<T>(loader: () => Promise<T>, initial: T, channels?: 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // عند تغيّر loader (مثلاً شهر آخر) نتجاهل رد الطلب القديم إن وصل متأخراً
+  // عند تغيّر loader (مثلاً شهر آخر) أو تداخل تحديث متزامن نتجاهل رد الطلب الأقدم إن وصل متأخراً
   const latestLoader = useRef(loader);
+  const requestSeq = useRef(0);
   useEffect(() => {
     latestLoader.current = loader;
   });
 
   const reload = useCallback(async () => {
+    const id = ++requestSeq.current;
     try {
       const result = await loader();
-      if (latestLoader.current === loader) {
+      if (id === requestSeq.current && latestLoader.current === loader) {
         setData(result);
         setError(null);
       }
     } catch (err) {
-      if (latestLoader.current === loader) setError(errorMessage(err));
+      if (id === requestSeq.current && latestLoader.current === loader) setError(errorMessage(err));
     } finally {
-      if (latestLoader.current === loader) setLoading(false);
+      if (id === requestSeq.current && latestLoader.current === loader) setLoading(false);
     }
   }, [loader]);
 
   // تحديث تلقائي عند تغيير أي مستخدم للبيانات: صامت تماماً (لا loading ولا error)
   const silentSync = useCallback(async () => {
+    const id = ++requestSeq.current;
     try {
       const result = await loader();
-      if (latestLoader.current === loader) setData(result);
+      if (id === requestSeq.current && latestLoader.current === loader) {
+        setData(result);
+        setError(null);
+      }
     } catch {
       // نُبقي البيانات الحالية ونحاول عند التغيير التالي
     }
