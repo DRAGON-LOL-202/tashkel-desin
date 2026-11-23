@@ -19,6 +19,8 @@ interface ProductEditorModalProps {
   onSubmit: (input: SalesProductInput) => Promise<boolean>;
   /** صفحة الأوردرات: بدون أسعار أو تكلفة */
   hideMoney?: boolean;
+  /** صلاحية تعديل السعر الثابت للبوكس (الإدارة فقط، حتى في صفحة الأوردرات) */
+  canEditFixedPrice?: boolean;
 }
 
 interface Row {
@@ -26,9 +28,10 @@ interface Row {
   quantity: string;
 }
 
-// تعريف منتج ثابت: الاسم + محتوياته من المخزون. التكلفة وسعر البيع تُحسبان تلقائياً من سعر الوحدة وسعر البيع في المخزون.
-export function ProductEditorModal({ open, onClose, editing, items, categories, onSubmit, hideMoney }: ProductEditorModalProps) {
+// تعريف منتج ثابت: الاسم + السعر الثابت اليدوي (اختياري) + محتوياته من المخزون.
+export function ProductEditorModal({ open, onClose, editing, items, categories, onSubmit, hideMoney, canEditFixedPrice = !hideMoney }: ProductEditorModalProps) {
   const [name, setName] = useState(editing?.name ?? "");
+  const [fixedPrice, setFixedPrice] = useState(editing?.fixedPrice != null ? String(editing.fixedPrice) : "");
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [rows, setRows] = useState<Row[]>(() => editing?.components.map((c) => ({ itemId: c.itemId, quantity: String(c.quantity) })) ?? []);
   const [search, setSearch] = useState("");
@@ -80,15 +83,30 @@ export function ProductEditorModal({ open, onClose, editing, items, categories, 
     if (saving) return;
     const next: Record<string, string> = {};
     if (!name.trim()) next.name = "اسم المنتج مطلوب";
+    const rawFixed = fixedPrice.trim();
+    const fixedNum = rawFixed === "" ? null : Number(rawFixed);
+    if (canEditFixedPrice && fixedNum !== null && (!Number.isFinite(fixedNum) || fixedNum < 0 || fixedNum > 10_000_000)) {
+      next.fixedPrice = "أدخل سعراً صحيحاً (0 أو أكثر)";
+    }
     if (rows.length === 0) next.rows = "أضف مكوناً واحداً على الأقل من المخزون";
     else if (rows.some((r) => !Number.isFinite(Number(r.quantity)) || Number(r.quantity) <= 0)) next.rows = "كل مكوّن يحتاج كمية أكبر من صفر";
     setErrors(next);
     if (Object.keys(next).length > 0) return;
     setSaving(true);
-    const ok = await onSubmit({ name: name.trim(), notes: notes.trim(), components: rows.map((r) => ({ itemId: r.itemId, quantity: Number(r.quantity) })) });
+    const ok = await onSubmit({
+      name: name.trim(),
+      ...(canEditFixedPrice ? { fixedPrice: fixedNum === null ? null : Math.round(fixedNum * 100) / 100 } : {}),
+      notes: notes.trim(),
+      components: rows.map((r) => ({ itemId: r.itemId, quantity: Number(r.quantity) })),
+    });
     setSaving(false);
     if (ok) onClose();
   };
+
+  const validFixedPreview =
+    canEditFixedPrice && fixedPrice.trim() !== "" && Number.isFinite(Number(fixedPrice)) && Number(fixedPrice) >= 0
+      ? Math.round(Number(fixedPrice) * 100) / 100
+      : null;
 
   return (
     <Modal open={open} onClose={onClose} title={editing ? "تعديل منتج ثابت" : "منتج ثابت جديد"} description="التعديل لا يغيّر الأوردرات التي أُضيفت سابقاً" size="lg">
@@ -96,6 +114,24 @@ export function ProductEditorModal({ open, onClose, editing, items, categories, 
         <FieldWrap label="اسم المنتج (مثل: بوكس كبير)" htmlFor="sp-name" error={errors.name}>
           <Input id="sp-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} autoFocus />
         </FieldWrap>
+
+        {canEditFixedPrice && (
+          <FieldWrap label="سعر البوكس الثابت (ج.م) — يدوي" htmlFor="sp-fixed-price" error={errors.fixedPrice}>
+            <Input
+              id="sp-fixed-price"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step="any"
+              placeholder="مثال: 500"
+              value={fixedPrice}
+              onChange={(e) => setFixedPrice(e.target.value)}
+            />
+            <p className="mt-1 text-[11px] text-muted">
+              سعر ثابت مستقل عن أسعار المخزون (ليس مجموع أسعار المحتويات). يظهر تلقائياً عند اختيار البوكس في أوردرات الفتيات ويتغير فقط بسعر الإضافة أو الحذف عند تعديل المحتويات.
+            </p>
+          </FieldWrap>
+        )}
 
         <FieldWrap label="محتويات المنتج من المخزون" error={errors.rows}>
           {rows.length > 0 && (
@@ -195,11 +231,16 @@ export function ProductEditorModal({ open, onClose, editing, items, categories, 
         {!hideMoney && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-control border border-border px-4 py-2.5 text-sm">
           <span className="text-muted">
-            التكلفة (من سعر الوحدة): <strong className="text-text">{fmtMoney(totals.cost)}</strong>
+            تكلفة المحتويات (من المخزون): <strong className="text-text">{fmtMoney(totals.cost)}</strong>
           </span>
           <span className="text-muted">
-            سعر البيع (من المخزون): <strong className="text-primary-deep">{fmtMoney(totals.sell)}</strong>
+            سعر بيع المحتويات (من المخزون): <strong className="text-text">{fmtMoney(totals.sell)}</strong>
           </span>
+          {validFixedPreview !== null && (
+            <span className="text-muted">
+              السعر الثابت للبوكس: <strong className="text-primary-deep">{fmtMoney(validFixedPreview)}</strong>
+            </span>
+          )}
         </div>
         )}
 

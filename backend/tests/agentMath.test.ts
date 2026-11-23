@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commissionCents, generalAccounts, summarize, waybillNumber, waybillUpperBound, type AccountingRow } from "../src/utils/agentMath.ts";
+import { calcAdjustedBoxPriceCents, commissionCents, generalAccounts, summarize, waybillNumber, waybillUpperBound, type AccountingRow } from "../src/utils/agentMath.ts";
 
 const row = (o: Partial<AccountingRow>): AccountingRow => ({ agentStatus: "EXPORTED", salesStatus: "DELIVERED", returnFlagged: false, sellCents: 10000, shippingCents: 0, ...o });
 
@@ -79,5 +79,71 @@ describe("agentMath", () => {
     expect(gNeg.grandTotal).toBe(500);
     expect(gNeg.priceDiff).toBe(-50);
     expect(gNeg.priceDiffPercent).toBe(-10);
+  });
+  it("calcAdjustedBoxPriceCents: السعر الثابت + سعر الإضافة والحذف فقط (مستقل عن سعر المخزون ويُحصر عند ≥ 0)", () => {
+    const prices = new Map([
+      ["watch", { addPriceCents: 12000, removePriceCents: 9000 }],
+      ["perfume", { addPriceCents: 8000, removePriceCents: 5000 }],
+      ["rose", { addPriceCents: 2500, removePriceCents: 1500 }],
+      ["mug", { addPriceCents: 6500, removePriceCents: 4500 }],
+    ]);
+    const defaults = [
+      { itemId: "watch", quantity: 1 },
+      { itemId: "perfume", quantity: 1 },
+      { itemId: "rose", quantity: 2 },
+    ];
+    // 1. بدون تعديل = السعر الثابت تماماً
+    expect(calcAdjustedBoxPriceCents(50000, defaults, defaults, prices)).toEqual({
+      baseCents: 50000,
+      deltaCents: 0,
+      unitCents: 50000,
+    });
+    // 2. إضافة صنف جديد (مج × 2 = +130)، حذف عطر (-50)، إنقاص وردة (2 ← 1 = -15) => 500 + 65 = 565
+    expect(
+      calcAdjustedBoxPriceCents(
+        50000,
+        defaults,
+        [
+          { itemId: "watch", quantity: 1 },
+          { itemId: "rose", quantity: 1 },
+          { itemId: "mug", quantity: 2 },
+        ],
+        prices
+      )
+    ).toEqual({
+      baseCents: 50000,
+      deltaCents: 6500,
+      unitCents: 56500,
+    });
+    // 3. زيادة مكوّن افتراضي بكمية كسرية (+0.5 × 25 = +12.50)
+    expect(
+      calcAdjustedBoxPriceCents(
+        50000,
+        defaults,
+        [
+          { itemId: "watch", quantity: 1 },
+          { itemId: "perfume", quantity: 1 },
+          { itemId: "rose", quantity: 2.5 },
+        ],
+        prices
+      )
+    ).toEqual({
+      baseCents: 50000,
+      deltaCents: 1250,
+      unitCents: 51250,
+    });
+    // 4. إجمالي الخصومات يتجاوز السعر الثابت => يثبت عند صفر لا سالب
+    expect(
+      calcAdjustedBoxPriceCents(
+        10000,
+        defaults,
+        [{ itemId: "rose", quantity: 1 }],
+        prices
+      )
+    ).toEqual({
+      baseCents: 10000,
+      deltaCents: -15500,
+      unitCents: 0,
+    });
   });
 });

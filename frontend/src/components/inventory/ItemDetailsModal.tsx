@@ -147,6 +147,14 @@ export function ItemDetailsModal({
                     <span className="font-semibold text-text">{fmtMoney(item.sellPrice ?? 0)}</span>
                   </div>
                   <div>
+                    <span className="block text-xs text-muted">سعر الإضافة (للبوكس)</span>
+                    <span className="font-semibold text-text">{fmtMoney(item.addPrice ?? 0)}</span>
+                  </div>
+                  <div>
+                    <span className="block text-xs text-muted">سعر الحذف (للبوكس)</span>
+                    <span className="font-semibold text-text">{fmtMoney(item.removePrice ?? 0)}</span>
+                  </div>
+                  <div>
                     <span className="block text-xs text-muted">إجمالي القيمة</span>
                     <span className="text-base font-bold text-primary-deep">{fmtMoney(item.totalValue ?? 0)}</span>
                   </div>

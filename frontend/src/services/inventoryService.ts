@@ -81,6 +81,8 @@ export const inventoryService = {
       ...i,
       unitPrice: i.unitPrice ?? 0,
       sellPrice: i.sellPrice ?? 0,
+      addPrice: i.addPrice ?? 0,
+      removePrice: i.removePrice ?? 0,
       totalValue: i.totalValue ?? 0,
     }));
     const rawStats = invRes.stats ?? computeFallbackStats(items);
@@ -99,6 +101,8 @@ export const inventoryService = {
       ...i,
       unitPrice: i.unitPrice ?? 0,
       sellPrice: i.sellPrice ?? 0,
+      addPrice: i.addPrice ?? 0,
+      removePrice: i.removePrice ?? 0,
       totalValue: i.totalValue ?? 0,
       suggestedReorderQty: i.suggestedReorderQty ?? 0,
     }));
@@ -115,7 +119,15 @@ export const inventoryService = {
       api<{ categories: InventoryCategory[] }>("/inventory/categories"),
     ]);
     // الحقول المالية غائبة من رد «السحب فقط»؛ تُملأ بأصفار لإرضاء النوع ولا تُعرض في هذه الصفحة
-    const items = invRes.items.map((i) => ({ ...i, unitPrice: i.unitPrice ?? 0, sellPrice: i.sellPrice ?? 0, totalValue: i.totalValue ?? 0, suggestedReorderQty: i.suggestedReorderQty ?? 0 }));
+    const items = invRes.items.map((i) => ({
+      ...i,
+      unitPrice: i.unitPrice ?? 0,
+      sellPrice: i.sellPrice ?? 0,
+      addPrice: i.addPrice ?? 0,
+      removePrice: i.removePrice ?? 0,
+      totalValue: i.totalValue ?? 0,
+      suggestedReorderQty: i.suggestedReorderQty ?? 0,
+    }));
     return { items, categories: catRes.categories, groups: [], stats: EMPTY_INVENTORY_STATS, units: [...DEFAULT_INVENTORY_UNITS] };
   },
 

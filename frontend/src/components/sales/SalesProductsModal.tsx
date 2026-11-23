@@ -15,12 +15,14 @@ interface SalesProductsModalProps {
   onDelete: (product: SalesProduct) => void;
   /** صفحة الأوردرات: بدون تكلفة وسعر بيع */
   hideMoney?: boolean;
+  /** إظهار السعر الثابت للبوكس (للإدارة حتى في صفحة الأوردرات) */
+  showFixedPrice?: boolean;
   /** صلاحية تعديل/إيقاف/حذف المنتجات الثابتة الموجودة (الإدارة فقط) */
   canManageProducts?: boolean;
 }
 
 // إدارة المنتجات الثابتة (البوكسات): عرض محتوياتها وأسعارها، وتعديلها وإيقافها وحذفها.
-export function SalesProductsModal({ open, onClose, products, onCreate, onEdit, onToggleActive, onDelete, hideMoney, canManageProducts = true }: SalesProductsModalProps) {
+export function SalesProductsModal({ open, onClose, products, onCreate, onEdit, onToggleActive, onDelete, hideMoney, showFixedPrice = !hideMoney, canManageProducts = true }: SalesProductsModalProps) {
   return (
     <Modal open={open} onClose={onClose} title="المنتجات الثابتة" description="بوكسات بمحتويات ثابتة من المخزون؛ اضغط على أي منها عند إضافة أوردر" size="xl">
       <div className="mb-3 flex justify-end">
@@ -37,11 +39,14 @@ export function SalesProductsModal({ open, onClose, products, onCreate, onEdit, 
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-bold text-text">{p.name}</span>
                 {!p.isActive && <Badge>موقوف</Badge>}
+                {showFixedPrice && p.fixedPrice != null && (
+                  <Badge color="primary">السعر الثابت: {fmtMoney(p.fixedPrice)}</Badge>
+                )}
                 {hideMoney ? (
                   <span className="mr-auto" />
                 ) : (
                   <span className="mr-auto text-xs text-muted">
-                    التكلفة <strong className="text-text">{fmtMoney(p.costPerUnit ?? 0)}</strong> · البيع <strong className="text-primary-deep">{fmtMoney(p.sellPerUnit ?? 0)}</strong>
+                    التكلفة <strong className="text-text">{fmtMoney(p.costPerUnit ?? 0)}</strong> · المخزون <strong className="text-text">{fmtMoney(p.sellPerUnit ?? 0)}</strong>
                   </span>
                 )}
                 {canManageProducts && (

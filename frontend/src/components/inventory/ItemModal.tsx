@@ -64,6 +64,8 @@ export function ItemModal({
   const keepHiddenPrices = !!editing && hidePricePreview;
   const [unitPrice, setUnitPrice] = useState(keepHiddenPrices ? "" : String(editing?.unitPrice ?? 0));
   const [sellPrice, setSellPrice] = useState(keepHiddenPrices ? "" : String(editing?.sellPrice ?? 0));
+  const [addPrice, setAddPrice] = useState(hidePricePreview ? "" : String(editing?.addPrice ?? 0));
+  const [removePrice, setRemovePrice] = useState(hidePricePreview ? "" : String(editing?.removePrice ?? 0));
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [isActive, setIsActive] = useState(editing?.isActive ?? true);
 
@@ -150,6 +152,10 @@ export function ItemModal({
     if (!skipUnitPrice && (!Number.isFinite(priceN) || priceN < 0)) next.unitPrice = "أدخل سعراً صحيحاً (0 أو أكثر)";
     const sellN = toNum(sellPrice);
     if (!skipSellPrice && (!Number.isFinite(sellN) || sellN < 0)) next.sellPrice = "أدخل سعر بيع صحيحاً (0 أو أكثر)";
+    const addN = addPrice.trim() === "" ? 0 : toNum(addPrice);
+    const remN = removePrice.trim() === "" ? 0 : toNum(removePrice);
+    if (!hidePricePreview && (!Number.isFinite(addN) || addN < 0)) next.addPrice = "أدخل سعر إضافة صحيحاً (0 أو أكثر)";
+    if (!hidePricePreview && (!Number.isFinite(remN) || remN < 0)) next.removePrice = "أدخل سعر حذف صحيحاً (0 أو أكثر)";
     const initN = toNum(initial);
     if (!editing && (!Number.isFinite(initN) || initN < 0)) next.initial = "أدخل رقماً صحيحاً (0 أو أكثر)";
     setErrors(next);
@@ -164,6 +170,9 @@ export function ItemModal({
       minQuantity: minN,
       ...(skipUnitPrice ? {} : { unitPrice: priceN }),
       ...(skipSellPrice ? {} : { sellPrice: sellN }),
+      ...(!hidePricePreview
+        ? { addPrice: Math.round(addN * 100) / 100, removePrice: Math.round(remN * 100) / 100 }
+        : {}),
       notes: notes.trim(),
       ...(editing
         ? {
@@ -436,7 +445,43 @@ export function ItemModal({
             />
           </FieldWrap>
 
-          <FieldWrap label="9. الحد الأدنى للمخزون" htmlFor="inv-min" error={errors.min}>
+          {!hidePricePreview && (
+            <>
+              <FieldWrap label="9. سعر الإضافة للبوكس (ج.م)" htmlFor="inv-add-price" error={errors.addPrice}>
+                <Input
+                  id="inv-add-price"
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="any"
+                  value={addPrice}
+                  onChange={(e) => setAddPrice(e.target.value)}
+                  placeholder="0.00"
+                />
+                <p className="mt-1 text-[11px] text-muted">
+                  يُضاف إلى سعر البوكس الثابت عند إضافة أو زيادة هذا الصنف (مستقل عن سعر المخزون).
+                </p>
+              </FieldWrap>
+
+              <FieldWrap label="10. سعر الحذف من البوكس (ج.م)" htmlFor="inv-remove-price" error={errors.removePrice}>
+                <Input
+                  id="inv-remove-price"
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="any"
+                  value={removePrice}
+                  onChange={(e) => setRemovePrice(e.target.value)}
+                  placeholder="0.00"
+                />
+                <p className="mt-1 text-[11px] text-muted">
+                  يُخصم من سعر البوكس الثابت عند حذف أو إنقاص هذا الصنف (مستقل عن سعر المخزون).
+                </p>
+              </FieldWrap>
+            </>
+          )}
+
+          <FieldWrap label={!hidePricePreview ? "11. الحد الأدنى للمخزون" : "9. الحد الأدنى للمخزون"} htmlFor="inv-min" error={errors.min}>
             <Input
               id="inv-min"
               type="number"
@@ -459,7 +504,7 @@ export function ItemModal({
           </div>
         )}
 
-        <FieldWrap label="10. ملاحظات" htmlFor="inv-notes">
+        <FieldWrap label={!hidePricePreview ? "12. ملاحظات" : "10. ملاحظات"} htmlFor="inv-notes">
           <Textarea id="inv-notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={1000} placeholder="أي تفاصيل أو مواصفات إضافية للمنتج..." />
         </FieldWrap>
 

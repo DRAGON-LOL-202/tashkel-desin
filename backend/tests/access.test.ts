@@ -103,7 +103,7 @@ describe("تعبئة/مشغل: الترشيح بالمجموعات الرئيس�
     expect(r.body.items.map((i: any) => i.id)).toEqual([itemA]);
     expect(r.body.stats).toBeUndefined();
     const it0 = r.body.items[0];
-    for (const k of ["unitPrice", "totalValue", "suggestedReorderQty"]) expect(it0).not.toHaveProperty(k);
+    for (const k of ["unitPrice", "sellPrice", "addPrice", "removePrice", "totalValue", "suggestedReorderQty"]) expect(it0).not.toHaveProperty(k);
     const c = await api(packer).get("/api/inventory/categories");
     expect(c.body.categories.map((x: any) => x.id)).toEqual([catA]);
     const o = await api(operator).get("/api/inventory");
@@ -235,6 +235,8 @@ describe("المصمم: مستوى الوصول للمخزون", () => {
     expect(list.body.items.length).toBe(2);
     expect(list.body.stats).toBeUndefined();
     expect(list.body.items[0]).not.toHaveProperty("unitPrice");
+    expect(list.body.items[0]).not.toHaveProperty("addPrice");
+    expect(list.body.items[0]).not.toHaveProperty("removePrice");
     const cats = (await api(d.token).get("/api/inventory/categories")).body.categories.map((c: any) => c.id);
     expect(cats).toEqual(expect.arrayContaining([catA, catB]));
     expect((await withdraw(d.token, [{ itemId: itemA, quantity: 1 }, { itemId: itemB, quantity: 1 }])).status).toBe(201);

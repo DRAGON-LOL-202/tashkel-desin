@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { round3 } from "./inventory.js";
+import { round2, round3 } from "./inventory.js";
 
 export const SALES_ORDER_STATUSES = ["REGISTERED", "EXECUTED", "SHIPPED", "DELIVERED", "RETURNED"] as const;
 
@@ -33,8 +33,17 @@ const components = z
     return [...merged].map(([itemId, quantity]) => ({ itemId, quantity }));
   });
 
+const fixedPrice = z
+  .number({ message: "سعر البوكس الثابت يجب أن يكون رقماً" })
+  .finite()
+  .min(0, "سعر البوكس الثابت لا يمكن أن يكون سالباً")
+  .max(10_000_000, "سعر البوكس الثابت كبير جداً")
+  .transform(round2)
+  .nullable();
+
 export const createProductSchema = z.object({
   name,
+  fixedPrice: fixedPrice.optional(),
   notes: notes.default(""),
   components,
 });
@@ -42,6 +51,7 @@ export const createProductSchema = z.object({
 export const updateProductSchema = z
   .object({
     name: name.optional(),
+    fixedPrice: fixedPrice.optional(),
     notes: notes.optional(),
     isActive: z.boolean().optional(),
     components: components.optional(),

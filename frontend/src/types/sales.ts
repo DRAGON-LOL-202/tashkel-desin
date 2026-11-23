@@ -22,6 +22,8 @@ export interface SalesComponent {
 export interface SalesProduct {
   id: string;
   name: string;
+  /** سعر البوكس الثابت اليدوي (ج.م) — مستقل عن أسعار المخزون؛ يُحجب عن أدوار المبيعات المقيدة */
+  fixedPrice?: number | null;
   notes: string;
   isActive: boolean;
   components: SalesComponent[];
@@ -95,6 +97,7 @@ export interface SalesOrder {
 
 export interface SalesProductInput {
   name: string;
+  fixedPrice?: number | null;
   notes?: string;
   isActive?: boolean;
   components: { itemId: string; quantity: number }[];

@@ -12,6 +12,54 @@ export const toCents = (n: number | string | { toString(): string } | null | und
 export const fromCents = (c: number) => Math.round(c) / 100;
 export const centsToDecimalString = (c: number) => (Math.round(c) / 100).toFixed(2);
 
+export interface ComponentQtyLike {
+  itemId: string;
+  quantity: number | string | { toString(): string };
+}
+
+export interface ItemAdjustPriceCents {
+  addPriceCents: number;
+  removePriceCents: number;
+}
+
+/**
+ * حساب سعر البوكس تلقائياً بالقروش انطلاقاً من «السعر الثابت اليدوي» مع تطبيق
+ * «سعر الإضافة» عند زيادة/إضافة صنف و«سعر الحذف» عند إنقاص/حذف صنف (مستقل عن أسعار المخزون).
+ */
+export function calcAdjustedBoxPriceCents(
+  fixedPriceCents: number,
+  defaultComponents: ComponentQtyLike[],
+  selectedComponents: ComponentQtyLike[],
+  itemAdjustPrices: ReadonlyMap<string, ItemAdjustPriceCents>
+): { baseCents: number; deltaCents: number; unitCents: number } {
+  const defMilli = new Map<string, number>();
+  for (const c of defaultComponents) {
+    defMilli.set(c.itemId, (defMilli.get(c.itemId) ?? 0) + Math.round(Number(c.quantity.toString()) * 1000));
+  }
+  const selMilli = new Map<string, number>();
+  for (const c of selectedComponents) {
+    selMilli.set(c.itemId, (selMilli.get(c.itemId) ?? 0) + Math.round(Number(c.quantity.toString()) * 1000));
+  }
+  const allIds = new Set([...defMilli.keys(), ...selMilli.keys()]);
+  let deltaCents = 0;
+  for (const itemId of allIds) {
+    const diffMilli = (selMilli.get(itemId) ?? 0) - (defMilli.get(itemId) ?? 0);
+    if (diffMilli === 0) continue;
+    const prices = itemAdjustPrices.get(itemId);
+    if (!prices) continue;
+    if (diffMilli > 0) {
+      deltaCents += Math.round((diffMilli * prices.addPriceCents) / 1000);
+    } else {
+      deltaCents -= Math.round(((-diffMilli) * prices.removePriceCents) / 1000);
+    }
+  }
+  return {
+    baseCents: fixedPriceCents,
+    deltaCents,
+    unitCents: Math.max(0, fixedPriceCents + deltaCents),
+  };
+}
+
 export const FIXED_FEE_CENTS = 700; // 7 جنيه لكل أوردر مسلَّم
 /** العمولة 3% من مجموع سعر البيع (بالقروش) مقرَّبة لأقرب قرش (النصف لأعلى) على المجموع لا على كل أوردر */
 export const commissionCents = (salesCents: number) => Math.floor((salesCents * 3 + 50) / 100);

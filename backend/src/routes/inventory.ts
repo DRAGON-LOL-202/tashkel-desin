@@ -131,10 +131,10 @@ function stripMovementPrices<T extends { unitPriceSnapshot: number; movementValu
 }
 
 /** صنف بلا أسعار ولا إجمالي قيمة (لأدوار المبيعات) */
-function stripItemPrices<T extends { unitPrice: number; sellPrice: number; totalValue: number }>(
+function stripItemPrices<T extends { unitPrice: number; sellPrice: number; addPrice: number; removePrice: number; totalValue: number }>(
   item: T
-): Omit<T, "unitPrice" | "sellPrice" | "totalValue"> {
-  const { unitPrice: _p, sellPrice: _s, totalValue: _v, ...rest } = item;
+): Omit<T, "unitPrice" | "sellPrice" | "addPrice" | "removePrice" | "totalValue"> {
+  const { unitPrice: _p, sellPrice: _s, addPrice: _a, removePrice: _rm, totalValue: _v, ...rest } = item;
   return rest;
 }
 
@@ -204,7 +204,7 @@ inventoryRouter.get(
 
     if (withdrawOnly) {
       // لا أسعار ولا قيمة ولا اقتراح إعادة طلب في ردود «السحب فقط»
-      res.json({ items: rows.map(({ unitPrice: _p, sellPrice: _s, totalValue: _v, suggestedReorderQty: _r, ...rest }) => rest) });
+      res.json({ items: rows.map(({ unitPrice: _p, sellPrice: _s, addPrice: _a, removePrice: _rm, totalValue: _v, suggestedReorderQty: _r, ...rest }) => rest) });
       return;
     }
     if (hidePrices) {
@@ -552,6 +552,9 @@ inventoryRouter.post(
   "/",
   requireStaffOrSupervisor,
   asyncHandler(async (req, res) => {
+    if (!isStaff(req.user!) && typeof req.body === "object" && req.body !== null && !Array.isArray(req.body) && ("addPrice" in req.body || "removePrice" in req.body)) {
+      throw forbidden("تحديد سعر الإضافة والحذف متاح للإدارة فقط");
+    }
     const body = createItemSchema.parse(req.body);
     await assertCategoryExists(body.categoryId);
     await assertAttachmentsAllowed(req.user!.id, "inventory", body.attachments, []);
@@ -569,6 +572,8 @@ inventoryRouter.post(
             quantity: body.initialQuantity,
             unitPrice: body.unitPrice,
             sellPrice: body.sellPrice,
+            addPrice: body.addPrice,
+            removePrice: body.removePrice,
             notes: body.notes,
           },
         });
@@ -620,6 +625,9 @@ inventoryRouter.patch(
   "/:id",
   requireStaffOrSupervisor,
   asyncHandler(async (req, res) => {
+    if (!isStaff(req.user!) && typeof req.body === "object" && req.body !== null && !Array.isArray(req.body) && ("addPrice" in req.body || "removePrice" in req.body)) {
+      throw forbidden("تحديد سعر الإضافة والحذف متاح للإدارة فقط");
+    }
     const existing = await getItem(req.params.id);
     const body = updateItemSchema.parse(req.body);
     if (body.categoryId !== undefined) await assertCategoryExists(body.categoryId);
@@ -636,6 +644,8 @@ inventoryRouter.patch(
           ...(body.minQuantity !== undefined ? { minQuantity: body.minQuantity } : {}),
           ...(body.unitPrice !== undefined ? { unitPrice: body.unitPrice } : {}),
           ...(body.sellPrice !== undefined ? { sellPrice: body.sellPrice } : {}),
+          ...(body.addPrice !== undefined ? { addPrice: body.addPrice } : {}),
+          ...(body.removePrice !== undefined ? { removePrice: body.removePrice } : {}),
           ...(body.notes !== undefined ? { notes: body.notes } : {}),
           ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
         },

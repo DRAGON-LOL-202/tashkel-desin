@@ -90,6 +90,7 @@ export function serializeSalesProduct(p: SalesProductRow, opts?: { hideMoney?: b
   return {
     id: p.id,
     name: p.name,
+    fixedPrice: p.fixedPrice === null ? null : num2(p.fixedPrice),
     notes: p.notes,
     isActive: p.isActive,
     components: rawComponents,

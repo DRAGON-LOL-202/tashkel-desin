@@ -460,16 +460,18 @@ describe("تعديل محتويات البوكس داخل أوردر الفتا�
     expect(so.lines[0].components).toHaveLength(1);
   });
 
-  it("مساران جديدان للفتاة فقط: /products بمحتوياتها و/items بلا أسعار، ولا يصل لهما غير الفتاة", async () => {
+  it("مساران جديدان للفتاة فقط: /products بمحتوياتها و/items بلا أسعار مخزون، ولا يصل لهما غير الفتاة", async () => {
     const p = await api(ag1).get("/api/agent/products");
     expect(p.status).toBe(200);
     const b = p.body.products.find((x: { id: string }) => x.id === box.id);
-    expect(b.components[0]).toEqual({ itemId: watch.id, itemName: "ساعة", unit: "قطعة", quantity: 1 });
+    expect(b.fixedPrice).toBeNull();
+    expect(b.components[0]).toEqual({ itemId: watch.id, itemName: "ساعة", unit: "قطعة", quantity: 1, addPrice: 0, removePrice: 0 });
     const it = await api(ag1).get("/api/agent/items");
     expect(it.status).toBe(200);
     expect(it.body.items.some((x: { id: string }) => x.id === retired.id)).toBe(false); // المؤرشف لا يظهر
-    expect(Object.keys(it.body.items[0]).sort()).toEqual(["id", "name", "unit"]);
-    expect(JSON.stringify(p.body)).not.toMatch(/unitPrice|sellPrice|quantity":\d+,"available/);
+    expect(Object.keys(it.body.items[0]).sort()).toEqual(["addPrice", "id", "name", "removePrice", "unit"]);
+    expect(JSON.stringify(p.body)).not.toMatch(/unitPrice|sellPrice|costPerUnit|sellPerUnit|unitCost|unitSell|available/);
+    expect(JSON.stringify(it.body)).not.toMatch(/unitPrice|sellPrice|costPerUnit|sellPerUnit|unitCost|unitSell|available/);
     for (const t of [acct, sup, edit]) {
       expect((await api(t).get("/api/agent/items")).status).toBe(403);
     }
@@ -604,5 +606,128 @@ describe("سعر كل بوكس من الفتاة + مصاريف الشحن + ا�
     expect(await stock()).toBe(sBefore);
     expect(await prisma().salesOrder.findUnique({ where: { id: soId } })).toBeNull();
     expect(await prisma().agentOrder.findUnique({ where: { id: ord.id } })).toBeNull();
+  });
+
+  it("السعر التلقائي للبوكس الثابت + سعر الإضافة والحذف فقط (يتجاهل أي سعر مرسل من الفتاة ولا يعتمد على أسعار المخزون)", async () => {
+    const agAuto = await makeUser("ag_fixed_auto", "SALES_AGENT");
+    await api(admin).put(`/api/sales-agents/${agAuto.id}/prefix`).send({ prefix: 960 });
+    const agTok = await login("ag_fixed_auto");
+
+    const cat = (await prisma().inventoryCategory.findFirstOrThrow()).id;
+    const mkAdjItem = async (name: string, unitPrice: number, sellPrice: number, addPrice: number, removePrice: number) =>
+      (await api(admin).post("/api/inventory").send({ unit: "قطعة", categoryId: cat, name, initialQuantity: 100, unitPrice, sellPrice, addPrice, removePrice })).body.item;
+
+    // أسعار التكلفة/البيع بالمخزون مختلفة عمداً عن أسعار الإضافة والحذف وعن سعر البوكس الثابت
+    const iWatch = await mkAdjItem("ساعة ثابتة", 100, 180, 120, 90);
+    const iPerfume = await mkAdjItem("عطر ثابت", 60, 110, 80, 50);
+    const iRose = await mkAdjItem("وردة ثابتة", 10, 20, 25, 15);
+    const iMug = await mkAdjItem("مج ثابت", 40, 70, 65, 45);
+
+    const fixedBoxRes = await api(admin).post("/api/sales/products").send({
+      name: "بوكس هدية ثابت",
+      fixedPrice: 500, // مجموع بيع المخزون = 180 + 110 + 40 = 330؛ السعر الثابت اليدوي = 500
+      components: [
+        { itemId: iWatch.id, quantity: 1 },
+        { itemId: iPerfume.id, quantity: 1 },
+        { itemId: iRose.id, quantity: 2 },
+      ],
+    });
+    expect(fixedBoxRes.status).toBe(201);
+    const fixedBox = fixedBoxRes.body.product;
+    expect(fixedBox.fixedPrice).toBe(500);
+    expect(fixedBox.sellPerUnit).toBe(330);
+
+    // 1. مسار /api/agent/products يكشف السعر الثابت وأسعار الإضافة/الحذف فقط دون تكلفة أو سعر بيع مخزون
+    const agentProds = await api(agTok).get("/api/agent/products");
+    expect(agentProds.status).toBe(200);
+    const ap = agentProds.body.products.find((p: { id: string }) => p.id === fixedBox.id);
+    expect(ap.fixedPrice).toBe(500);
+    expect(ap.components.find((c: { itemId: string }) => c.itemId === iPerfume.id)).toMatchObject({ addPrice: 80, removePrice: 50 });
+    expect(JSON.stringify(agentProds.body)).not.toMatch(/unitPrice|sellPrice|costPerUnit|sellPerUnit|unitCost|unitSell|available/);
+
+    // 2. الفتاة تختار البوكس بلا إرسال boxPrice → يُحسب تلقائياً 500
+    const D3 = "2026-11-24";
+    const o1 = await api(agTok).post("/api/agent/orders").send({
+      date: D3,
+      customerName: "نور الهدى",
+      lines: [{ productId: fixedBox.id, quantity: 1 }],
+    });
+    expect(o1.status).toBe(201);
+    expect(o1.body.order.sellPrice).toBe(500);
+    expect(o1.body.order.lines[0]).toMatchObject({ boxPrice: 500, lineTotal: 500 });
+
+    // 3. لو أرسلت الفتاة سعراً مزيفاً boxPrice: 1 على بوكس بسعر ثابت ← السيرفر يتجاهله ويفرض 500
+    const spoofed = await api(agTok).post("/api/agent/orders").send({
+      date: D3,
+      customerName: "محاولة تعديل يدوي",
+      lines: [{ productId: fixedBox.id, quantity: 1, boxPrice: 1 }],
+    });
+    expect(spoofed.status).toBe(201);
+    expect(spoofed.body.order.sellPrice).toBe(500);
+    expect(spoofed.body.order.lines[0].boxPrice).toBe(500);
+
+    // 4. تعديل المحتويات: حذف عطر (-50)، إنقاص الورد 2 ← 1 (-15)، إضافة مج × 2 (+130)
+    // النتيجة = 500 - 50 - 15 + 130 = 565 (وليس مجموع المخزون!)
+    const edited = await api(agTok).patch(`/api/agent/orders/${o1.body.order.id}`).send({
+      shippingPrice: 70,
+      lines: [
+        {
+          productId: fixedBox.id,
+          quantity: 1,
+          boxPrice: 999, // يُتجاهل دائماً للبوكس الثابت
+          components: [
+            { itemId: iWatch.id, quantity: 1 },
+            { itemId: iRose.id, quantity: 1 },
+            { itemId: iMug.id, quantity: 2 },
+          ],
+        },
+      ],
+    });
+    expect(edited.status).toBe(200);
+    expect(edited.body.order.sellPrice).toBe(565);
+    expect(edited.body.order.totalWithShipping).toBe(635);
+    expect(edited.body.order.lines[0]).toMatchObject({ boxPrice: 565, lineTotal: 565 });
+
+    // 5. أوردر بكمية 2 بوكس معدّل ومضروب × 2 ← 565 × 2 = 1130، وحذف كل المكونات تقريباً يثبت السعر عند >= 0
+    const cheapFixed = (
+      await api(admin).post("/api/sales/products").send({
+        name: "بوكس منخفض",
+        fixedPrice: 50,
+        components: [
+          { itemId: iWatch.id, quantity: 1 }, // removePrice 90
+          { itemId: iRose.id, quantity: 1 }, // removePrice 15
+        ],
+      })
+    ).body.product;
+    const clamped = await api(agTok).post("/api/agent/orders").send({
+      date: D3,
+      customerName: "سقف الصفر",
+      lines: [{ productId: cheapFixed.id, quantity: 1, components: [{ itemId: iRose.id, quantity: 1 }] }],
+    });
+    expect(clamped.status).toBe(201);
+    expect(clamped.body.order.sellPrice).toBe(0); // 50 - 90 = -40 => 0
+
+    // 6. تصدير وتنفيذ وتسليم الأوردر المعدّل + شحن 70 => الحسابات العامة ومتابعة المحاسب متطابقتان تماماً
+    expect((await exportIds(agTok, [o1.body.order.id])).status).toBe(200);
+    const soId = await salesOrderOf(o1.body.order.id);
+    expect((await execute(soId)).status).toBe(200);
+    expect((await acctStatus(soId, "DELIVERED")).status).toBe(200);
+
+    const savedSo = await prisma().salesOrder.findUniqueOrThrow({ where: { id: soId }, include: { lines: true } });
+    expect(Number(savedSo.agentSellPrice)).toBe(565);
+    expect(Number(savedSo.lines[0].boxPrice)).toBe(565);
+
+    const gen = (await api(acct).get(`/api/accounting/general?from=${D3}&to=${D3}`)).body.general;
+    // سعر الخروج من المخزون للمحتويات المعدّلة (ساعة 180 + وردة 20 + مج ×2 = 140) = 340
+    expect(gen.deliveredCount).toBe(1);
+    expect(gen.deliveredSales).toBe(340);
+    expect(gen.deliveredExitPrice).toBe(565);
+    expect(gen.totalShipping).toBe(70);
+    expect(gen.grandTotal).toBe(635);
+    expect(gen.priceDiff).toBe(225);
+
+    const follow = await api(acct).get(`/api/accounting/orders?from=${D3}&to=${D3}`);
+    expect(follow.status).toBe(200);
+    expect(JSON.stringify(follow.body)).not.toMatch(/unitCost|unitPrice|unitSell|costTotal|profit|available/);
   });
 });

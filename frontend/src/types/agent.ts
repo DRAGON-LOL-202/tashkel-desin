@@ -14,18 +14,27 @@ export interface AgentComponent {
   quantity: number;
 }
 
+export interface AgentProductComponent extends AgentComponent {
+  addPrice: number;
+  removePrice: number;
+}
+
 export interface AgentProduct {
   id: string;
   name: string;
+  /** السعر الثابت اليدوي للبوكس (إن وُجد يُحسب سعر الأوردر تلقائياً منه ومن إضافات/حذوفات المحتويات) */
+  fixedPrice: number | null;
   /** محتويات المنتج الثابت الافتراضية */
-  components: AgentComponent[];
+  components: AgentProductComponent[];
 }
 
-/** صنف مخزون يمكن إضافته إلى محتويات بوكس (اسم ووحدة فقط) */
+/** صنف مخزون يمكن إضافته إلى محتويات بوكس (اسم ووحدة وأسعار إضافة/حذف فقط) */
 export interface AgentItem {
   id: string;
   name: string;
   unit: string;
+  addPrice: number;
+  removePrice: number;
 }
 
 export interface AgentOrderLine {

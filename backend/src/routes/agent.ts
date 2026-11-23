@@ -4,9 +4,9 @@ import { prisma } from "../db.js";
 import { requireAuth, requireRole, requireStaff } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { badRequest, conflict, notFound } from "../utils/httpError.js";
-import { BUCKETS, centsToDecimalString, fromCents, matchesBucket, summarize, toCents, waybillNumber, waybillUpperBound, type AccountingRow, type Bucket } from "../utils/agentMath.js";
+import { BUCKETS, calcAdjustedBoxPriceCents, centsToDecimalString, fromCents, matchesBucket, summarize, toCents, waybillNumber, waybillUpperBound, type AccountingRow, type Bucket } from "../utils/agentMath.js";
 import { itemSelect, orderSellCents } from "../utils/salesSerialize.js";
-import { num3 } from "../utils/inventorySerialize.js";
+import { num2, num3 } from "../utils/inventorySerialize.js";
 import { cancelOrderSchema, createAgentOrderSchema, exportOrdersSchema, setPrefixSchema, updateAgentOrderSchema } from "../validators/agent.js";
 
 // نظام أوردرات الفتيات — مساحة الفتاة. كل استعلام هنا مقيَّد بـ agentId = المستخدم الحالي من التوكن (لا يُقبل معرّف فتاة من الجسم/المسار)،
@@ -130,9 +130,11 @@ export const toAccountingRow = (o: AccountingSourceRow): AccountingRow => ({
   shippingCents: 0, // سعر شحن المحاسبة يُحسب من جدول المبيعات لا من مساحة الفتاة
 });
 
+const agentItemSelect = { ...itemSelect, addPrice: true, removePrice: true } as const;
+
 async function loadActiveProducts(db: Pick<Tx, "salesProduct">, rawProductIds: string[]) {
   const productIds = [...new Set(rawProductIds)]; // نفس البوكس قد يظهر في أكثر من بند بمحتويات مختلفة
-  const products = await db.salesProduct.findMany({ where: { id: { in: productIds } }, include: { components: { include: { item: { select: itemSelect } } } } });
+  const products = await db.salesProduct.findMany({ where: { id: { in: productIds } }, include: { components: { include: { item: { select: agentItemSelect } } } } });
   if (products.length !== productIds.length) throw notFound("أحد المنتجات غير موجود");
   for (const p of products) {
     if (!p.isActive) throw badRequest(`«${p.name}» غير مفعّل`);
@@ -142,7 +144,7 @@ async function loadActiveProducts(db: Pick<Tx, "salesProduct">, rawProductIds: s
 }
 
 type LoadedProducts = Awaited<ReturnType<typeof loadActiveProducts>>;
-type ItemRow = Prisma.InventoryItemGetPayload<{ select: typeof itemSelect }>;
+type ItemRow = Prisma.InventoryItemGetPayload<{ select: typeof agentItemSelect }>;
 interface ResolvedLine {
   productId: string;
   productName: string;
@@ -175,9 +177,17 @@ const resolvedExitCents = (lines: { quantity: number; boxPrice: number | null; c
  */
 async function resolveLines(tx: Tx, products: LoadedProducts, input: LineInput[]) {
   const wanted = new Set<string>();
-  for (const l of input) for (const c of l.components ?? products.get(l.productId)!.components) wanted.add(c.itemId);
-  const rows = await tx.inventoryItem.findMany({ where: { id: { in: [...wanted] } }, select: itemSelect });
+  for (const l of input) {
+    const p = products.get(l.productId)!;
+    // تحميل مكونات المنتج الثابت الأصلية ومكونات السطر المختارة معاً حتى لا يُفقد removePrice عند حذف صنف
+    for (const c of p.components) wanted.add(c.itemId);
+    if (l.components) for (const c of l.components) wanted.add(c.itemId);
+  }
+  const rows = await tx.inventoryItem.findMany({ where: { id: { in: [...wanted] } }, select: agentItemSelect });
   const items = new Map(rows.map((i) => [i.id, i]));
+  const adjustPrices = new Map(
+    rows.map((i) => [i.id, { addPriceCents: toCents(i.addPrice), removePriceCents: toCents(i.removePrice) }])
+  );
   const lines: ResolvedLine[] = input.map((l) => {
     const p = products.get(l.productId)!;
     const components: ResolvedLine["components"] = l.components
@@ -189,7 +199,15 @@ async function resolveLines(tx: Tx, products: LoadedProducts, input: LineInput[]
       // الأصناف المؤرشفة تُرفض فقط إذا أضافتها الفتاة؛ نسخة المنتج الثابت الأصلية تمر كما كانت
       if (l.components && !item.isActive) throw badRequest(`الصنف «${item.name}» غير مفعّل`);
     }
-    return { productId: p.id, productName: p.name, quantity: l.quantity, boxPrice: l.boxPrice ?? null, components };
+    let boxPrice: number | null;
+    if (p.fixedPrice !== null) {
+      // السعر الثابت مفعّل: السيرفر هو المرجع الوحيد ويتجاهل أي سعر مرسل من العميل
+      const calc = calcAdjustedBoxPriceCents(toCents(p.fixedPrice), p.components, components, adjustPrices);
+      boxPrice = fromCents(calc.unitCents);
+    } else {
+      boxPrice = l.boxPrice ?? null;
+    }
+    return { productId: p.id, productName: p.name, quantity: l.quantity, boxPrice, components };
   });
   return { lines, items, sellCents: resolvedExitCents(lines, items) };
 }
@@ -252,31 +270,59 @@ agentRouter.get(
   })
 );
 
-// البوكسات المتاحة للاختيار: الاسم ومحتوياته (صنف + كمية) لتعديلها؛ بلا أي سعر ولا رصيد مخزون
+// البوكسات المتاحة للاختيار: الاسم والسعر الثابت ومحتوياته (صنف + كمية + أسعار الإضافة والحذف)؛ بلا تكلفة ولا سعر مخزون ولا رصيد مخزون
 agentRouter.get(
   "/products",
   asyncHandler(async (_req, res) => {
     const products = await prisma().salesProduct.findMany({
       where: { isActive: true, components: { some: {} } },
       orderBy: { name: "asc" },
-      select: { id: true, name: true, components: { orderBy: { id: "asc" }, select: { itemId: true, quantity: true, item: { select: { name: true, unit: true } } } } },
+      select: {
+        id: true,
+        name: true,
+        fixedPrice: true,
+        components: {
+          orderBy: { id: "asc" },
+          select: { itemId: true, quantity: true, item: { select: { name: true, unit: true, addPrice: true, removePrice: true } } },
+        },
+      },
     });
     res.json({
       products: products.map((p) => ({
         id: p.id,
         name: p.name,
-        components: p.components.map((c) => ({ itemId: c.itemId, itemName: c.item.name, unit: c.item.unit, quantity: num3(c.quantity) })),
+        fixedPrice: p.fixedPrice === null ? null : num2(p.fixedPrice),
+        components: p.components.map((c) => ({
+          itemId: c.itemId,
+          itemName: c.item.name,
+          unit: c.item.unit,
+          quantity: num3(c.quantity),
+          addPrice: num2(c.item.addPrice),
+          removePrice: num2(c.item.removePrice),
+        })),
       })),
     });
   })
 );
 
-// أصناف المخزون المفعّلة لإضافتها إلى محتويات بوكس (الاسم والوحدة فقط: بلا أسعار ولا أرصدة)
+// أصناف المخزون المفعّلة لإضافتها إلى محتويات بوكس (الاسم والوحدة وأسعار الإضافة/الحذف فقط: بلا تكلفة ولا سعر مخزون ولا أرصدة)
 agentRouter.get(
   "/items",
   asyncHandler(async (_req, res) => {
-    const items = await prisma().inventoryItem.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, unit: true } });
-    res.json({ items });
+    const items = await prisma().inventoryItem.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, unit: true, addPrice: true, removePrice: true },
+    });
+    res.json({
+      items: items.map((i) => ({
+        id: i.id,
+        name: i.name,
+        unit: i.unit,
+        addPrice: num2(i.addPrice),
+        removePrice: num2(i.removePrice),
+      })),
+    });
   })
 );
 

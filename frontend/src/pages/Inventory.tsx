@@ -495,6 +495,8 @@ export default function InventoryPage() {
                       <>
                         <th className="px-3 py-3 font-medium">سعر الوحدة</th>
                         <th className="px-3 py-3 font-medium">سعر البيع</th>
+                        <th className="px-3 py-3 font-medium">سعر الإضافة</th>
+                        <th className="px-3 py-3 font-medium">سعر الحذف</th>
                         <th className="px-3 py-3 font-medium">إجمالي القيمة</th>
                       </>
                     )}
@@ -550,6 +552,10 @@ export default function InventoryPage() {
                             <td className="px-3 py-2.5 text-text">{fmtMoney(i.unitPrice ?? 0)}</td>
 
                             <td className="px-3 py-2.5 text-text">{fmtMoney(i.sellPrice ?? 0)}</td>
+
+                            <td className="px-3 py-2.5 text-text">{fmtMoney(i.addPrice ?? 0)}</td>
+
+                            <td className="px-3 py-2.5 text-text">{fmtMoney(i.removePrice ?? 0)}</td>
 
                             <td className="px-3 py-2.5 font-bold text-primary-deep">{fmtMoney(itemTotalValue)}</td>
                           </>

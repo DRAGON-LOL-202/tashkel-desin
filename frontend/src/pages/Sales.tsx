@@ -462,6 +462,7 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
       {canEditSalesOrders && (
         <SalesProductsModal
           hideMoney={ordersOnly}
+          showFixedPrice={isStaff}
           canManageProducts={canManageSalesProducts}
           open={productsOpen}
           onClose={() => setProductsOpen(false)}
@@ -473,7 +474,19 @@ export function SalesView({ ordersOnly = false }: { ordersOnly?: boolean }) {
         />
       )}
 
-      {editor && <ProductEditorModal key={editor.editing?.id ?? "new"} open onClose={() => setEditor(null)} editing={editor.editing} items={activeItems} categories={stock.data.categories} onSubmit={submitProduct} hideMoney={ordersOnly} />}
+      {editor && (
+        <ProductEditorModal
+          key={editor.editing?.id ?? "new"}
+          open
+          onClose={() => setEditor(null)}
+          editing={editor.editing}
+          items={activeItems}
+          categories={stock.data.categories}
+          onSubmit={submitProduct}
+          hideMoney={ordersOnly}
+          canEditFixedPrice={isStaff}
+        />
+      )}
 
       <ConfirmDialog
         open={!!deletingOrder}

@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Minus, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
 import { FieldWrap, Input, Select, Textarea } from "../ui/Field";
-import { fmtMoney } from "../inventory/format";
+import { fmtMoney, fmtQty } from "../inventory/format";
+import { calcAdjustedBoxPrice } from "../../lib/boxPricing";
 import { todayISO } from "../../lib/date";
 import type { AgentComponent, AgentItem, AgentOrder, AgentOrderInput, AgentProduct } from "../../types";
 
@@ -11,7 +12,7 @@ interface AgentOrderModalProps {
   open: boolean;
   onClose: () => void;
   products: AgentProduct[];
-  /** أصناف المخزون المتاحة لإضافتها إلى محتويات البوكس (اسم ووحدة فقط) */
+  /** أصناف المخزون المتاحة لإضافتها إلى محتويات البوكس (الاسم والوحدة وأسعار الإضافة/الحذف فقط) */
   items: AgentItem[];
   /** عند وجوده: تعديل مسودة */
   editing?: AgentOrder;
@@ -32,9 +33,8 @@ interface LineDraft {
   key: number;
   productId: string;
   quantity: string;
-  boxPrice: string;
-  /** مسودة قديمة بلا سعر بوكس صريح: يمكن تركها فارغة إذا لم تُدخل سعراً */
-  allowAutoPrice: boolean;
+  /** محفوظ فقط عند تعديل مسودة قديمة لبوكس بلا سعر ثابت */
+  legacyBoxPrice: number | null;
   /** محتويات البوكس القابلة للتعديل (للوحدة الواحدة) */
   components: CompDraft[];
   open: boolean;
@@ -57,13 +57,12 @@ let lineKey = 0;
 const newLine = (
   productId = "",
   quantity = "1",
-  boxPrice = "",
-  allowAutoPrice = false,
+  legacyBoxPrice: number | null = null,
   components: CompDraft[] = [],
   open = false
-): LineDraft => ({ key: ++lineKey, productId, quantity, boxPrice, allowAutoPrice, components, open, itemQuery: "" });
+): LineDraft => ({ key: ++lineKey, productId, quantity, legacyBoxPrice, components, open, itemQuery: "" });
 
-// نموذج الفاتورة للفتاة: التاريخ، اسم العميل، العنوان، التليفون، الصنف، الكمية، سعر البوكس، مصاريف الشحن، والملاحظات.
+// نموذج الفاتورة للفتاة: التاريخ، العميل، الصنف، الكمية، والسعر يُحسب تلقائياً من السعر الثابت + أسعار الإضافة والحذف (غير قابل للتعديل يدوياً).
 export function AgentOrderModal({ open, onClose, products, items, editing, nextWaybill, onSubmit }: AgentOrderModalProps) {
   const [date, setDate] = useState(editing?.date ?? todayISO());
   const [customerName, setCustomerName] = useState(editing?.customerName ?? "");
@@ -73,17 +72,29 @@ export function AgentOrderModal({ open, onClose, products, items, editing, nextW
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [lines, setLines] = useState<LineDraft[]>(() =>
     editing && editing.lines.length > 0
-      ? editing.lines.map((l) => newLine(l.productId ?? "", String(l.quantity), l.boxPrice != null ? String(l.boxPrice) : "", l.boxPrice == null, l.components.map(toDraft)))
+      ? editing.lines.map((l) => newLine(l.productId ?? "", String(l.quantity), l.boxPrice ?? null, l.components.map(toDraft)))
       : [newLine()]
   );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const itemPrices = useMemo(() => {
+    const map = new Map<string, { addPrice: number; removePrice: number }>();
+    for (const p of products) {
+      for (const c of p.components) map.set(c.itemId, { addPrice: c.addPrice, removePrice: c.removePrice });
+    }
+    for (const it of items) {
+      map.set(it.id, { addPrice: it.addPrice, removePrice: it.removePrice });
+    }
+    return map;
+  }, [products, items]);
+
   const setLine = (key: number, patch: Partial<LineDraft>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
   const defaultsOf = (productId: string): CompDraft[] => (products.find((p) => p.id === productId)?.components ?? []).map(toDraft);
   const isCustom = (l: LineDraft) => l.productId !== "" && sig(l.components) !== sig(defaultsOf(l.productId));
-  const pickProduct = (key: number, productId: string) => setLine(key, { productId, components: defaultsOf(productId) });
+  const pickProduct = (key: number, productId: string) =>
+    setLine(key, { productId, legacyBoxPrice: null, components: defaultsOf(productId) });
   const setComp = (key: number, itemId: string, patch: Partial<CompDraft>) =>
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, components: l.components.map((c) => (c.itemId === itemId ? { ...c, ...patch } : c)) } : l)));
   const removeComp = (key: number, itemId: string) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, components: l.components.filter((c) => c.itemId !== itemId) } : l)));
@@ -98,12 +109,56 @@ export function AgentOrderModal({ open, onClose, products, items, editing, nextW
       })
     );
   };
+  const restoreDefaultComp = (key: number, dc: { itemId: string; itemName: string; unit: string; quantity: number }) =>
+    setLines((ls) =>
+      ls.map((l) =>
+        l.key === key && !l.components.some((c) => c.itemId === dc.itemId)
+          ? { ...l, components: [...l.components, { itemId: dc.itemId, itemName: dc.itemName, unit: dc.unit, quantity: String(dc.quantity) }] }
+          : l
+      )
+    );
 
-  // حساب المجاميع المباشرة في الفاتورة (سعر الخروج + م شحن = الإجمالي بالشحن)
+  const resolveLinePricing = (l: LineDraft) => {
+    const product = products.find((p) => p.id === l.productId);
+    if (!product) {
+      return {
+        product: undefined,
+        unitPrice: null as number | null,
+        unitCents: 0,
+        delta: 0,
+      };
+    }
+    if (product.fixedPrice != null) {
+      const calc = calcAdjustedBoxPrice(product.fixedPrice, product.components, l.components, itemPrices);
+      return {
+        product,
+        unitPrice: calc.unitPrice,
+        unitCents: calc.unitCents,
+        delta: calc.delta,
+      };
+    }
+    if (l.legacyBoxPrice != null) {
+      return {
+        product,
+        unitPrice: l.legacyBoxPrice,
+        unitCents: Math.round(l.legacyBoxPrice * 100),
+        delta: 0,
+      };
+    }
+    return {
+      product,
+      unitPrice: null as number | null,
+      unitCents: 0,
+      delta: 0,
+    };
+  };
+
+  // حساب المجاميع المباشرة في الفاتورة (سعر الخروج التلقائي + م شحن = الإجمالي بالشحن)
   const boxesTotalCents = lines.reduce((acc, l) => {
     const qty = Number(l.quantity);
-    if (!l.productId || !Number.isInteger(qty) || qty < 1 || !validMoney(l.boxPrice)) return acc;
-    return acc + qty * Math.round(Number(l.boxPrice) * 100);
+    if (!l.productId || !Number.isInteger(qty) || qty < 1) return acc;
+    const { unitPrice, unitCents } = resolveLinePricing(l);
+    return unitPrice !== null ? acc + qty * unitCents : acc;
   }, 0);
   const shippingCents = validMoney(shippingPrice) ? Math.round(Number(shippingPrice) * 100) : 0;
   const boxesTotal = Math.round(boxesTotalCents) / 100;
@@ -117,9 +172,6 @@ export function AgentOrderModal({ open, onClose, products, items, editing, nextW
       const name = products.find((p) => p.id === l.productId)?.name ?? "البوكس";
       const qNum = Number(l.quantity);
       if (!Number.isInteger(qNum) || qNum < 1) return setError(`الكمية لـ «${name}» يجب أن تكون عدداً صحيحاً ≥ 1`);
-      if (!(l.allowAutoPrice && l.boxPrice.trim() === "") && !validMoney(l.boxPrice)) {
-        return setError(`أدخل سعر البوكس الصحيح لـ «${name}»`);
-      }
       if (l.components.length === 0) return setError(`«${name}» يحتاج محتوى واحداً على الأقل`);
       if (l.components.some((c) => !(Number(c.quantity) > 0) || Math.abs(Number(c.quantity) * 1000 - Math.round(Number(c.quantity) * 1000)) > 1e-6)) {
         return setError(`كمية أحد محتويات «${name}» غير صالحة (رقم أكبر من صفر، حتى 3 خانات عشرية)`);
@@ -129,12 +181,15 @@ export function AgentOrderModal({ open, onClose, products, items, editing, nextW
       return setError("مصاريف الشحن غير صالحة");
     }
 
-    const parsedLines = filled.map((l) => ({
-      productId: l.productId,
-      quantity: Number(l.quantity),
-      ...(l.boxPrice.trim() !== "" ? { boxPrice: Math.round(Number(l.boxPrice) * 100) / 100 } : {}),
-      components: l.components.map((c) => ({ itemId: c.itemId, quantity: Number(c.quantity) })),
-    }));
+    const parsedLines = filled.map((l) => {
+      const product = products.find((p) => p.id === l.productId);
+      return {
+        productId: l.productId,
+        quantity: Number(l.quantity),
+        ...(product?.fixedPrice == null && l.legacyBoxPrice != null ? { boxPrice: l.legacyBoxPrice } : {}),
+        components: l.components.map((c) => ({ itemId: c.itemId, quantity: Number(c.quantity) })),
+      };
+    });
     const parsedShipping = shippingPrice.trim() === "" ? (editing ? null : undefined) : Math.round(Number(shippingPrice) * 100) / 100;
 
     setError("");
@@ -184,19 +239,21 @@ export function AgentOrderModal({ open, onClose, products, items, editing, nextW
         </FieldWrap>
       </div>
 
-      {/* الأصناف / البوكسات بالكمية وسعر كل بوكس والإجمالي */}
+      {/* الأصناف / البوكسات بالكمية وسعر كل بوكس التلقائي والإجمالي */}
       <div className="mb-4">
         <div className="mb-1.5 hidden grid-cols-12 gap-2 px-1 text-xs font-semibold text-muted sm:grid">
           <span className="col-span-5">إسم الصنف (البوكس)</span>
           <span className="col-span-3 text-center">الكمية</span>
-          <span className="col-span-2 text-center">السعر</span>
+          <span className="col-span-2 text-center">السعر (تلقائي)</span>
           <span className="col-span-2 text-center">الإجمالي</span>
         </div>
         <div className="flex flex-col gap-2.5">
           {lines.map((l) => {
             const qNum = Number(l.quantity);
-            const hasLineTotal = Number.isInteger(qNum) && qNum >= 1 && validMoney(l.boxPrice);
-            const lineSum = hasLineTotal ? Math.round(qNum * Math.round(Number(l.boxPrice) * 100)) / 100 : null;
+            const { product, unitPrice, unitCents, delta } = resolveLinePricing(l);
+            const hasLineTotal = l.productId !== "" && Number.isInteger(qNum) && qNum >= 1 && unitPrice !== null;
+            const lineSum = hasLineTotal ? Math.round(qNum * unitCents) / 100 : null;
+            const removedDefaults = product ? product.components.filter((dc) => !l.components.some((c) => c.itemId === dc.itemId)) : [];
             return (
               <div key={l.key} className="rounded-control border border-border/70 bg-background/40 p-2">
                 <div className="grid grid-cols-1 items-center gap-2 sm:grid-cols-12">
@@ -205,7 +262,7 @@ export function AgentOrderModal({ open, onClose, products, items, editing, nextW
                       <option value="">اختر البوكس…</option>
                       {products.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.name}
+                          {p.fixedPrice != null ? `${p.name} — ${fmtMoney(p.fixedPrice)}` : p.name}
                         </option>
                       ))}
                     </Select>
@@ -219,16 +276,24 @@ export function AgentOrderModal({ open, onClose, products, items, editing, nextW
                       <Plus size={13} />
                     </button>
                   </div>
-                  <div className="sm:col-span-2">
-                    <Input
-                      aria-label="سعر البوكس"
-                      dir="ltr"
-                      inputMode="decimal"
-                      placeholder={l.allowAutoPrice ? "تلقائي" : "السعر"}
-                      value={l.boxPrice}
-                      onChange={(e) => setLine(l.key, { boxPrice: e.target.value })}
-                      className="text-center font-semibold tabular-nums"
-                    />
+                  <div className="flex items-center justify-between gap-1 sm:col-span-2 sm:flex-col sm:justify-center">
+                    <span className="text-xs text-muted sm:hidden">السعر (تلقائي):</span>
+                    <div className="flex min-h-[38px] w-full flex-col items-center justify-center rounded-control border border-border/70 bg-surface/60 px-2 py-1 text-center">
+                      {!l.productId ? (
+                        <span className="text-xs text-muted">—</span>
+                      ) : unitPrice === null ? (
+                        <span className="text-xs text-muted">تلقائي</span>
+                      ) : (
+                        <>
+                          <span className="text-sm font-bold tabular-nums text-text">{fmtMoney(unitPrice)}</span>
+                          {delta !== 0 && (
+                            <span className={`text-[10px] font-semibold tabular-nums ${delta > 0 ? "text-primary-deep" : "text-problem"}`}>
+                              {delta > 0 ? `+${fmtMoney(delta)}` : `-${fmtMoney(Math.abs(delta))}`}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center justify-between gap-1 sm:col-span-2 sm:justify-center">
                     <span className="text-xs text-muted sm:hidden">الإجمالي:</span>
@@ -250,20 +315,53 @@ export function AgentOrderModal({ open, onClose, products, items, editing, nextW
                     </button>
                     {l.open && (
                       <div className="mt-2 rounded-control border border-border bg-surface/60 p-2.5">
-                        <p className="mb-2 text-xs text-muted">الكميات لبوكس واحد. التعديل يخص هذا الأوردر فقط ولا يغيّر البوكس الأصلي.</p>
+                        {product?.fixedPrice != null ? (
+                          <p className="mb-2 text-xs text-muted">
+                            السعر الثابت للبوكس: <strong className="text-text">{fmtMoney(product.fixedPrice)}</strong> — الإضافة تضيف «سعر الإضافة» والحذف يخصم «سعر الحذف» تلقائياً. التعديل يخص هذا الأوردر فقط.
+                          </p>
+                        ) : (
+                          <p className="mb-2 text-xs text-muted">الكميات لبوكس واحد. التعديل يخص هذا الأوردر فقط ولا يغيّر البوكس الأصلي.</p>
+                        )}
                         <div className="flex flex-col gap-1.5">
-                          {l.components.map((c) => (
-                            <div key={c.itemId} className="flex items-center gap-2">
-                              <span className="min-w-0 flex-1 truncate text-sm text-text">{c.itemName}</span>
-                              <Input aria-label={`كمية ${c.itemName}`} dir="ltr" inputMode="decimal" value={c.quantity} onChange={(e) => setComp(l.key, c.itemId, { quantity: e.target.value })} className="!w-20 !px-2 text-center" />
-                              <span className="w-12 truncate text-xs text-muted">{c.unit}</span>
-                              <button type="button" aria-label={`حذف ${c.itemName}`} onClick={() => removeComp(l.key, c.itemId)} className="flex h-8 w-8 items-center justify-center rounded-control text-problem hover:bg-problem/10">
-                                <X size={15} />
-                              </button>
-                            </div>
-                          ))}
+                          {l.components.map((c) => {
+                            const prices = itemPrices.get(c.itemId);
+                            const priceHint =
+                              prices && (prices.addPrice > 0 || prices.removePrice > 0)
+                                ? [prices.addPrice > 0 ? `+${fmtMoney(prices.addPrice)}` : "", prices.removePrice > 0 ? `-${fmtMoney(prices.removePrice)}` : ""].filter(Boolean).join(" / ")
+                                : "";
+                            return (
+                              <div key={c.itemId} className="flex items-center gap-2">
+                                <span className="min-w-0 flex-1 truncate text-sm text-text">
+                                  {c.itemName}
+                                  {priceHint && <span className="ms-1.5 text-[11px] text-muted">({priceHint})</span>}
+                                </span>
+                                <Input aria-label={`كمية ${c.itemName}`} dir="ltr" inputMode="decimal" value={c.quantity} onChange={(e) => setComp(l.key, c.itemId, { quantity: e.target.value })} className="!w-20 !px-2 text-center" />
+                                <span className="w-12 truncate text-xs text-muted">{c.unit}</span>
+                                <button type="button" aria-label={`حذف ${c.itemName}`} onClick={() => removeComp(l.key, c.itemId)} className="flex h-8 w-8 items-center justify-center rounded-control text-problem hover:bg-problem/10">
+                                  <X size={15} />
+                                </button>
+                              </div>
+                            );
+                          })}
                           {l.components.length === 0 && <p className="text-xs text-problem">أضف صنفاً واحداً على الأقل</p>}
                         </div>
+                        {removedDefaults.length > 0 && (
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            {removedDefaults.map((dc) => (
+                              <button
+                                key={dc.itemId}
+                                type="button"
+                                onClick={() => restoreDefaultComp(l.key, dc)}
+                                className="inline-flex items-center gap-1 rounded-full border border-problem/40 bg-problem/5 px-2.5 py-0.5 text-[11px] text-problem hover:bg-problem/15"
+                                title="اضغط لإعادة المكوّن إلى البوكس"
+                              >
+                                <RotateCcw size={11} />
+                                محذوف: {dc.itemName} × {fmtQty(dc.quantity)}
+                                {dc.removePrice > 0 && ` (-${fmtMoney(Math.round(dc.removePrice * dc.quantity * 100) / 100)})`}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         <div className="mt-2 flex flex-col gap-1.5">
                           {items.length > 8 && (
                             <Input
@@ -281,7 +379,7 @@ export function AgentOrderModal({ open, onClose, products, items, editing, nextW
                                 .filter((it) => !l.itemQuery.trim() || it.name.toLowerCase().includes(l.itemQuery.trim().toLowerCase()))
                                 .map((it) => (
                                   <option key={it.id} value={it.id}>
-                                    {it.name}
+                                    {it.addPrice > 0 ? `${it.name} (+${fmtMoney(it.addPrice)})` : it.name}
                                   </option>
                                 ))}
                             </Select>
@@ -305,7 +403,7 @@ export function AgentOrderModal({ open, onClose, products, items, editing, nextW
         </Button>
       </div>
 
-      {/* م شحن + ملخص الفاتورة (مثل التصميم المرجعي) */}
+      {/* م شحن + ملخص الفاتورة */}
       <div className="mb-4 grid grid-cols-1 gap-3 rounded-control border border-border bg-background/60 p-3 sm:grid-cols-12 sm:items-end">
         <div className="sm:col-span-4">
           <label htmlFor="ao-shipping" className="mb-1.5 block text-sm font-medium text-text">

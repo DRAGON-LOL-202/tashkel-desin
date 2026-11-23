@@ -89,6 +89,8 @@ export const createItemSchema = z.object({
   initialQuantity: qty("الكمية الافتتاحية").default(0),
   unitPrice: price("سعر الوحدة").default(0),
   sellPrice: price("سعر البيع").default(0),
+  addPrice: price("سعر الإضافة").default(0),
+  removePrice: price("سعر الحذف").default(0),
   notes: notes.default(""),
 });
 
@@ -102,6 +104,8 @@ export const updateItemSchema = z
     minQuantity: qty("الحد الأدنى").optional(),
     unitPrice: price("سعر الوحدة").optional(),
     sellPrice: price("سعر البيع").optional(),
+    addPrice: price("سعر الإضافة").optional(),
+    removePrice: price("سعر الحذف").optional(),
     notes: notes.optional(),
     isActive: z.boolean().optional(),
   })

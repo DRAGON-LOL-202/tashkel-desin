@@ -61,6 +61,19 @@ describe("inventory: الوصول", () => {
     expect((await api(manager).patch(`/api/inventory/${item.id}`).send({ sellPrice: -1 })).status).toBe(400);
     const def = await mkItem(manager, { name: "بلا سعر بيع" });
     expect(def.sellPrice).toBe(0);
+    expect(def.addPrice).toBe(0);
+    expect(def.removePrice).toBe(0);
+
+    const adj = await mkItem(manager, { name: "بأسعار إضافة وحذف", unitPrice: 30, sellPrice: 60, addPrice: 45.25, removePrice: 25.5 });
+    expect(adj.addPrice).toBe(45.25);
+    expect(adj.removePrice).toBe(25.5);
+    expect(adj.totalValue).toBe(0);
+    const updAdj = await api(manager).patch(`/api/inventory/${adj.id}`).send({ addPrice: 50, removePrice: 30 });
+    expect(updAdj.status).toBe(200);
+    expect(updAdj.body.item.addPrice).toBe(50);
+    expect(updAdj.body.item.removePrice).toBe(30);
+    expect((await api(manager).patch(`/api/inventory/${adj.id}`).send({ addPrice: -5 })).status).toBe(400);
+    expect((await api(manager).patch(`/api/inventory/${adj.id}`).send({ removePrice: -1 })).status).toBe(400);
   });
 });
 

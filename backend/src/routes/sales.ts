@@ -226,10 +226,18 @@ salesRouter.post(
   requireSalesEdit,
   asyncHandler(async (req, res) => {
     const body = createProductSchema.parse(req.body);
+    if (!isStaff(req.user!) && body.fixedPrice !== undefined) {
+      throw forbidden("تحديد سعر البوكس الثابت متاح للإدارة فقط");
+    }
     await assertProductNameFree(body.name);
     await assertItemsUsable(body.components);
     const created = await prisma().salesProduct.create({
-      data: { name: body.name, notes: body.notes, components: { create: body.components } },
+      data: {
+        name: body.name,
+        notes: body.notes,
+        ...(isStaff(req.user!) && body.fixedPrice !== undefined ? { fixedPrice: body.fixedPrice } : {}),
+        components: { create: body.components },
+      },
       include: salesProductInclude,
     });
     res.status(201).json({ product: serializeProductForUser(req, created) });
@@ -244,6 +252,9 @@ salesRouter.patch(
     const existing = await prisma().salesProduct.findUnique({ where: { id }, select: { id: true } });
     if (!existing) throw notFound("المنتج غير موجود");
     const body = updateProductSchema.parse(req.body);
+    if (!isStaff(req.user!) && body.fixedPrice !== undefined) {
+      throw forbidden("تحديد سعر البوكس الثابت متاح للإدارة فقط");
+    }
     if (body.name !== undefined) await assertProductNameFree(body.name, id);
     if (body.components !== undefined) await assertItemsUsable(body.components);
     const updated = await prisma().$transaction(async (tx) => {
@@ -255,6 +266,7 @@ salesRouter.patch(
         where: { id },
         data: {
           ...(body.name !== undefined ? { name: body.name } : {}),
+          ...(isStaff(req.user!) && body.fixedPrice !== undefined ? { fixedPrice: body.fixedPrice } : {}),
           ...(body.notes !== undefined ? { notes: body.notes } : {}),
           ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
         },

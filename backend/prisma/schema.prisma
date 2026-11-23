@@ -429,6 +429,9 @@ model InventoryItem {
   unitPrice    Decimal  @default(0) @db.Decimal(14, 2)
   // سعر البيع (جنيه مصري) — منفصل عن سعر الوحدة (التكلفة) ولا يدخل في حساب قيمة المخزون
   sellPrice    Decimal  @default(0) @db.Decimal(14, 2)
+  // سعر الإضافة والحذف عند تعديل محتويات بوكس في أوردرات الفتيات (مستقل عن سعر الوحدة وسعر البيع)
+  addPrice     Decimal  @default(0) @db.Decimal(14, 2)
+  removePrice  Decimal  @default(0) @db.Decimal(14, 2)
   lowAlertSent Boolean  @default(false)
   notes        String   @default("")
   isActive     Boolean  @default(true)
@@ -483,9 +486,11 @@ enum SalesOrderStatus {
 
 // منتج مبيعات ثابت (مثل «بوكس كبير») له محتويات من المخزون تُنسخ إلى الأوردر عند إضافته.
 model SalesProduct {
-  id        String   @id @default(cuid())
-  name      String
-  notes     String   @default("")
+  id         String   @id @default(cuid())
+  name       String
+  // سعر البوكس الثابت اليدوي (مستقل عن أسعار المخزون؛ يظهر تلقائياً للفتاة عند اختيار البوكس)
+  fixedPrice Decimal? @db.Decimal(12, 2)
+  notes      String   @default("")
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -428,6 +428,9 @@ const FORBIDDEN_MONEY_KEYS = new Set([
   "totalSell",
   "unitPrice",
   "sellPrice",
+  "addPrice",
+  "removePrice",
+  "fixedPrice",
   "totalValue",
   "unitPriceSnapshot",
   "movementValue",
@@ -918,6 +921,63 @@ describe("sales roles: الأدوار الثلاثة المحصورة في ال�
       });
       expect(ord.lines[0].components.length).toBeGreaterThan(0);
     }
+  });
+
+  it("السعر الثابت للبوكس وسعر الإضافة والحذف في المخزون: للإدارة فقط ومستقلان عن أسعار المخزون، وممنوعان عن الأدوار المقيدة", async () => {
+    // 1. الإدارة تضيف صنفاً بسعر إضافة وحذف وتحفظهما مع إمكانية تعديلهما
+    const adjItemRes = await api(admin).post("/api/inventory").send({
+      name: "عطر بسعر إضافة وحذف",
+      categoryId: catId,
+      unit: "قطعة",
+      initialQuantity: 20,
+      unitPrice: 40,
+      sellPrice: 90,
+      addPrice: 120,
+      removePrice: 75,
+    });
+    expect(adjItemRes.status).toBe(201);
+    expect(adjItemRes.body.item.addPrice).toBe(120);
+    expect(adjItemRes.body.item.removePrice).toBe(75);
+    const adjItemId = adjItemRes.body.item.id as string;
+
+    // مشرف المبيعات ممنوع من إرسال addPrice أو removePrice (403)، وإذا عدّل الاسم لا تتغير الأسعار المحفوظة
+    expect((await api(supervisor).post("/api/inventory").send({ name: "ممنوع", categoryId: catId, addPrice: 10 })).status).toBe(403);
+    expect((await api(supervisor).patch(`/api/inventory/${adjItemId}`).send({ removePrice: 10 })).status).toBe(403);
+    const supRename = await api(supervisor).patch(`/api/inventory/${adjItemId}`).send({ name: "عطر محدّث" });
+    expect(supRename.status).toBe(200);
+    assertNoMoneyLeak(supRename.body, "SALES_SUPERVISOR PATCH without adjust prices");
+    const dbAdj = await prisma().inventoryItem.findUniqueOrThrow({ where: { id: adjItemId } });
+    expect(Number(dbAdj.addPrice)).toBe(120);
+    expect(Number(dbAdj.removePrice)).toBe(75);
+
+    // 2. الإدارة تحدد fixedPrice يدوي على المنتج الثابت وتعدّله وتمسحه (بلا علاقة بمجموع المخزون)
+    const prodRes = await api(manager).post("/api/sales/products").send({
+      name: "بوكس ثابت يدوي",
+      fixedPrice: 480,
+      components: [{ itemId: adjItemId, quantity: 1 }],
+    });
+    expect(prodRes.status).toBe(201);
+    expect(prodRes.body.product.fixedPrice).toBe(480);
+    expect(prodRes.body.product.sellPerUnit).toBe(90);
+    const fixedProdId = prodRes.body.product.id as string;
+
+    const patchProd = await api(admin).patch(`/api/sales/products/${fixedProdId}`).send({ fixedPrice: 525.5 });
+    expect(patchProd.status).toBe(200);
+    expect(patchProd.body.product.fixedPrice).toBe(525.5);
+
+    // الأدوار المقيدة لا ترى fixedPrice ولا يُسمح لها بضبطه (403)
+    for (const [label, tok] of [["SALES_EDITOR", editor], ["SALES_SUPERVISOR", supervisor]] as const) {
+      const list = await api(tok).get("/api/sales/products");
+      expect(list.status, label).toBe(200);
+      assertNoMoneyLeak(list.body, `${label} GET /sales/products`);
+      expect((await api(tok).post("/api/sales/products").send({ name: `ثابت ${label}`, fixedPrice: 100, components: [{ itemId: rose.id, quantity: 1 }] })).status).toBe(403);
+      expect((await api(tok).patch(`/api/sales/products/${fixedProdId}`).send({ fixedPrice: 100 })).status).toBe(403);
+    }
+
+    // المسح إلى null يعيد البوكس للوضع القديم
+    const clearProd = await api(admin).patch(`/api/sales/products/${fixedProdId}`).send({ fixedPrice: null });
+    expect(clearProd.status).toBe(200);
+    expect(clearProd.body.product.fixedPrice).toBeNull();
   });
 });
 
