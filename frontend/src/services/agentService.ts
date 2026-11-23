@@ -10,12 +10,14 @@ import type {
   AgentOrderInput,
   AgentProduct,
   AgentProfile,
+  AgentSalesPage,
   AgentSummary,
   ExportResult,
   FollowList,
   FollowOrder,
-  GeneralAccounts,
+  GeneralAccountsResponse,
   OrderLogEntry,
+  SalesPageAdminRow,
 } from "../types";
 
 // مساحة الفتاة (SALES_AGENT). العزل مفروض في الباكند بمعرّف الفتاة من التوكن.
@@ -28,6 +30,11 @@ export const agentService = {
   async products(): Promise<AgentProduct[]> {
     const { products } = await api<{ products: AgentProduct[] }>("/agent/products");
     return products;
+  },
+
+  async pages(): Promise<AgentSalesPage[]> {
+    const { pages } = await api<{ pages: AgentSalesPage[] }>("/agent/pages");
+    return pages;
   },
 
   async items(): Promise<AgentItem[]> {
@@ -88,6 +95,7 @@ export const agentService = {
 export const accountingService = {
   async followOrders(params: {
     agentId?: string;
+    salesPageId?: string;
     status?: string;
     q?: string;
     from?: string;
@@ -126,13 +134,17 @@ export const accountingService = {
     return api(`/accounting/agents/${id}`, { query: { bucket, ...range } });
   },
 
-  async general(range: { from?: string; to?: string }): Promise<GeneralAccounts> {
-    const { general } = await api<{ general: GeneralAccounts }>("/accounting/general", { query: range });
-    return general;
+  async general(range: { from?: string; to?: string; salesPageId?: string }): Promise<GeneralAccountsResponse> {
+    return api<GeneralAccountsResponse>("/accounting/general", { query: range });
+  },
+
+  async pages(): Promise<{ id: string; name: string; isActive: boolean }[]> {
+    const { pages } = await api<{ pages: { id: string; name: string; isActive: boolean }[] }>("/accounting/pages");
+    return pages;
   },
 };
 
-// إدارة Prefix الفتيات (الإدارة فقط)
+// إدارة Prefix الفتيات وصفحات البيع (الإدارة فقط)
 export const agentAdminService = {
   async list(): Promise<AgentAdminRow[]> {
     const { agents } = await api<{ agents: AgentAdminRow[] }>("/sales-agents");
@@ -141,5 +153,24 @@ export const agentAdminService = {
 
   async setPrefix(userId: string, prefix: number, startSeq?: number): Promise<void> {
     await api(`/sales-agents/${userId}/prefix`, { method: "PUT", body: startSeq === undefined ? { prefix } : { prefix, startSeq } });
+  },
+
+  async listPages(): Promise<SalesPageAdminRow[]> {
+    const { pages } = await api<{ pages: SalesPageAdminRow[] }>("/sales-agents/pages");
+    return pages;
+  },
+
+  async createPage(name: string): Promise<SalesPageAdminRow> {
+    const { page } = await api<{ page: SalesPageAdminRow }>("/sales-agents/pages", { method: "POST", body: { name } });
+    return page;
+  },
+
+  async updatePage(id: string, input: { name?: string; isActive?: boolean }): Promise<SalesPageAdminRow> {
+    const { page } = await api<{ page: SalesPageAdminRow }>(`/sales-agents/pages/${id}`, { method: "PATCH", body: input });
+    return page;
+  },
+
+  async deletePage(id: string): Promise<void> {
+    await api<{ ok: true }>(`/sales-agents/pages/${id}`, { method: "DELETE" });
   },
 };

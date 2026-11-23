@@ -32,6 +32,8 @@ interface WaybillPreviewModalProps {
   initialTab?: PreviewTab;
   statusLabel?: string;
   statusColor?: string;
+  /** اسم الصفحة مصدر الأوردر: يظهر كملاحظة خارج الفاتورة بالأسفل فقط (لا يدخل الفاتورة المطبوعة أو PDF) */
+  salesPageName?: string | null;
 }
 
 const NONE_LOGS: OrderLogEntry[] = [];
@@ -80,6 +82,7 @@ export function WaybillPreviewModal({
   initialTab = "preview",
   statusLabel,
   statusColor,
+  salesPageName,
 }: WaybillPreviewModalProps) {
   const { show } = useToast();
   const [tab, setTab] = useState<PreviewTab>(initialTab);
@@ -106,6 +109,7 @@ export function WaybillPreviewModal({
   const followBadge = followOrder ? rowBadge(followOrder.status, followOrder.returnFlagged, followOrder.cancelled) : null;
   const effectiveStatusLabel = statusLabel ?? followBadge?.label;
   const effectiveStatusColor = statusColor ?? followBadge?.color;
+  const pageName = salesPageName ?? followOrder?.salesPageName ?? null;
 
   const handlePrint = async () => {
     if (!canPrint || busyPrint) return;
@@ -243,8 +247,14 @@ export function WaybillPreviewModal({
         {/* المحتوى */}
         <div className="flex-1 overflow-y-auto bg-background/70 p-4 sm:p-6">
           {tab === "preview" && (
-            <div className="flex justify-center">
+            <div className="flex flex-col items-center gap-3">
               <WaybillSheet data={waybill} />
+              {pageName && (
+                <div className="w-full max-w-[397px] rounded-control border border-border/80 bg-surface/90 px-3.5 py-2 text-center text-xs text-muted">
+                  ملاحظة خارج الفاتورة — الصفحة:{" "}
+                  <strong className="font-bold text-text">{pageName}</strong>
+                </div>
+              )}
             </div>
           )}
 
@@ -321,6 +331,7 @@ export function WaybillPreviewModal({
                 </dl>
                 <div className="mt-3 flex flex-wrap gap-4 border-t border-border/60 pt-2.5 text-xs text-muted">
                   <span>الفتاة: <strong className="text-text">{followOrder.source === "MANUAL" ? `يدوي${followOrder.closerName ? ` — ${followOrder.closerName}` : ""}` : followOrder.agentName || "—"}</strong></span>
+                  {followOrder.salesPageName && <span>الصفحة: <strong className="text-text">{followOrder.salesPageName}</strong></span>}
                   <span>أُنشئ: {formatArabicDate(followOrder.createdAt, "d MMM yyyy")} {formatArabicTime(followOrder.createdAt)}</span>
                   {followOrder.shippedAt && <span>شُحن: {formatArabicDate(followOrder.shippedAt, "d MMM yyyy")}</span>}
                   {followOrder.deliveredAt && <span>سُلِّم: {formatArabicDate(followOrder.deliveredAt, "d MMM yyyy")}</span>}

@@ -225,7 +225,10 @@ export function FollowOrdersTable({
 
                   {/* الفتاة */}
                   <td className="whitespace-nowrap px-4 py-3 align-middle text-xs font-medium text-text">
-                    {agentLabel}
+                    <div>{agentLabel}</div>
+                    {o.salesPageName && (
+                      <div className="mt-0.5 text-[11px] font-normal text-primary-deep">{o.salesPageName}</div>
+                    )}
                   </td>
 
                   {/* سعر الشحن */}

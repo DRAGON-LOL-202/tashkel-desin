@@ -22,7 +22,7 @@ import type { SyncChannel } from "../lib/liveSync";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
 import { agentService } from "../services/agentService";
-import type { AgentBucket, AgentItem, AgentOrder, AgentOrderInput, AgentProduct, AgentProfile } from "../types";
+import type { AgentBucket, AgentItem, AgentOrder, AgentOrderInput, AgentProduct, AgentProfile, AgentSalesPage } from "../types";
 
 interface AgentOrdersPageData {
   orders: AgentOrder[];
@@ -33,6 +33,7 @@ interface AgentOrdersPageData {
 const NO_ORDERS_PAGE: AgentOrdersPageData = { orders: [], total: 0, hasMore: false };
 const NO_PRODUCTS: AgentProduct[] = [];
 const NO_ITEMS: AgentItem[] = [];
+const NO_PAGES: AgentSalesPage[] = [];
 const PAGE_SIZE = 20;
 
 const ORDER_SYNC_CHANNELS: SyncChannel[] = ["sales", "accounting"];
@@ -63,6 +64,7 @@ export default function AgentOrdersPage() {
   const orders = useResource<AgentOrdersPageData>(ordersLoader, NO_ORDERS_PAGE, ORDER_SYNC_CHANNELS);
   const products = useResource<AgentProduct[]>(agentService.products, NO_PRODUCTS, CATALOG_SYNC_CHANNELS);
   const items = useResource<AgentItem[]>(agentService.items, NO_ITEMS, CATALOG_SYNC_CHANNELS);
+  const pages = useResource<AgentSalesPage[]>(agentService.pages, NO_PAGES, CATALOG_SYNC_CHANNELS);
   const profile = useResource<AgentProfile | null>(agentService.me, null, PROFILE_SYNC_CHANNELS);
 
   const refresh = useCallback(async () => {
@@ -230,6 +232,7 @@ export default function AgentOrdersPage() {
                   {isDraft && <input type="checkbox" aria-label={`تحديد ${o.waybill}`} checked={selected.has(o.id)} onChange={() => toggle(o.id)} />}
                   <span className="text-base font-bold tabular-nums text-text">{o.waybill}</span>
                   <Badge color={badge.color}>{badge.label}</Badge>
+                  {o.salesPageName && <Badge color="#2E8BC0">{o.salesPageName}</Badge>}
                   <span className="text-xs text-muted">{formatArabicDate(o.date)}</span>
                   <div className="ms-auto flex flex-wrap items-baseline gap-2 text-end">
                     <span className="text-sm font-bold tabular-nums text-text">{fmtMoney(o.sellPrice)}</span>
@@ -339,6 +342,7 @@ export default function AgentOrdersPage() {
           key={previewing.id}
           open
           waybill={waybillFromAgentOrder(previewing)}
+          salesPageName={previewing.salesPageName}
           canPrint={false}
           canDownloadPdf={false}
           statusLabel={agentOrderBadge(previewing).label}
@@ -362,6 +366,7 @@ export default function AgentOrdersPage() {
           open
           products={products.data}
           items={items.data}
+          pages={pages.data}
           editing={editing === "new" ? undefined : editing}
           nextWaybill={profile.data ? profile.data.prefix * 100 + profile.data.nextSeq : null}
           onClose={() => setEditing(null)}

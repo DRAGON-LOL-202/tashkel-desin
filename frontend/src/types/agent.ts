@@ -57,6 +57,8 @@ export interface AgentOrder {
   customerPhone: string;
   customerAddress: string;
   notes: string;
+  salesPageId?: string | null;
+  salesPageName?: string | null;
   /** سعر الخروج (مجموع أسعار البوكسات التي أدخلتها الفتاة، أو تلقائي من المكونات للأوردرات القديمة) */
   sellPrice: number;
   shippingPrice?: number | null;
@@ -78,6 +80,7 @@ export interface AgentOrderInput {
   customerPhone: string;
   customerAddress: string;
   notes: string;
+  salesPageId?: string | null;
   shippingPrice?: number | null;
   lines: { productId: string; quantity: number; boxPrice?: number; components: { itemId: string; quantity: number }[] }[];
 }
@@ -137,6 +140,8 @@ export interface FollowOrder {
   source: "AGENT" | "MANUAL";
   closerName: string;
   date: string;
+  salesPageId?: string | null;
+  salesPageName?: string | null;
   customerName: string;
   customerPhone: string;
   customerAddress: string;
@@ -235,4 +240,29 @@ export interface AgentAdminRow {
   hasOrders: boolean;
   nextWaybill: number | null;
   maxWaybill: number | null;
+}
+
+/** صفحة بيع (مصدر الأوردر للفتيات) */
+export interface AgentSalesPage {
+  id: string;
+  name: string;
+}
+
+export interface SalesPageAdminRow {
+  id: string;
+  name: string;
+  isActive: boolean;
+  ordersCount: number;
+  createdAt: string;
+}
+
+export interface PageGeneralAccounts extends GeneralAccounts {
+  pageId: string | null;
+  pageName: string;
+  isActive: boolean;
+}
+
+export interface GeneralAccountsResponse {
+  general: GeneralAccounts;
+  byPage: PageGeneralAccounts[];
 }

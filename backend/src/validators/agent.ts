@@ -65,6 +65,7 @@ export const createAgentOrderSchema = z.object({
   customerAddress: customer.customerAddress.default(""),
   notes: customer.notes.default(""),
   shippingPrice: money.nullable().optional(),
+  salesPageId: id.nullable().optional(),
   lines,
 });
 
@@ -76,6 +77,7 @@ export const updateAgentOrderSchema = z
     customerAddress: customer.customerAddress.optional(),
     notes: customer.notes.optional(),
     shippingPrice: money.nullable().optional(),
+    salesPageId: id.nullable().optional(),
     lines: lines.optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: "لا توجد حقول للتعديل" });
@@ -100,3 +102,12 @@ export const setPrefixSchema = z.object({
 export const accountantStatusSchema = z.object({ status: z.enum(["SHIPPED", "DELIVERED"], { message: "الحالة المسموحة: شحن أو تم التسليم" }) });
 export const returnFlagSchema = z.object({ flagged: z.boolean({ message: "قيمة غير صالحة" }) });
 export const shippingPriceSchema = z.object({ shippingPrice: money.nullable() });
+
+const pageName = z.string().trim().min(1, "اسم الصفحة مطلوب").max(80, "اسم الصفحة طويل جداً");
+export const createSalesPageSchema = z.object({ name: pageName });
+export const updateSalesPageSchema = z
+  .object({
+    name: pageName.optional(),
+    isActive: z.boolean().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: "لا توجد حقول للتعديل" });

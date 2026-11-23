@@ -65,6 +65,11 @@
   - إضافة عمود `fixedPrice Decimal? @db.Decimal(12, 2)` على `SalesProduct` وعمودَي `addPrice` و`removePrice` (`Decimal @default(0) @db.Decimal(14, 2)`) على `InventoryItem` في [schema.prisma](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/prisma/schema.prisma) وملف الترحيل [0028_box_fixed_price_and_item_adjust_prices](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/prisma/migrations/0028_box_fixed_price_and_item_adjust_prices/migration.sql).
   - حصر إدخال/تعديل وعرض `fixedPrice` في [ProductEditorModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/sales/ProductEditorModal.tsx) و[SalesProductsModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/sales/SalesProductsModal.tsx) و`addPrice`/`removePrice` في [ItemModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/inventory/ItemModal.tsx) و[ItemDetailsModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/inventory/ItemDetailsModal.tsx) و[Inventory.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/Inventory.tsx) على الإدارة (`ADMIN`/`MANAGER`) فقط دون تسريب أي مبالغ إلى `SALES_EDITOR`/`SALES_SUPERVISOR`/`SALES_ACCOUNTANT`/`PACKER`/`OPERATOR`.
   - حساب سعر البوكس تلقائياً بالقروش في [agentMath.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/src/utils/agentMath.ts) و[agent.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/src/routes/agent.ts) و[boxPricing.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/lib/boxPricing.ts)، وإلغاء الإدخال اليدوي لسعر البوكس في [AgentOrderModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/AgentOrderModal.tsx) بحيث يتعبّأ السعر الثابت تلقائياً للفتاة ويتعدّل بـ `addPrice`/`removePrice` فقط مع فرض الحساب على الخادم وتجاهل أي سعر مرسل من العميل وبقاء الحسابات العامة («سعر الخروج من المخزون» و«سعر الخروج» و«فرق صرف») متطابقة.
+- **صفحات البيع (مصدر الأوردر) وحساباتها المنفردة في الحسابات العامة (`0029_sales_pages`) + تحسين سلاسة السكرول**:
+  - إضافة نموذج `SalesPage` وربطه بأوردرات الفتيات والمبيعات في [schema.prisma](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/prisma/schema.prisma) و[0029_sales_pages](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/prisma/migrations/0029_sales_pages/migration.sql)، مع إدارة الصفحات للإدارة فقط في [SalesPagesManager.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/SalesPagesManager.tsx) بصفحة [AgentAccounts.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/AgentAccounts.tsx).
+  - إضافة اختيار إجباري لاسم الصفحة للفتاة عبر `GET /api/agent/pages` و[AgentOrderModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/AgentOrderModal.tsx)، وإظهار اسم الصفحة كملاحظة خارج الفاتورة أسفل المعاينة في [WaybillPreviewModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/WaybillPreviewModal.tsx) دون إدراجها في الفاتورة المطبوعة أو PDF (`WaybillSheet.tsx` / `waybillPdf.ts`).
+  - استخراج حسابات منفردة لكل صفحة وفلتر للصفحة في [accounting.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/src/routes/accounting.ts) و[GeneralAccounts.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/GeneralAccounts.tsx).
+  - إزالة `backdrop-blur-md` من [Header.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/header/Header.tsx) وضبط عدد الصفوف إلى `20` مع `contain: layout style` لجدول المخزون لتسريع السكرول.
 - **ملفات المستودع والاختبارات**:
   - إضافة `.env.example` في `backend/` و`frontend/` وملف `.github/workflows/ci.yml`.
   - إضافة [sync.test.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/tests/sync.test.ts) و[performance.test.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/tests/performance.test.ts) وإصلاح وإضافة اختبارات التغطية في `backend/tests/` (شاملةً اختبارات القنوات والبث اللحظي SSE والفهارس والـ Pagination وتفاصيل المتابعة وعدم تسرب التكاليف).
@@ -80,6 +85,7 @@
 - `backend/prisma/migrations/0026_agent_line_price_shipping/migration.sql`
 - `backend/prisma/migrations/0027_performance_indexes/migration.sql`
 - `backend/prisma/migrations/0028_box_fixed_price_and_item_adjust_prices/migration.sql`
+- `backend/prisma/migrations/0029_sales_pages/migration.sql`
 - `backend/src/utils/salesStock.ts`
 - `backend/tests/sync.test.ts`
 - `backend/tests/performance.test.ts`
@@ -90,6 +96,7 @@
 - `frontend/src/lib/waybillPdf.ts`
 - `frontend/src/components/departments/DepartmentProvider.tsx`
 - `frontend/src/components/agent/FollowOrdersTable.tsx`
+- `frontend/src/components/agent/SalesPagesManager.tsx`
 - `frontend/src/components/agent/WaybillPreviewModal.tsx`
 - `frontend/src/components/agent/WaybillSheet.tsx`
 - `frontend/src/components/sales/SalesOrderWaybillModal.tsx`
@@ -134,6 +141,7 @@
 - `backend/tests/agentOrders.test.ts`
 - `backend/tests/auth.test.ts`
 - `backend/tests/files.test.ts`
+- `backend/tests/helpers.ts`
 - `backend/tests/inventory.test.ts`
 - `backend/tests/r2Client.test.ts`
 - `backend/tests/sales.test.ts`
@@ -147,6 +155,7 @@
 - `frontend/src/components/agent/AgentOrderModal.tsx`
 - `frontend/src/components/agent/FollowOrderRow.tsx`
 - `frontend/src/components/auth/AuthProvider.tsx`
+- `frontend/src/components/header/Header.tsx`
 - `frontend/src/components/inventory/ItemDetailsModal.tsx`
 - `frontend/src/components/inventory/ItemModal.tsx`
 - `frontend/src/components/sales/ProductEditorModal.tsx`
@@ -207,11 +216,11 @@
 | الفحص | الأمر | النتيجة | التفاصيل المرصودة |
 | --- | --- | --- | --- |
 | فحص أنواع Backend | `cd backend && npm run typecheck` | **PASS** | `tsc -p tsconfig.json --noEmit` — خروج برمز 0 (0 أخطاء) |
-| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **28 ملفاً نجح / 28**، **452 اختباراً نجح / 452** (0 فشل، 0 تخطي) في `249.62s` |
-| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (407ms) + `tsc -p tsconfig.json` — خروج برمز 0 |
-| اختبار قبول الإدارات والصلاحيات | `tsx verify_departments.ts` | **PASS** | طباعة `ALL_DEPARTMENTS_ACCEPTANCE_CHECKS_PASSED` (تحقق من `/workspace` و`manageUsers` لـ `admin`/`manager` فقط، إزالة `/products` من `Workspace`/`App`/`Sidebar`، عدّ الروابط `6/8/3/1`، وثبات `departmentsForPath`) + التحقق من `calcAdjustedBoxPrice` (`FRONTEND_BOX_PRICING_OK`) |
-| فحص Frontend Lint | `cd frontend && npm run lint` | **PASS** | `oxlint` — `0 errors`, `20 warnings` (على 178 ملفاً في `88ms`) |
-| بناء Frontend | `cd frontend && npm run build` | **PASS** | `tsc -b && vite build` — اكتمل في `9.35s`؛ الحزمة الرئيسية `230.71 kB` (مع تحميل `jspdf` و`html2canvas` كحزم منفصلة كسولة) |
+| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **28 ملفاً نجح / 28**، **453 اختباراً نجح / 453** (0 فشل، 0 تخطي) في `62.94s` |
+| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (302ms) + `tsc -p tsconfig.json` — خروج برمز 0 |
+| اختبار قبول الإدارات والصلاحيات | `tsx verify_departments.ts` | **PASS** | طباعة `ALL_DEPARTMENTS_ACCEPTANCE_CHECKS_PASSED` (تحقق من `/workspace` و`manageUsers` لـ `admin`/`manager` فقط، إزالة `/products` من `Workspace`/`App`/`Sidebar`، عدّ الروابط `6/8/3/1`، وثبات `departmentsForPath`) |
+| فحص Frontend Lint | `cd frontend && npm run lint` | **PASS** | `oxlint` — `0 errors`, `20 warnings` (على 179 ملفاً في `108ms`) |
+| بناء Frontend | `cd frontend && npm run build` | **PASS** | `tsc -b && vite build` — اكتمل في `1.65s`؛ الحزمة الرئيسية `230.72 kB` (مع تحميل `jspdf` و`html2canvas` كحزم منفصلة كسولة) |
 | اختبار المتصفح الحي (E2E) | — | **NOT RUN** | لم يُشغَّل متصفح فعلي للنقر البصري |
 
 ---
@@ -228,7 +237,7 @@
    npx prisma migrate deploy
    npm run build
    ```
-   (تتضمن migrations الجديدة `0025_user_token_version` لعمود `tokenVersion`، و`0026_agent_line_price_shipping` لحقول `boxPrice` و`shippingPrice`، و`0027_performance_indexes` لفهارس الأداء، و`0028_box_fixed_price_and_item_adjust_prices` لحقول `SalesProduct.fixedPrice` و`InventoryItem.addPrice`/`removePrice`).
+   (تتضمن migrations الجديدة `0025_user_token_version` لعمود `tokenVersion`، و`0026_agent_line_price_shipping` لحقول `boxPrice` و`shippingPrice`، و`0027_performance_indexes` لفهارس الأداء، و`0028_box_fixed_price_and_item_adjust_prices` لحقول `SalesProduct.fixedPrice` و`InventoryItem.addPrice`/`removePrice`، و`0029_sales_pages` لجدول `SalesPage` وعمود `salesPageId`).
 3. **بناء ونشر الواجهة**:
    ```bash
    cd frontend

@@ -549,10 +549,13 @@ model SalesOrder {
   cancelledAt   DateTime?
   cancelReason  String?
   cancelledById String?
+  // صفحة البيع (مصدر الأوردر، migration 0029)
+  salesPageId   String?
 
-  createdBy User             @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  agent     User?            @relation("SalesOrderAgent", fields: [agentId], references: [id], onDelete: Restrict)
-  lines     SalesOrderLine[]
+  createdBy  User             @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  agent      User?            @relation("SalesOrderAgent", fields: [agentId], references: [id], onDelete: Restrict)
+  salesPage  SalesPage?       @relation(fields: [salesPageId], references: [id], onDelete: Restrict)
+  lines      SalesOrderLine[]
   agentOrder AgentOrder?
   statusLogs SalesOrderStatusLog[]
 
@@ -560,6 +563,7 @@ model SalesOrder {
   @@index([status])
   @@index([waybill])
   @@index([agentId])
+  @@index([salesPageId])
   @@index([status, date])
   @@index([agentId, date])
   @@index([createdById])
@@ -620,6 +624,20 @@ model SalesAgentProfile {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+// صفحات البيع (مصدر الأوردر) — تضيفها الإدارة يدوياً وتختارها الفتاة إجبارياً في كل أوردر
+model SalesPage {
+  id        String   @id @default(cuid())
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agentOrders AgentOrder[]
+  salesOrders SalesOrder[]
+
+  @@index([isActive])
+}
+
 // أوردر الفتاة في مساحة عملها. لا يظهر في المبيعات الإلكترونية قبل التصدير المؤكد.
 model AgentOrder {
   id            String           @id @default(cuid())
@@ -634,6 +652,7 @@ model AgentOrder {
   notes           String           @default("")
   sellPrice       Decimal          @db.Decimal(12, 2)
   shippingPrice   Decimal?         @db.Decimal(12, 2)
+  salesPageId     String?
   status          AgentOrderStatus @default(DRAFT)
   exportedAt    DateTime?
   exportedById  String?
@@ -648,11 +667,13 @@ model AgentOrder {
   exportedBy  User?        @relation("AgentOrderExporter", fields: [exportedById], references: [id], onDelete: Restrict)
   cancelledBy User?        @relation("AgentOrderCanceller", fields: [cancelledById], references: [id], onDelete: Restrict)
   salesOrder  SalesOrder?  @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
+  salesPage   SalesPage?   @relation(fields: [salesPageId], references: [id], onDelete: Restrict)
   lines       AgentOrderLine[]
 
   @@unique([agentId, seq])
   @@index([agentId, status])
   @@index([agentId, date, seq])
+  @@index([salesPageId])
 }
 
 model AgentOrderLine {

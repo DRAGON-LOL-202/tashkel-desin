@@ -19,6 +19,7 @@ const idOf = (v: unknown) => (typeof v === "string" && v.length > 0 && v.length 
 
 const include = {
   agent: { select: { id: true, name: true } },
+  salesPage: { select: { id: true, name: true } },
   agentOrder: {
     select: {
       id: true,
@@ -83,6 +84,8 @@ function serialize(o: Row) {
     source: o.agentId ? ("AGENT" as const) : ("MANUAL" as const),
     closerName: o.closerName,
     date: o.date,
+    salesPageId: o.salesPageId ?? null,
+    salesPageName: o.salesPage?.name ?? null,
     customerName: o.agentOrder?.customerName ?? "",
     customerPhone: o.agentOrder?.customerPhone ?? "",
     customerAddress: o.agentOrder?.customerAddress ?? "",
@@ -172,6 +175,7 @@ accountingRouter.get(
     const agentId = typeof req.query.agentId === "string" ? idOf(req.query.agentId) : "";
     const q = typeof req.query.q === "string" ? req.query.q.trim().slice(0, 80) : "";
     const statusQ = typeof req.query.status === "string" ? req.query.status : "";
+    const salesPageQ = typeof req.query.salesPageId === "string" ? req.query.salesPageId.trim() : "";
     // كل أوردر وصل «تم التنفيذ» فما بعد في أوردرات مبيعات إلكترونية: يدوي، أو أوردر فتاة مصدَّر غير ملغي
     const and: Prisma.SalesOrderWhereInput[] = [{ OR: [{ agentOrder: { is: null } }, { agentOrder: { is: { status: "EXPORTED" } } }] }];
     if (q) {
@@ -197,6 +201,7 @@ accountingRouter.get(
       cancelledAt: null,
       AND: and,
       ...(agentId ? { agentId } : {}),
+      ...(salesPageQ === "unassigned" ? { salesPageId: null } : salesPageQ ? { salesPageId: idOf(salesPageQ) || "__none__" } : {}),
       ...dateFilter(req.query),
     };
     const filteredWhere: Prisma.SalesOrderWhereInput = {
@@ -391,12 +396,74 @@ accountingRouter.get(
 );
 
 accountingRouter.get(
+  "/pages",
+  asyncHandler(async (_req, res) => {
+    const pages = await prisma().salesPage.findMany({
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      select: { id: true, name: true, isActive: true },
+    });
+    res.json({ pages });
+  })
+);
+
+accountingRouter.get(
   "/general",
   asyncHandler(async (req, res) => {
     const range = dateFilter(req.query);
-    const rows = (await loadAccountingRows(range)).map((r) => r.row);
-    // «إجمالي الأوردرات» يشمل المسودات في كل الشاشات؛ المسودات هنا لفتيات مسجَّلات بنفس الفترة
-    const drafts = await prisma().agentOrder.count({ where: { status: "DRAFT", ...range } });
-    res.json({ general: generalAccounts(rows, drafts) });
+    const salesPageParam = typeof req.query.salesPageId === "string" ? req.query.salesPageId.trim() : "";
+    const [allPages, draftGroups] = await Promise.all([
+      prisma().salesPage.findMany({ orderBy: [{ name: "asc" }, { id: "asc" }], select: { id: true, name: true, isActive: true } }),
+      prisma().agentOrder.groupBy({ by: ["salesPageId"], where: { status: "DRAFT", ...range }, _count: { _all: true } }),
+    ]);
+
+    const allRows: AccountingRow[] = [];
+    const rowsByPage = new Map<string | null, AccountingRow[]>();
+    await scanAgentRows(range, (o) => {
+      const row = rowOf(o);
+      allRows.push(row);
+      const key = o.salesPageId ?? null;
+      const list = rowsByPage.get(key);
+      if (list) list.push(row);
+      else rowsByPage.set(key, [row]);
+    });
+
+    const draftsByPage = new Map<string | null, number>();
+    let totalDrafts = 0;
+    for (const d of draftGroups) {
+      const k = d.salesPageId ?? null;
+      draftsByPage.set(k, (draftsByPage.get(k) ?? 0) + d._count._all);
+      totalDrafts += d._count._all;
+    }
+
+    const byPage: Array<{ pageId: string | null; pageName: string; isActive: boolean } & ReturnType<typeof generalAccounts>> = allPages.map((p) => ({
+      pageId: p.id,
+      pageName: p.name,
+      isActive: p.isActive,
+      ...generalAccounts(rowsByPage.get(p.id) ?? [], draftsByPage.get(p.id) ?? 0),
+    }));
+
+    const unassignedRows = rowsByPage.get(null) ?? [];
+    const unassignedDrafts = draftsByPage.get(null) ?? 0;
+    if (unassignedRows.length > 0 || unassignedDrafts > 0) {
+      byPage.push({
+        pageId: null,
+        pageName: "غير محددة",
+        isActive: true,
+        ...generalAccounts(unassignedRows, unassignedDrafts),
+      });
+    }
+
+    let general: ReturnType<typeof generalAccounts>;
+    if (salesPageParam === "unassigned") {
+      general = generalAccounts(unassignedRows, unassignedDrafts);
+    } else if (salesPageParam) {
+      const pid = idOf(salesPageParam);
+      general = pid ? generalAccounts(rowsByPage.get(pid) ?? [], draftsByPage.get(pid) ?? 0) : generalAccounts([], 0);
+    } else {
+      // «إجمالي الأوردرات» يشمل المسودات في كل الشاشات؛ المسودات هنا لفتيات مسجَّلات بنفس الفترة
+      general = generalAccounts(allRows, totalDrafts);
+    }
+
+    res.json({ general, byPage });
   })
 );

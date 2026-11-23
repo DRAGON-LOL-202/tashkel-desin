@@ -7,7 +7,7 @@ import { badRequest, conflict, notFound } from "../utils/httpError.js";
 import { BUCKETS, calcAdjustedBoxPriceCents, centsToDecimalString, fromCents, matchesBucket, summarize, toCents, waybillNumber, waybillUpperBound, type AccountingRow, type Bucket } from "../utils/agentMath.js";
 import { itemSelect, orderSellCents } from "../utils/salesSerialize.js";
 import { num2, num3 } from "../utils/inventorySerialize.js";
-import { cancelOrderSchema, createAgentOrderSchema, exportOrdersSchema, setPrefixSchema, updateAgentOrderSchema } from "../validators/agent.js";
+import { cancelOrderSchema, createAgentOrderSchema, createSalesPageSchema, exportOrdersSchema, setPrefixSchema, updateAgentOrderSchema, updateSalesPageSchema } from "../validators/agent.js";
 
 // نظام أوردرات الفتيات — مساحة الفتاة. كل استعلام هنا مقيَّد بـ agentId = المستخدم الحالي من التوكن (لا يُقبل معرّف فتاة من الجسم/المسار)،
 // فأي أوردر لفتاة أخرى يردّ 404 ولا يُكشف وجوده.
@@ -27,6 +27,7 @@ const lineInclude = {
 
 const agentOrderInclude = {
   lines: { orderBy: { id: "asc" }, include: lineInclude },
+  salesPage: { select: { id: true, name: true } },
   // الأسطر والمكونات لحساب سعر الخروج وسعر المخزون تلقائياً (ثابت بعد التنفيذ، وحيّ قبله)
   salesOrder: {
     select: {
@@ -92,6 +93,8 @@ export function serializeAgentOrder(o: AgentOrderRow) {
     customerPhone: o.customerPhone,
     customerAddress: o.customerAddress,
     notes: o.notes,
+    salesPageId: o.salesPageId ?? null,
+    salesPageName: o.salesPage?.name ?? null,
     sellPrice: fromCents(exitCents),
     ...(o.shippingPrice !== null
       ? {
@@ -236,11 +239,24 @@ async function getOwnOrder(agentId: string, rawId: unknown) {
 }
 
 async function lockOwnOrder(tx: Tx, agentId: string, orderId: string) {
-  const rows = await tx.$queryRaw<{ id: string; status: string; salesOrderId: string | null }[]>`
-    SELECT "id","status"::text AS "status","salesOrderId" FROM "AgentOrder" WHERE "id" = ${orderId} AND "agentId" = ${agentId} FOR UPDATE
+  const rows = await tx.$queryRaw<{ id: string; status: string; salesOrderId: string | null; salesPageId: string | null }[]>`
+    SELECT "id","status"::text AS "status","salesOrderId","salesPageId" FROM "AgentOrder" WHERE "id" = ${orderId} AND "agentId" = ${agentId} FOR UPDATE
   `;
   if (rows.length === 0) throw notFound("الأوردر غير موجود");
   return rows[0];
+}
+
+/** التحقق من اسم الصفحة (مصدر الأوردر): إجباري بمجرد وجود صفحة نشطة واحدة على الأقل */
+async function validateOrderPage(tx: Tx, rawPageId: string | null | undefined, currentPageId?: string | null): Promise<string | null> {
+  const activeCount = await tx.salesPage.count({ where: { isActive: true } });
+  if (typeof rawPageId === "string") {
+    const page = await tx.salesPage.findUnique({ where: { id: rawPageId }, select: { id: true, isActive: true } });
+    if (!page) throw badRequest("الصفحة المختارة غير موجودة");
+    if (!page.isActive && page.id !== currentPageId) throw badRequest("هذه الصفحة موقوفة حالياً ولا يمكن اختيارها");
+    return page.id;
+  }
+  if (activeCount > 0) throw badRequest("اختيار اسم الصفحة إجباري");
+  return null;
 }
 
 /** حجز رقم بوليصة: قفل صف عداد الفتاة، فحص النطاق، تخطّي أرقام استُخدمت يدوياً، ثم زيادة العداد. العداد لا ينقص أبداً. */
@@ -267,6 +283,19 @@ agentRouter.get(
   asyncHandler(async (req, res) => {
     const profile = await prisma().salesAgentProfile.findUnique({ where: { userId: req.user!.id } });
     res.json({ profile: profile ? { prefix: profile.prefix, nextSeq: profile.nextSeq } : null });
+  })
+);
+
+// صفحات البيع المفعّلة للاختيار الإجباري في أوردر الفتاة (معرّف واسم فقط بلا أي مبالغ)
+agentRouter.get(
+  "/pages",
+  asyncHandler(async (_req, res) => {
+    const pages = await prisma().salesPage.findMany({
+      where: { isActive: true },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      select: { id: true, name: true },
+    });
+    res.json({ pages });
   })
 );
 
@@ -422,6 +451,7 @@ agentRouter.post(
     const body = createAgentOrderSchema.parse(req.body);
     const agentId = req.user!.id;
     const created = await prisma().$transaction(async (tx) => {
+      const salesPageId = await validateOrderPage(tx, body.salesPageId);
       const products = await loadActiveProducts(tx, body.lines.map((l) => l.productId));
       const resolved = await resolveLines(tx, products, body.lines);
       const { seq, waybill } = await allocateWaybill(tx, agentId);
@@ -435,6 +465,7 @@ agentRouter.post(
           customerPhone: body.customerPhone,
           customerAddress: body.customerAddress,
           notes: body.notes,
+          salesPageId,
           sellPrice: centsToDecimalString(resolved.sellCents),
           ...(body.shippingPrice !== undefined
             ? { shippingPrice: body.shippingPrice === null ? null : centsToDecimalString(toCents(body.shippingPrice)) }
@@ -457,6 +488,7 @@ agentRouter.patch(
     const updated = await prisma().$transaction(async (tx) => {
       const locked = await lockOwnOrder(tx, agentId, own.id);
       if (locked.status !== "DRAFT") throw conflict("لا يمكن تعديل أوردر بعد تصديره. يمكنك إلغاؤه مع ذكر السبب.");
+      const nextSalesPageId = body.salesPageId !== undefined ? await validateOrderPage(tx, body.salesPageId, locked.salesPageId) : undefined;
       if (body.lines) {
         const products = await loadActiveProducts(tx, body.lines.map((l) => l.productId));
         const resolved = await resolveLines(tx, products, body.lines);
@@ -471,6 +503,7 @@ agentRouter.patch(
           ...(body.customerPhone !== undefined ? { customerPhone: body.customerPhone } : {}),
           ...(body.customerAddress !== undefined ? { customerAddress: body.customerAddress } : {}),
           ...(body.notes !== undefined ? { notes: body.notes } : {}),
+          ...(nextSalesPageId !== undefined ? { salesPageId: nextSalesPageId } : {}),
           ...(body.shippingPrice !== undefined
             ? { shippingPrice: body.shippingPrice === null ? null : centsToDecimalString(toCents(body.shippingPrice)) }
             : {}),
@@ -523,6 +556,7 @@ async function exportOne(agentId: string, agentName: string, orderId: string) {
         createdById: agentId,
         agentId,
         source: "AGENT",
+        salesPageId: order.salesPageId,
         agentSellPrice: centsToDecimalString(exitCents),
         ...(order.shippingPrice !== null ? { shippingPrice: order.shippingPrice } : {}),
         lines: {
@@ -668,6 +702,125 @@ salesAgentsAdminRouter.put(
         : tx.salesAgentProfile.create({ data: { userId, prefix, nextSeq } });
     });
     res.json({ profile: { userId: profile.userId, prefix: profile.prefix, nextSeq: profile.nextSeq } });
+  })
+);
+
+// ===== إدارة أسماء صفحات البيع (الإدارة فقط) =====
+const isUniquePageViolation = (e: unknown) => (e as { code?: string })?.code === "P2002";
+
+salesAgentsAdminRouter.get(
+  "/pages",
+  asyncHandler(async (_req, res) => {
+    const pages = await prisma().salesPage.findMany({
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        isActive: true,
+        createdAt: true,
+        _count: { select: { agentOrders: true, salesOrders: true } },
+      },
+    });
+    res.json({
+      pages: pages.map((p) => ({
+        id: p.id,
+        name: p.name,
+        isActive: p.isActive,
+        ordersCount: Math.max(p._count.agentOrders, p._count.salesOrders),
+        createdAt: p.createdAt.toISOString(),
+      })),
+    });
+  })
+);
+
+salesAgentsAdminRouter.post(
+  "/pages",
+  asyncHandler(async (req, res) => {
+    const { name } = createSalesPageSchema.parse(req.body);
+    const dup = await prisma().salesPage.findFirst({
+      where: { name: { equals: name, mode: "insensitive" } },
+      select: { id: true },
+    });
+    if (dup) throw conflict("اسم الصفحة موجود مسبقاً");
+    try {
+      const page = await prisma().salesPage.create({
+        data: { name },
+        select: { id: true, name: true, isActive: true, createdAt: true },
+      });
+      res.status(201).json({ page: { ...page, ordersCount: 0, createdAt: page.createdAt.toISOString() } });
+    } catch (e) {
+      if (isUniquePageViolation(e)) throw conflict("اسم الصفحة موجود مسبقاً");
+      throw e;
+    }
+  })
+);
+
+salesAgentsAdminRouter.patch(
+  "/pages/:id",
+  asyncHandler(async (req, res) => {
+    const id = idOf(req.params.id);
+    const existing = await prisma().salesPage.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) throw notFound("الصفحة غير موجودة");
+    const body = updateSalesPageSchema.parse(req.body);
+    if (body.name !== undefined) {
+      const dup = await prisma().salesPage.findFirst({
+        where: { name: { equals: body.name, mode: "insensitive" }, id: { not: id } },
+        select: { id: true },
+      });
+      if (dup) throw conflict("اسم الصفحة موجود مسبقاً");
+    }
+    try {
+      const page = await prisma().salesPage.update({
+        where: { id },
+        data: {
+          ...(body.name !== undefined ? { name: body.name } : {}),
+          ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+        },
+        select: {
+          id: true,
+          name: true,
+          isActive: true,
+          createdAt: true,
+          _count: { select: { agentOrders: true, salesOrders: true } },
+        },
+      });
+      res.json({
+        page: {
+          id: page.id,
+          name: page.name,
+          isActive: page.isActive,
+          ordersCount: Math.max(page._count.agentOrders, page._count.salesOrders),
+          createdAt: page.createdAt.toISOString(),
+        },
+      });
+    } catch (e) {
+      if (isUniquePageViolation(e)) throw conflict("اسم الصفحة موجود مسبقاً");
+      throw e;
+    }
+  })
+);
+
+salesAgentsAdminRouter.delete(
+  "/pages/:id",
+  asyncHandler(async (req, res) => {
+    const id = idOf(req.params.id);
+    const existing = await prisma().salesPage.findUnique({
+      where: { id },
+      select: { id: true, _count: { select: { agentOrders: true, salesOrders: true } } },
+    });
+    if (!existing) throw notFound("الصفحة غير موجودة");
+    if (existing._count.agentOrders > 0 || existing._count.salesOrders > 0) {
+      throw conflict("لا يمكن حذف صفحة مرتبطة بأوردرات؛ يمكنك إيقافها بدلاً من حذفها");
+    }
+    try {
+      await prisma().salesPage.delete({ where: { id } });
+      res.json({ ok: true });
+    } catch (e) {
+      if ((e as { code?: string })?.code === "P2003") {
+        throw conflict("لا يمكن حذف صفحة مرتبطة بأوردرات؛ يمكنك إيقافها بدلاً من حذفها");
+      }
+      throw e;
+    }
   })
 );
 

@@ -731,3 +731,197 @@ describe("سعر كل بوكس من الفتاة + مصاريف الشحن + ا�
     expect(JSON.stringify(follow.body)).not.toMatch(/unitCost|unitPrice|unitSell|costTotal|profit|available/);
   });
 });
+
+describe("صفحات البيع (مصدر الأوردر) وحسابات كل صفحة على حدة في الحسابات العامة", () => {
+  it("الإدارة تدير الصفحات، والاختيار إجباري للفتاة بعد الإضافة، والحسابات العامة تُخرج حسابات منفردة لكل صفحة", async () => {
+    const mgrTok = await login("amr");
+    const agPages = await makeUser("ag_pages_user", "SALES_AGENT");
+    await api(admin).put(`/api/sales-agents/${agPages.id}/prefix`).send({ prefix: 970 });
+    const agTok = await login("ag_pages_user");
+
+    // 1. غير الإدارة ممنوع من إدارة الصفحات
+    for (const tok of [agTok, acct, sup, edit]) {
+      expect((await api(tok).get("/api/sales-agents/pages")).status).toBe(403);
+      expect((await api(tok).post("/api/sales-agents/pages").send({ name: "ممنوع" })).status).toBe(403);
+    }
+
+    // 2. الإدارة تضيف صفحتين + صفحة مؤقتة (التكرار بحالة أحرف مختلفة مرفوض 409)
+    const pARes = await api(admin).post("/api/sales-agents/pages").send({ name: "Page Alpha" });
+    expect(pARes.status).toBe(201);
+    const pageA = pARes.body.page as { id: string; name: string };
+    expect((await api(admin).post("/api/sales-agents/pages").send({ name: "page alpha" })).status).toBe(409);
+
+    const pBRes = await api(mgrTok).post("/api/sales-agents/pages").send({ name: "صفحة التشكيل 2" });
+    expect(pBRes.status).toBe(201);
+    const pageB = pBRes.body.page as { id: string; name: string };
+
+    const pTmpRes = await api(admin).post("/api/sales-agents/pages").send({ name: "صفحة مؤقتة" });
+    expect(pTmpRes.status).toBe(201);
+    const pageTmp = pTmpRes.body.page as { id: string; name: string };
+
+    // تعديل الاسم وإيقاف التفعيل والحذف
+    const renamed = await api(admin).patch(`/api/sales-agents/pages/${pageA.id}`).send({ name: "صفحة التشكيل 1" });
+    expect(renamed.status).toBe(200);
+    expect(renamed.body.page.name).toBe("صفحة التشكيل 1");
+
+    expect((await api(admin).patch(`/api/sales-agents/pages/${pageTmp.id}`).send({ isActive: false })).status).toBe(200);
+
+    // 3. مسار الفتاة يعيد الصفحات النشطة فقط وبحقول (id, name) دون أي مبالغ
+    const agentPagesRes = await api(agTok).get("/api/agent/pages");
+    expect(agentPagesRes.status).toBe(200);
+    expect(agentPagesRes.body.pages.some((p: { id: string }) => p.id === pageTmp.id)).toBe(false);
+    expect(agentPagesRes.body.pages.map((p: { id: string }) => p.id)).toEqual(expect.arrayContaining([pageA.id, pageB.id]));
+    expect(Object.keys(agentPagesRes.body.pages[0]).sort()).toEqual(["id", "name"]);
+
+    // حذف صفحة غير مستخدمة مسموح
+    expect((await api(admin).delete(`/api/sales-agents/pages/${pageTmp.id}`)).status).toBe(200);
+
+    // 4. بعد وجود صفحات نشطة يصبح اختيار اسم الصفحة إجبارياً عند الإنشاء ويرفض غير الصالح/الموقوف
+    const D4 = "2026-11-28";
+    const missingPage = await api(agTok).post("/api/agent/orders").send({
+      date: D4,
+      customerName: "بدون صفحة",
+      lines: [{ productId: box.id, quantity: 1 }],
+    });
+    expect(missingPage.status).toBe(400);
+
+    const invalidPage = await api(agTok).post("/api/agent/orders").send({
+      date: D4,
+      customerName: "صفحة غير موجودة",
+      salesPageId: "not_existing_page",
+      lines: [{ productId: box.id, quantity: 1 }],
+    });
+    expect(invalidPage.status).toBe(400);
+
+    // إيقاف صفحة مؤقتاً يمنع استخدامها في أوردر جديد
+    const pDisabled = (await api(admin).post("/api/sales-agents/pages").send({ name: "صفحة موقوفة" })).body.page;
+    await api(admin).patch(`/api/sales-agents/pages/${pDisabled.id}`).send({ isActive: false });
+    expect(
+      (
+        await api(agTok).post("/api/agent/orders").send({
+          date: D4,
+          customerName: "صفحة معطلة",
+          salesPageId: pDisabled.id,
+          lines: [{ productId: box.id, quantity: 1 }],
+        })
+      ).status
+    ).toBe(400);
+
+    // 5. إنشاء أوردرات على صفحتين مختلفتين:
+    // صفحة 1: مسودة واحدة + أوردر مُسلَّم (بوكس ثابت = 500، مخزون watch = 180، شحن = 50)
+    // صفحة 2: أوردر مُسلَّم (بوكس ثابت = 400، مخزون watch = 180، شحن = 80)
+    const box500 = (
+      await api(admin).post("/api/sales/products").send({
+        name: "بوكس صفحة 1",
+        fixedPrice: 500,
+        components: [{ itemId: watch.id, quantity: 1 }],
+      })
+    ).body.product;
+    const box400 = (
+      await api(admin).post("/api/sales/products").send({
+        name: "بوكس صفحة 2",
+        fixedPrice: 400,
+        components: [{ itemId: watch.id, quantity: 1 }],
+      })
+    ).body.product;
+
+    const draftA = await api(agTok).post("/api/agent/orders").send({
+      date: D4,
+      salesPageId: pageA.id,
+      customerName: "مسودة صفحة 1",
+      lines: [{ productId: box500.id, quantity: 1 }],
+    });
+    expect(draftA.status).toBe(201);
+    expect(draftA.body.order).toMatchObject({ salesPageId: pageA.id, salesPageName: "صفحة التشكيل 1" });
+
+    // حذف صفحة مرتبطة بأوردر مرفوض (409)
+    expect((await api(admin).delete(`/api/sales-agents/pages/${pageA.id}`)).status).toBe(409);
+
+    const ordA = await api(agTok).post("/api/agent/orders").send({
+      date: D4,
+      salesPageId: pageA.id,
+      customerName: "عميل صفحة 1",
+      shippingPrice: 50,
+      lines: [{ productId: box500.id, quantity: 1 }],
+    });
+    const ordB = await api(agTok).post("/api/agent/orders").send({
+      date: D4,
+      salesPageId: pageB.id,
+      customerName: "عميل صفحة 2",
+      shippingPrice: 80,
+      lines: [{ productId: box400.id, quantity: 1 }],
+    });
+    expect(ordA.status).toBe(201);
+    expect(ordB.status).toBe(201);
+
+    expect((await exportIds(agTok, [ordA.body.order.id, ordB.body.order.id])).status).toBe(200);
+    const soA = await salesOrderOf(ordA.body.order.id);
+    const soB = await salesOrderOf(ordB.body.order.id);
+    expect((await execute(soA)).status).toBe(200);
+    expect((await execute(soB)).status).toBe(200);
+    expect((await acctStatus(soA, "DELIVERED")).status).toBe(200);
+    expect((await acctStatus(soB, "DELIVERED")).status).toBe(200);
+
+    // 6. المحاسب يقرأ الصفحات والحسابات العامة مع التفصيل المنفرد لكل صفحة والتصفية
+    const acctPages = await api(acct).get("/api/accounting/pages");
+    expect(acctPages.status).toBe(200);
+    expect(acctPages.body.pages.map((p: { id: string }) => p.id)).toEqual(expect.arrayContaining([pageA.id, pageB.id]));
+
+    const genAll = await api(acct).get(`/api/accounting/general?from=${D4}&to=${D4}`);
+    expect(genAll.status).toBe(200);
+    expect(genAll.body.general).toMatchObject({
+      totalOrders: 3,
+      draftCount: 1,
+      deliveredCount: 2,
+      deliveredSales: 360,
+      deliveredExitPrice: 900,
+      totalShipping: 130,
+      grandTotal: 1030,
+      priceDiff: 540,
+    });
+
+    const rowA = genAll.body.byPage.find((p: { pageId: string | null }) => p.pageId === pageA.id);
+    const rowB = genAll.body.byPage.find((p: { pageId: string | null }) => p.pageId === pageB.id);
+    expect(rowA).toMatchObject({
+      pageId: pageA.id,
+      pageName: "صفحة التشكيل 1",
+      totalOrders: 2,
+      draftCount: 1,
+      deliveredCount: 1,
+      deliveredSales: 180,
+      deliveredExitPrice: 500,
+      totalShipping: 50,
+      grandTotal: 550,
+      priceDiff: 320,
+    });
+    expect(rowB).toMatchObject({
+      pageId: pageB.id,
+      pageName: "صفحة التشكيل 2",
+      totalOrders: 1,
+      draftCount: 0,
+      deliveredCount: 1,
+      deliveredSales: 180,
+      deliveredExitPrice: 400,
+      totalShipping: 80,
+      grandTotal: 480,
+      priceDiff: 220,
+    });
+
+    // التصفية بصفحة محددة في /accounting/general وفي /accounting/orders
+    const genPageA = await api(acct).get(`/api/accounting/general?from=${D4}&to=${D4}&salesPageId=${pageA.id}`);
+    expect(genPageA.status).toBe(200);
+    expect(genPageA.body.general).toMatchObject({
+      totalOrders: 2,
+      deliveredCount: 1,
+      deliveredExitPrice: 500,
+      totalShipping: 50,
+      grandTotal: 550,
+    });
+
+    const followA = await api(acct).get(`/api/accounting/orders?from=${D4}&to=${D4}&salesPageId=${pageA.id}`);
+    expect(followA.status).toBe(200);
+    expect(followA.body.orders.map((o: { id: string }) => o.id)).toEqual([soA]);
+    expect(followA.body.orders[0]).toMatchObject({ salesPageId: pageA.id, salesPageName: "صفحة التشكيل 1" });
+    expect(JSON.stringify(followA.body)).not.toMatch(/unitCost|unitPrice|unitSell|costTotal|profit|available/);
+  });
+});

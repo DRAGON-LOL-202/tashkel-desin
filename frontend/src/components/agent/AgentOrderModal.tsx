@@ -6,7 +6,7 @@ import { FieldWrap, Input, Select, Textarea } from "../ui/Field";
 import { fmtMoney, fmtQty } from "../inventory/format";
 import { calcAdjustedBoxPrice } from "../../lib/boxPricing";
 import { todayISO } from "../../lib/date";
-import type { AgentComponent, AgentItem, AgentOrder, AgentOrderInput, AgentProduct } from "../../types";
+import type { AgentComponent, AgentItem, AgentOrder, AgentOrderInput, AgentProduct, AgentSalesPage } from "../../types";
 
 interface AgentOrderModalProps {
   open: boolean;
@@ -14,6 +14,8 @@ interface AgentOrderModalProps {
   products: AgentProduct[];
   /** أصناف المخزون المتاحة لإضافتها إلى محتويات البوكس (الاسم والوحدة وأسعار الإضافة/الحذف فقط) */
   items: AgentItem[];
+  /** صفحات البيع المفعّلة للاختيار الإجباري لمصدر الأوردر */
+  pages: AgentSalesPage[];
   /** عند وجوده: تعديل مسودة */
   editing?: AgentOrder;
   /** رقم البوليصة المتوقع للعرض الإرشادي */
@@ -63,8 +65,9 @@ const newLine = (
 ): LineDraft => ({ key: ++lineKey, productId, quantity, legacyBoxPrice, components, open, itemQuery: "" });
 
 // نموذج الفاتورة للفتاة: التاريخ، العميل، الصنف، الكمية، والسعر يُحسب تلقائياً من السعر الثابت + أسعار الإضافة والحذف (غير قابل للتعديل يدوياً).
-export function AgentOrderModal({ open, onClose, products, items, editing, nextWaybill, onSubmit }: AgentOrderModalProps) {
+export function AgentOrderModal({ open, onClose, products, items, pages, editing, nextWaybill, onSubmit }: AgentOrderModalProps) {
   const [date, setDate] = useState(editing?.date ?? todayISO());
+  const [salesPageId, setSalesPageId] = useState(editing?.salesPageId ?? "");
   const [customerName, setCustomerName] = useState(editing?.customerName ?? "");
   const [customerPhone, setCustomerPhone] = useState(editing?.customerPhone ?? "");
   const [customerAddress, setCustomerAddress] = useState(editing?.customerAddress ?? "");
@@ -88,6 +91,13 @@ export function AgentOrderModal({ open, onClose, products, items, editing, nextW
     }
     return map;
   }, [products, items]);
+
+  const selectablePages = useMemo(() => {
+    if (editing?.salesPageId && editing.salesPageName && !pages.some((p) => p.id === editing.salesPageId)) {
+      return [{ id: editing.salesPageId, name: `${editing.salesPageName} (موقوفة)` }, ...pages];
+    }
+    return pages;
+  }, [pages, editing]);
 
   const setLine = (key: number, patch: Partial<LineDraft>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
@@ -165,6 +175,7 @@ export function AgentOrderModal({ open, onClose, products, items, editing, nextW
   const grandTotal = Math.round(boxesTotalCents + shippingCents) / 100;
 
   const submit = async () => {
+    if (!salesPageId) return setError("اختر اسم الصفحة (إجباري)");
     if (!customerName.trim()) return setError("اسم العميل مطلوب");
     const filled = lines.filter((l) => l.productId);
     if (filled.length === 0) return setError("اختر صنفاً / بوكساً واحداً على الأقل");
@@ -197,6 +208,7 @@ export function AgentOrderModal({ open, onClose, products, items, editing, nextW
     try {
       const ok = await onSubmit({
         date,
+        salesPageId,
         customerName: customerName.trim(),
         customerPhone: customerPhone.trim(),
         customerAddress: customerAddress.trim(),
@@ -225,6 +237,23 @@ export function AgentOrderModal({ open, onClose, products, items, editing, nextW
       size="lg"
     >
       <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <FieldWrap label="اسم الصفحة *" htmlFor="ao-page">
+            <Select id="ao-page" value={salesPageId} onChange={(e) => setSalesPageId(e.target.value)} required>
+              <option value="">اختر اسم الصفحة…</option>
+              {selectablePages.map((pg) => (
+                <option key={pg.id} value={pg.id}>
+                  {pg.name}
+                </option>
+              ))}
+            </Select>
+            {selectablePages.length === 0 && (
+              <p className="mt-1 text-xs text-problem">
+                لم تضف الإدارة أسماء الصفحات بعد؛ تواصل مع الإدارة لإضافتها.
+              </p>
+            )}
+          </FieldWrap>
+        </div>
         <FieldWrap label="التاريخ" htmlFor="ao-date">
           <Input id="ao-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </FieldWrap>

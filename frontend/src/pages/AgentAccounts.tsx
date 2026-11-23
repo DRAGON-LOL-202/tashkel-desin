@@ -9,6 +9,7 @@ import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { StatTile } from "../components/agent/StatTile";
 import { AgentDetailModal } from "../components/agent/AgentDetailModal";
 import { PrefixManager } from "../components/agent/PrefixManager";
+import { SalesPagesManager } from "../components/agent/SalesPagesManager";
 import { fmtMoney } from "../components/inventory/format";
 import { usePermissions } from "../hooks/usePermissions";
 import { useResource } from "../hooks/useResource";
@@ -36,7 +37,12 @@ export default function AgentAccountsPage() {
 
   return (
     <AppLayout headerSlot={(openMobileNav) => <Header title="حسابات الفتيات" description="الأوردرات المسلّمة فقط تدخل في المقابل الثابت (7 ج) وعمولة 3%" onOpenMobileNav={openMobileNav} />}>
-      {isStaff && <PrefixManager />}
+      {isStaff && (
+        <>
+          <PrefixManager />
+          <SalesPagesManager />
+        </>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center gap-3 text-sm">
         <span className="text-muted">الفترة:</span>
