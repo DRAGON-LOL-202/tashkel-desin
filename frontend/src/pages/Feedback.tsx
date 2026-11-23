@@ -22,7 +22,7 @@ import { usePermissions } from "../hooks/usePermissions";
 import type { SyncChannel } from "../lib/liveSync";
 
 const FEEDBACK_CHANNELS: SyncChannel[] = ["tasks"];
-const PAGE_SIZE = 24;
+const PAGE_SIZE = 20;
 type FilterValue = "all" | FeedbackType;
 export default function FeedbackPage() {
   const [modalOpen, setModalOpen] = useState(false);

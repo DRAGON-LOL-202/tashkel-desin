@@ -30,7 +30,7 @@ const NO_ORDERS: FollowList = {
 const NO_AGENTS: { agents: AgentAccountRow[]; totals: AgentAccountTotals | null } = { agents: [], totals: null };
 const STATUS_TABS = ["", "EXECUTED", "SHIPPED", "DELIVERED", "RETURNED"] as const;
 const ACCOUNTING_CHANNELS: SyncChannel[] = ["accounting"];
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 20;
 
 // متابعة أوردرات المبيعات: جدول متابعة، تغيير الحالة من القائمة المنسدلة، سعر الشحن، معاينة/طباعة البوليصة، وتحديد عدة بوالص لتحميلها كـ PDF.
 export default function SalesFollowUpPage() {

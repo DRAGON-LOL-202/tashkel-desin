@@ -55,7 +55,7 @@ import type { SyncChannel } from "../lib/liveSync";
 import { EMPTY_INVENTORY_DATA, inventoryService } from "../services/inventoryService";
 
 const INVENTORY_CHANNELS: SyncChannel[] = ["inventory"];
-const INVENTORY_PAGE_SIZE = 50;
+const INVENTORY_PAGE_SIZE = 20;
 import type {
   InventoryCategory,
   InventoryData,
@@ -510,7 +510,7 @@ export default function InventoryPage() {
                     const statusMeta = STATUS_META[i.status] ?? STATUS_META.AVAILABLE;
                     const itemTotalValue = i.totalValue ?? calcTotalValue(i.quantity, i.unitPrice);
                     return (
-                      <tr key={i.id} className={`border-b border-border/60 align-middle ${i.isActive ? "" : "opacity-60"}`}>
+                      <tr key={i.id} style={{ contain: "layout style" }} className={`border-b border-border/60 align-middle ${i.isActive ? "" : "opacity-60"}`}>
                         <td className="px-3 py-2.5">
                           <button
                             type="button"

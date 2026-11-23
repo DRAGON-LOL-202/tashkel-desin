@@ -42,7 +42,7 @@ export function Header({ title, description, action, onOpenMobileNav }: HeaderPr
   };
 
   return (
-    <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-md border-b border-border">
+    <header className="sticky top-0 z-20 bg-background border-b border-border shadow-[0_4px_16px_-8px_rgba(0,0,0,0.28)]">
       <div className="flex items-center justify-between gap-4 px-4 md:px-8 h-16">
         <div className="flex items-center gap-3 min-w-0">
           <button

@@ -33,7 +33,7 @@ interface AgentOrdersPageData {
 const NO_ORDERS_PAGE: AgentOrdersPageData = { orders: [], total: 0, hasMore: false };
 const NO_PRODUCTS: AgentProduct[] = [];
 const NO_ITEMS: AgentItem[] = [];
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 20;
 
 const ORDER_SYNC_CHANNELS: SyncChannel[] = ["sales", "accounting"];
 const CATALOG_SYNC_CHANNELS: SyncChannel[] = ["sales", "inventory"];
