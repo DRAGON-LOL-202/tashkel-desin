@@ -515,6 +515,25 @@ describe("تفاصيل متابعة المحاسب والبحث بالعميل/�
     expect(byPhone.status).toBe(200);
     expect(byPhone.body.orders.some((x: { id: string }) => x.id === soId)).toBe(true);
 
+    // أوردر فتاة بملاحظات فارغة: يجب أن يبقى notes فارغاً للمحاسب ولا ينسخ ملخص «العميل: ...»
+    const rEmptyNotes = await api(ag1).post("/api/agent/orders").send({
+      date: D,
+      customerName: "نادية علي",
+      customerPhone: "01077788899",
+      customerAddress: "الإسكندرية — سموحة",
+      notes: "",
+      lines: [{ productId: box.id, quantity: 1 }],
+    });
+    expect(rEmptyNotes.status).toBe(201);
+    expect((await exportIds(ag1, [rEmptyNotes.body.order.id])).status).toBe(200);
+    const soEmptyId = await salesOrderOf(rEmptyNotes.body.order.id);
+    expect((await execute(soEmptyId)).status).toBe(200);
+    const emptyFollow = await api(acct).get("/api/accounting/orders?q=01077788899");
+    expect(emptyFollow.status).toBe(200);
+    const emptyRow = emptyFollow.body.orders.find((x: { id: string }) => x.id === soEmptyId);
+    expect(emptyRow).toBeDefined();
+    expect(emptyRow.notes).toBe("");
+
     // لا تسرب لأي أسعار تكلفة أو أسعار مكوّنات، وصلاحيات المحاسب تبقى محصورة تماماً
     expect(JSON.stringify(byName.body)).not.toMatch(/unitCost|unitPrice|unitSell|costTotal|profit|available/);
     expect((await acctStatus(soId, "RETURNED")).status).toBe(400);

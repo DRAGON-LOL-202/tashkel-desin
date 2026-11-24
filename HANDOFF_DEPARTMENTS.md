@@ -78,6 +78,7 @@
   - إرجاع `groupKey` للتصنيفات و`todayMovementsByGroup` في [inventorySerialize.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/src/utils/inventorySerialize.ts) و[inventory.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/src/routes/inventory.ts).
   - فصل العرض والإحصائيات والقيمة والنواقص والجرد وتصدير Excel عبر 3 تبويبات (**كل المخزون | مخزون الخامات | مخزون الإكسسوارات والهدايا**) في [Inventory.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/Inventory.tsx) و[LowStock.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/LowStock.tsx) و[groupCategories.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/inventory/groupCategories.ts).
   - قصر `GET /api/agent/items` والإضافات الجديدة في `resolveLines` بـ [agent.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/src/routes/agent.ts) على أصناف «اكسسوارات وهدايا» (`ACCESSORIES_GIFTS`) فقط دون المساس بالمكونات الخام الافتراضية للبوكسات الثابتة.
+  - إصلاح قراءة `notes` في [accounting.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/src/routes/accounting.ts) بحيث تُؤخذ ملاحظات الفتاة مباشرة (`o.agentOrder.notes`) ولا تعود لملخص العميل المخزّن في `SalesOrder.notes` عند فراغها.
 - **ملفات المستودع والاختبارات**:
   - إضافة `.env.example` في `backend/` و`frontend/` وملف `.github/workflows/ci.yml`.
   - إضافة [sync.test.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/tests/sync.test.ts) و[performance.test.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/tests/performance.test.ts) وإصلاح وإضافة اختبارات التغطية في `backend/tests/` (شاملةً اختبارات القنوات والبث اللحظي SSE والفهارس والـ Pagination وتفاصيل المتابعة وعدم تسرب التكاليف).
@@ -229,8 +230,8 @@
 | الفحص | الأمر | النتيجة | التفاصيل المرصودة |
 | --- | --- | --- | --- |
 | فحص أنواع Backend | `cd backend && npm run typecheck` | **PASS** | `tsc -p tsconfig.json --noEmit` — خروج برمز 0 (0 أخطاء) |
-| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **28 ملفاً نجح / 28**، **457 اختباراً نجح / 457** (0 فشل، 0 تخطي) في `50.99s` |
-| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (208ms) + `tsc -p tsconfig.json` — خروج برمز 0 |
+| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **28 ملفاً نجح / 28**، **457 اختباراً نجح / 457** (0 فشل، 0 تخطي) في `51.03s` |
+| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (224ms) + `tsc -p tsconfig.json` — خروج برمز 0 |
 | اختبار قبول الإدارات والصلاحيات | `tsx verify_departments.ts` | **PASS** | طباعة `ALL_DEPARTMENTS_ACCEPTANCE_CHECKS_PASSED` (تحقق من `/workspace` و`manageUsers` لـ `admin`/`manager` فقط، إزالة `/products` من `Workspace`/`App`/`Sidebar`، عدّ الروابط `6/8/4/1`، وتغطية `sales_agent_supervisor` و`/agent-supervisor`) |
 | فحص Frontend Lint | `cd frontend && npm run lint` | **PASS** | `oxlint` — `0 errors`, `19 warnings` (على 181 ملفاً في `79ms`) |
 | بناء Frontend | `cd frontend && npm run build` | **PASS** | `tsc -b && vite build` — اكتمل في `1.58s`؛ الحزمة الرئيسية `231.15 kB` (مع تحميل `jspdf` و`html2canvas` و`AgentSupervisorOrders` كحزم منفصلة كسولة) |

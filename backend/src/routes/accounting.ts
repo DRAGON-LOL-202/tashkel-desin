@@ -89,7 +89,7 @@ function serialize(o: Row) {
     customerName: o.agentOrder?.customerName ?? "",
     customerPhone: o.agentOrder?.customerPhone ?? "",
     customerAddress: o.agentOrder?.customerAddress ?? "",
-    notes: o.agentOrder?.notes || o.notes || "",
+    notes: o.agentOrder ? o.agentOrder.notes : o.notes || "",
     lines: o.lines.map((l) => ({
       id: l.id,
       productName: l.productName,
