@@ -394,8 +394,8 @@ export function AgentOrderModal({ open, onClose, products, items, pages, editing
                         <div className="mt-2 flex flex-col gap-1.5">
                           {items.length > 8 && (
                             <Input
-                              aria-label="بحث عن صنف لإضافته"
-                              placeholder="ابحث عن صنف لإضافته..."
+                              aria-label="بحث عن صنف من الإكسسوارات لإضافته"
+                              placeholder="ابحث عن صنف من الإكسسوارات لإضافته..."
                               value={l.itemQuery}
                               onChange={(e) => setLine(l.key, { itemQuery: e.target.value })}
                               className="!h-8 text-xs"
@@ -403,7 +403,7 @@ export function AgentOrderModal({ open, onClose, products, items, pages, editing
                           )}
                           <div className="flex items-center gap-2">
                             <Select aria-label="إضافة صنف للبوكس" value="" onChange={(e) => { addComp(l.key, e.target.value); if (l.itemQuery) setLine(l.key, { itemQuery: "" }); }} className="flex-1">
-                              <option value="">+ إضافة صنف…</option>
+                              <option value="">+ إضافة صنف (إكسسوارات وهدايا)…</option>
                               {items
                                 .filter((it) => !l.itemQuery.trim() || it.name.toLowerCase().includes(l.itemQuery.trim().toLowerCase()))
                                 .map((it) => (

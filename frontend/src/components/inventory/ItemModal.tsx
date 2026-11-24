@@ -24,6 +24,8 @@ interface ItemModalProps {
   hidePricePreview?: boolean;
   /** إظهار خيار الأرشفة (نشط/مؤرشف) عند التعديل؛ مخفي لمشرف المبيعات */
   canArchive?: boolean;
+  /** المجموعة الافتراضية عند إنشاء تصنيف جديد من داخل تبويب مخزن محدد */
+  defaultGroupId?: string;
   /** يعيد التصنيف الجديد (أو الموجود مسبقاً) أو null عند الفشل */
   onCreateCategory: (name: string, groupId: string, description?: string) => Promise<InventoryCategory | null>;
   /** يعيد true عند النجاح لإغلاق النافذة */
@@ -43,6 +45,7 @@ export function ItemModal({
   canCreateCategory = true,
   hidePricePreview = false,
   canArchive = true,
+  defaultGroupId,
   onCreateCategory,
   onSubmit,
 }: ItemModalProps) {
@@ -72,7 +75,7 @@ export function ItemModal({
   const [addingCategory, setAddingCategory] = useState(canCreateCategory && categories.length === 0);
   const [newCategory, setNewCategory] = useState("");
   const [newCategoryDesc, setNewCategoryDesc] = useState("");
-  const [newCategoryGroup, setNewCategoryGroup] = useState("");
+  const [newCategoryGroup, setNewCategoryGroup] = useState(defaultGroupId ?? "");
   const [creatingCategory, setCreatingCategory] = useState(false);
 
   const [errors, setErrors] = useState<Record<string, string>>({});

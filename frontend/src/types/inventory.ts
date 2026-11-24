@@ -10,6 +10,7 @@ export interface InventoryCategory {
   description: string;
   /** المجموعة الرئيسية؛ null للتصنيفات القديمة التي لم يوزّعها المدير بعد */
   groupId: string | null;
+  groupKey?: string | null;
   groupName: string | null;
   itemsCount: number;
   createdAt: string;
@@ -39,6 +40,7 @@ export interface InventoryStats {
   outOfStockCount: number;
   shortageCount: number;
   todayMovementsCount: number;
+  todayMovementsByGroup?: { MATERIALS: number; ACCESSORIES_GIFTS: number };
 }
 
 export interface InventoryData {

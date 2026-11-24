@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   Activity,
   AlertTriangle,
@@ -29,7 +29,15 @@ import { AppLayout } from "../components/layout/AppLayout";
 import { Header } from "../components/header/Header";
 import { CategoriesModal } from "../components/inventory/CategoriesModal";
 import { CategoryOptions } from "../components/inventory/CategoryOptions";
-import { isValidCategoryFilter, matchesCategoryFilter } from "../components/inventory/groupCategories";
+import {
+  WAREHOUSE_TABS,
+  categoryMatchesWarehouse,
+  computeScopedInventoryStats,
+  isValidCategoryFilter,
+  matchesCategoryFilter,
+  parseWarehouseTab,
+  type WarehouseTab,
+} from "../components/inventory/groupCategories";
 import { ItemDetailsModal } from "../components/inventory/ItemDetailsModal";
 import { ItemModal } from "../components/inventory/ItemModal";
 import { MovementModal } from "../components/inventory/MovementModal";
@@ -69,6 +77,8 @@ type StatusFilter = "ALL" | "AVAILABLE" | "LOW_STOCK" | "OUT_OF_STOCK" | "SHORTA
 type SortField = "name" | "quantity" | "value";
 
 export default function InventoryPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const warehouseTab = parseWarehouseTab(searchParams.get("warehouse"));
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
@@ -96,14 +106,57 @@ export default function InventoryPage() {
   const { data, loading, error, reload, retry } = useResource<InventoryData>(loadInventory, EMPTY_INVENTORY_DATA, INVENTORY_CHANNELS);
   const { items, categories, groups, stats, units } = data;
 
-  const activeCategory = isValidCategoryFilter(categoryFilter, categories) ? categoryFilter : "all";
+  const activeTabMeta = WAREHOUSE_TABS.find((t) => t.key === warehouseTab) ?? WAREHOUSE_TABS[0];
+  const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
+  const scopedCategories = useMemo(
+    () => (warehouseTab === "ALL" ? categories : categories.filter((c) => categoryMatchesWarehouse(c, warehouseTab))),
+    [categories, warehouseTab]
+  );
+  const scopedItems = useMemo(() => {
+    if (warehouseTab === "ALL") return items;
+    return items.filter((i) => {
+      const cat = categoryById.get(i.categoryId);
+      return cat ? categoryMatchesWarehouse(cat, warehouseTab) : false;
+    });
+  }, [items, categoryById, warehouseTab]);
+
+  const activeCountsByTab = useMemo(() => {
+    const counts: Record<WarehouseTab, number> = { ALL: 0, MATERIALS: 0, ACCESSORIES_GIFTS: 0 };
+    for (const i of items) {
+      if (!i.isActive) continue;
+      counts.ALL += 1;
+      const cat = categoryById.get(i.categoryId);
+      if (cat) {
+        if (categoryMatchesWarehouse(cat, "MATERIALS")) counts.MATERIALS += 1;
+        else if (categoryMatchesWarehouse(cat, "ACCESSORIES_GIFTS")) counts.ACCESSORIES_GIFTS += 1;
+      }
+    }
+    return counts;
+  }, [items, categoryById]);
+
+  const scopedStats = useMemo(() => {
+    if (warehouseTab === "ALL") return stats;
+    const movementsToday = stats.todayMovementsByGroup?.[warehouseTab] ?? 0;
+    return computeScopedInventoryStats(scopedItems, movementsToday);
+  }, [warehouseTab, stats, scopedItems]);
+
+  const switchWarehouseTab = (next: WarehouseTab) => {
+    setCategoryFilter("all");
+    setPage(1);
+    const params = new URLSearchParams(searchParams);
+    if (next === "ALL") params.delete("warehouse");
+    else params.set("warehouse", next);
+    setSearchParams(params, { replace: true });
+  };
+
+  const activeCategory = isValidCategoryFilter(categoryFilter, scopedCategories) ? categoryFilter : "all";
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     const dir = sortDir === "desc" ? -1 : 1;
-    const list = items
+    const list = scopedItems
       .filter((i) => showInactive || i.isActive)
-      .filter((i) => matchesCategoryFilter(i.categoryId, activeCategory, categories))
+      .filter((i) => matchesCategoryFilter(i.categoryId, activeCategory, scopedCategories))
       .filter((i) => {
         if (statusFilter === "ALL") return true;
         if (statusFilter === "SHORTAGE") return i.isShortage || i.quantity <= i.minQuantity || i.quantity === 0;
@@ -122,7 +175,7 @@ export default function InventoryPage() {
       }
       return a.name.localeCompare(b.name, "ar") * dir;
     });
-  }, [items, search, showInactive, activeCategory, statusFilter, sortBy, sortDir]);
+  }, [scopedItems, scopedCategories, search, showInactive, activeCategory, statusFilter, sortBy, sortDir]);
 
   const totalPages = Math.max(1, Math.ceil(visible.length / INVENTORY_PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -225,11 +278,13 @@ export default function InventoryPage() {
                 <Warehouse size={22} />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-text">المخزون الرئيسي</h2>
+                <h2 className="text-xl font-bold text-text">
+                  {warehouseTab === "ALL" ? "المخزون الرئيسي" : activeTabMeta.label}
+                </h2>
                 <p className="mt-0.5 text-xs text-muted">
-                  {stats.totalItems} منتج نشط
-                  {!hideInventoryPrices ? ` · إجمالي القيمة ${fmtMoney(stats.totalValue)}` : ""}
-                  {stats.shortageCount > 0 ? ` · ${stats.shortageCount} منتج يحتاج إعادة طلب` : ""}
+                  {scopedStats.totalItems} منتج نشط
+                  {!hideInventoryPrices ? ` · إجمالي القيمة ${fmtMoney(scopedStats.totalValue)}` : ""}
+                  {scopedStats.shortageCount > 0 ? ` · ${scopedStats.shortageCount} منتج يحتاج إعادة طلب` : ""}
                 </p>
               </div>
             </div>
@@ -238,15 +293,15 @@ export default function InventoryPage() {
               {!hideInventoryPrices && (
                 <>
                   <Link
-                    to="/inventory/shortages"
+                    to={warehouseTab === "ALL" ? "/inventory/shortages" : `/inventory/shortages?warehouse=${warehouseTab}`}
                     className="task-btn task-btn--ghost relative text-xs sm:text-sm"
                     title="عرض صفحة نواقص المخزون"
                   >
-                    <AlertTriangle size={16} className={stats.shortageCount > 0 ? "text-problem" : "text-muted"} />
+                    <AlertTriangle size={16} className={scopedStats.shortageCount > 0 ? "text-problem" : "text-muted"} />
                     <span>نواقص المخزون</span>
-                    {stats.shortageCount > 0 && (
+                    {scopedStats.shortageCount > 0 && (
                       <span className="rounded-full bg-problem px-1.5 py-0.5 text-[11px] font-bold leading-none text-white">
-                        {stats.shortageCount}
+                        {scopedStats.shortageCount}
                       </span>
                     )}
                   </Link>
@@ -258,7 +313,7 @@ export default function InventoryPage() {
                     onClick={() => setCategoriesOpen(true)}
                     icon={<FolderTree size={15} />}
                   >
-                    التصنيفات ({categories.length})
+                    التصنيفات ({scopedCategories.length})
                   </Button>
                 </>
               )}
@@ -310,14 +365,48 @@ export default function InventoryPage() {
             </div>
           </div>
 
-          {/* بطاقات الإحصائيات المحسوبة من قاعدة البيانات */}
+          {/* تبويبات فصل المخزون: الكل / الخامات / الإكسسوارات والهدايا */}
+          <div
+            className="flex flex-wrap items-center gap-2 rounded-card border border-border bg-surface p-2"
+            role="tablist"
+            aria-label="اختيار المخزون"
+          >
+            {WAREHOUSE_TABS.map((tab) => {
+              const active = warehouseTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => switchWarehouseTab(tab.key)}
+                  className={`inline-flex items-center gap-2 rounded-control border px-3.5 py-2 text-xs font-semibold transition-colors sm:text-sm ${
+                    active
+                      ? "border-primary-deep bg-primary/15 text-primary-deep shadow-sm"
+                      : "border-transparent text-muted hover:border-border hover:bg-background/60 hover:text-text"
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] tabular-nums leading-none ${
+                      active ? "bg-primary-deep text-background" : "bg-border/70 text-muted"
+                    }`}
+                  >
+                    {activeCountsByTab[tab.key]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* بطاقات الإحصائيات المحسوبة للمخزون المختار */}
           <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${hideInventoryPrices ? "lg:grid-cols-6" : "lg:grid-cols-7"}`}>
             <div className="pp-panel flex flex-col justify-between p-3.5">
               <div className="flex items-center justify-between text-xs text-muted">
                 <span>إجمالي المنتجات</span>
                 <Package size={15} className="text-primary-deep" />
               </div>
-              <p className="mt-2 text-xl font-bold text-text">{stats.totalItems}</p>
+              <p className="mt-2 text-xl font-bold text-text">{scopedStats.totalItems}</p>
             </div>
 
             <div className="pp-panel flex flex-col justify-between p-3.5">
@@ -325,16 +414,16 @@ export default function InventoryPage() {
                 <span>إجمالي الكميات</span>
                 <Boxes size={15} className="text-primary-deep" />
               </div>
-              <p className="mt-2 text-xl font-bold text-text">{fmtQty(stats.totalQuantity)}</p>
+              <p className="mt-2 text-xl font-bold text-text">{fmtQty(scopedStats.totalQuantity)}</p>
             </div>
 
             {!hideInventoryPrices && (
               <div className="pp-panel flex flex-col justify-between p-3.5">
                 <div className="flex items-center justify-between text-xs text-muted">
-                  <span>قيمة المخزون</span>
+                  <span>{warehouseTab === "ALL" ? "قيمة المخزون" : `قيمة ${activeTabMeta.shortLabel}`}</span>
                   <Coins size={15} className="text-primary-deep" />
                 </div>
-                <p className="mt-2 text-lg font-bold text-primary-deep">{fmtMoney(stats.totalValue)}</p>
+                <p className="mt-2 text-lg font-bold text-primary-deep">{fmtMoney(scopedStats.totalValue)}</p>
               </div>
             )}
 
@@ -344,7 +433,7 @@ export default function InventoryPage() {
                 <CheckCircle2 size={15} style={{ color: "#1E8E5A" }} />
               </div>
               <p className="mt-2 text-xl font-bold" style={{ color: "#1E8E5A" }}>
-                {stats.availableCount}
+                {scopedStats.availableCount}
               </p>
             </div>
 
@@ -354,7 +443,7 @@ export default function InventoryPage() {
                 <AlertTriangle size={15} style={{ color: "#D97706" }} />
               </div>
               <p className="mt-2 text-xl font-bold" style={{ color: "#D97706" }}>
-                {stats.lowStockCount}
+                {scopedStats.lowStockCount}
               </p>
             </div>
 
@@ -363,7 +452,7 @@ export default function InventoryPage() {
                 <span>المنتجات النافدة</span>
                 <PackageX size={15} className="text-problem" />
               </div>
-              <p className="mt-2 text-xl font-bold text-problem">{stats.outOfStockCount}</p>
+              <p className="mt-2 text-xl font-bold text-problem">{scopedStats.outOfStockCount}</p>
             </div>
 
             <div className="pp-panel flex flex-col justify-between p-3.5 col-span-2 sm:col-span-1">
@@ -371,7 +460,7 @@ export default function InventoryPage() {
                 <span>حركات اليوم</span>
                 <Activity size={15} className="text-primary-deep" />
               </div>
-              <p className="mt-2 text-xl font-bold text-text">{stats.todayMovementsCount}</p>
+              <p className="mt-2 text-xl font-bold text-text">{scopedStats.todayMovementsCount}</p>
             </div>
           </div>
 
@@ -400,8 +489,16 @@ export default function InventoryPage() {
               aria-label="فلتر التصنيف"
               className="pp-input pp-input--select cursor-pointer sm:w-44"
             >
-              <option value="all">كل التصنيفات</option>
-              <CategoryOptions categories={categories} selectableGroups />
+              <option value="all">{warehouseTab === "ALL" ? "كل التصنيفات" : `كل تصنيفات ${activeTabMeta.shortLabel}`}</option>
+              {warehouseTab === "ALL" ? (
+                <CategoryOptions categories={categories} selectableGroups />
+              ) : (
+                scopedCategories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))
+              )}
             </select>
 
             <select
@@ -414,10 +511,10 @@ export default function InventoryPage() {
               className="pp-input pp-input--select cursor-pointer sm:w-44"
             >
               <option value="ALL">كل الحالات</option>
-              <option value="AVAILABLE">متوفر ({stats.availableCount})</option>
-              <option value="LOW_STOCK">منخفض ({stats.lowStockCount})</option>
-              <option value="OUT_OF_STOCK">نافد ({stats.outOfStockCount})</option>
-              <option value="SHORTAGE">كل النواقص ({stats.shortageCount})</option>
+              <option value="AVAILABLE">متوفر ({scopedStats.availableCount})</option>
+              <option value="LOW_STOCK">منخفض ({scopedStats.lowStockCount})</option>
+              <option value="OUT_OF_STOCK">نافد ({scopedStats.outOfStockCount})</option>
+              <option value="SHORTAGE">كل النواقص ({scopedStats.shortageCount})</option>
             </select>
 
             <div className="flex items-center gap-1.5">
@@ -464,10 +561,10 @@ export default function InventoryPage() {
           </div>
 
           {/* جدول المنتجات */}
-          {items.length === 0 ? (
+          {scopedItems.length === 0 ? (
             <EmptyState
               icon={<Warehouse size={24} />}
-              title="لا توجد منتجات في المخزون"
+              title={warehouseTab === "ALL" ? "لا توجد منتجات في المخزون" : `لا توجد منتجات في ${activeTabMeta.label}`}
               description={canAddStock ? "أضف أول منتج مع تصنيفه وسعره ورصيده الافتتاحي." : "لم تُضف أي منتجات بعد."}
               action={
                 canAddStock ? (
@@ -683,16 +780,17 @@ export default function InventoryPage() {
 
       {itemModal && (
         <ItemModal
-          key={itemModal.editing?.id ?? "new"}
+          key={`${itemModal.editing?.id ?? "new"}-${warehouseTab}`}
           open
           onClose={() => setItemModal(null)}
           editing={live(itemModal.editing)}
-          categories={categories}
+          categories={!itemModal.editing && warehouseTab !== "ALL" && scopedCategories.length > 0 ? scopedCategories : categories}
           groups={groups}
           units={units}
           canCreateCategory={canManageInventory}
           hidePricePreview={hideInventoryPrices}
           canArchive={canManageInventory}
+          defaultGroupId={activeTabMeta.groupId}
           onCreateCategory={handleCreateCategory}
           onSubmit={handleItemSubmit}
         />
@@ -734,7 +832,7 @@ export default function InventoryPage() {
         <StocktakeModal
           open
           onClose={() => setStocktakeModal({ open: false, item: null })}
-          items={items}
+          items={stocktakeModal.item ? items : scopedItems}
           initialItem={live(stocktakeModal.item)}
           onSubmit={handleMove}
         />
@@ -744,7 +842,7 @@ export default function InventoryPage() {
         <ReturnModal
           open
           onClose={() => setReturnModal({ open: false, item: null })}
-          items={items}
+          items={returnModal.item ? items : scopedItems}
           initialItem={live(returnModal.item)}
           onSubmit={handleMove}
         />
@@ -765,8 +863,9 @@ export default function InventoryPage() {
         <ReportsModal
           open
           onClose={() => setReportsOpen(false)}
-          items={items}
-          categories={categories}
+          items={scopedItems}
+          categories={scopedCategories}
+          warehouseLabel={warehouseTab === "ALL" ? undefined : activeTabMeta.label}
         />
       )}
 

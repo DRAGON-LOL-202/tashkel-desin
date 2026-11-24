@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "../src/db.ts";
-import { api, GROUP_ACCESSORIES, login, makeUser, resetDb } from "./helpers.ts";
+import { api, GROUP_ACCESSORIES, GROUP_MATERIALS, login, makeUser, resetDb } from "./helpers.ts";
 
 let admin: string, ag1: string, ag2: string, acct: string, sup: string, edit: string, agSup: string;
 let ag1Id: string, ag2Id: string, agSupId: string;
@@ -1142,5 +1142,67 @@ describe("مشرف الفتيات (SALES_AGENT_SUPERVISOR)", () => {
     const girlCancel = await api(ag1).post(`/api/agent/orders/${girlOwn.id}/cancel`).send({ reason: "ألغت الفتاة", confirm: true });
     expect(girlCancel.status).toBe(200);
     expect(girlCancel.body.order.status).toBe("CANCELLED");
+  });
+
+  it("قائمة الإضافة للفتاة (/api/agent/items) تقتصر على «اكسسوارات وهدايا» فقط مع السماح بالمكوّن الخام الافتراضي داخل البوكس الثابت", async () => {
+    const pagesRes = await api(ag1).get("/api/agent/pages");
+    const activePageId = pagesRes.body.pages[0].id as string;
+
+    // إنشاء تصنيف خامات وعنصرين خام + عنصر غير مصنف
+    const matCatRes = await api(admin).post("/api/inventory/categories").send({ name: "ألواح خام", groupId: GROUP_MATERIALS });
+    expect(matCatRes.status).toBe(201);
+    const matCatId = matCatRes.body.category.id as string;
+    const mat1 = (await api(admin).post("/api/inventory").send({ unit: "لوح", categoryId: matCatId, name: "لوح خشب خام", initialQuantity: 50, unitPrice: 50, sellPrice: 80 })).body.item;
+    const mat2 = (await api(admin).post("/api/inventory").send({ unit: "لوح", categoryId: matCatId, name: "لوح أكليريك خام", initialQuantity: 50, unitPrice: 60, sellPrice: 90 })).body.item;
+    const unCat = await prisma().inventoryCategory.create({ data: { name: "غير مصنف قديم" } });
+    const unItem = await prisma().inventoryItem.create({ data: { name: "صنف بلا مجموعة", categoryId: unCat.id, quantity: 20 } });
+
+    // GET /api/agent/items يردّ أصناف الإكسسوارات فقط (بلا خامات ولا غير مصنف)
+    const pickerRes = await api(ag1).get("/api/agent/items");
+    expect(pickerRes.status).toBe(200);
+    const pickerIds = pickerRes.body.items.map((x: { id: string }) => x.id);
+    expect(pickerIds).toContain(watch.id);
+    expect(pickerIds).not.toContain(mat1.id);
+    expect(pickerIds).not.toContain(mat2.id);
+    expect(pickerIds).not.toContain(unItem.id);
+
+    // محاولة إضافة صنف خام أو غير مصنّف من قِبل الفتاة عند الإنشاء أو التعديل ← 400
+    const badCreate = await api(ag1).post("/api/agent/orders").send({
+      date: "2026-12-13",
+      customerName: "عميلة خام",
+      salesPageId: activePageId,
+      lines: [{ productId: box.id, quantity: 1, components: [{ itemId: watch.id, quantity: 1 }, { itemId: mat1.id, quantity: 1 }] }],
+    });
+    expect(badCreate.status).toBe(400);
+
+    const badUnassigned = await api(ag1).post("/api/agent/orders").send({
+      date: "2026-12-13",
+      customerName: "عميلة غير مصنف",
+      salesPageId: activePageId,
+      lines: [{ productId: box.id, quantity: 1, components: [{ itemId: watch.id, quantity: 1 }, { itemId: unItem.id, quantity: 1 }] }],
+    });
+    expect(badUnassigned.status).toBe(400);
+
+    // إنشاء بوكس ثابت يحتوي مكوناً خاماً افتراضياً (mat1) + إكسسواراً (watch): الفتاة تطلبه وتضيف له إكسسواراً أو تعدل عليه بشكل طبيعي، لكن تمنع إضافة خام آخر (mat2)
+    const mixedBoxRes = await api(admin).post("/api/sales/products").send({
+      name: "بوكس مختلط",
+      fixedPrice: 300,
+      components: [{ itemId: mat1.id, quantity: 1 }, { itemId: watch.id, quantity: 1 }],
+    });
+    expect(mixedBoxRes.status).toBe(201);
+    const mixedBoxId = mixedBoxRes.body.product.id as string;
+
+    const okMixed = await api(ag1).post("/api/agent/orders").send({
+      date: "2026-12-13",
+      customerName: "عميلة مختلط",
+      salesPageId: activePageId,
+      lines: [{ productId: mixedBoxId, quantity: 1, components: [{ itemId: mat1.id, quantity: 1 }, { itemId: watch.id, quantity: 1 }] }],
+    });
+    expect(okMixed.status).toBe(201);
+
+    const badPatch = await api(ag1).patch(`/api/agent/orders/${okMixed.body.order.id}`).send({
+      lines: [{ productId: mixedBoxId, quantity: 1, components: [{ itemId: mat1.id, quantity: 1 }, { itemId: mat2.id, quantity: 1 }] }],
+    });
+    expect(badPatch.status).toBe(400);
   });
 });

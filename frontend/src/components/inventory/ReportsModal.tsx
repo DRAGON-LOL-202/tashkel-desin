@@ -15,6 +15,7 @@ interface ReportsModalProps {
   items: InventoryItem[];
   categories: InventoryCategory[];
   defaultReportType?: InventoryReportType;
+  warehouseLabel?: string;
 }
 
 const REPORT_OPTIONS: Array<{ value: InventoryReportType; label: string; isMovementReport: boolean }> = [
@@ -28,7 +29,7 @@ const REPORT_OPTIONS: Array<{ value: InventoryReportType; label: string; isMovem
   { value: "all_movements", label: "8. تقرير شامل لحركات المخزون", isMovementReport: true },
 ];
 
-export function ReportsModal({ open, onClose, items, categories, defaultReportType = "all_items" }: ReportsModalProps) {
+export function ReportsModal({ open, onClose, items, categories, defaultReportType = "all_items", warehouseLabel }: ReportsModalProps) {
   const [reportType, setReportType] = useState<InventoryReportType>(defaultReportType);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -58,7 +59,7 @@ export function ReportsModal({ open, onClose, items, categories, defaultReportTy
       else if (reportType === "adjustments") effectiveType = "ADJUST";
       else if (movementType !== "ALL") effectiveType = movementType;
 
-      const movements = currentMeta.isMovementReport
+      const rawMovements = currentMeta.isMovementReport
         ? await inventoryService.queryMovements({
             from: from || undefined,
             to: to || undefined,
@@ -68,6 +69,10 @@ export function ReportsModal({ open, onClose, items, categories, defaultReportTy
             limit: 2000,
           })
         : [];
+      const allowedIds = new Set(items.map((i) => i.id));
+      const movements = warehouseLabel && categoryId === "all" && itemId === "all"
+        ? rawMovements.filter((m) => allowedIds.has(m.itemId))
+        : rawMovements;
 
       const catObj = categories.find((c) => c.id === categoryId);
       const itemObj = items.find((i) => i.id === itemId);
@@ -99,7 +104,7 @@ export function ReportsModal({ open, onClose, items, categories, defaultReportTy
     <Modal
       open={open}
       onClose={onClose}
-      title="تصدير تقارير المخزون إلى Excel"
+      title={warehouseLabel ? `تصدير تقارير ${warehouseLabel} إلى Excel` : "تصدير تقارير المخزون إلى Excel"}
       description="تقارير عربية منظمة ودقيقة مالياً من قاعدة البيانات الحقيقية"
       size="lg"
     >

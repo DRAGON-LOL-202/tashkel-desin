@@ -1,4 +1,67 @@
-import type { InventoryCategory } from "../../types";
+import type { InventoryCategory, InventoryItem, InventoryStats } from "../../types";
+import { calcTotalValue } from "./format";
+
+export type WarehouseTab = "ALL" | "MATERIALS" | "ACCESSORIES_GIFTS";
+
+export const WAREHOUSE_TABS: readonly {
+  key: WarehouseTab;
+  label: string;
+  shortLabel: string;
+  groupId?: string;
+}[] = [
+  { key: "ALL", label: "كل المخزون", shortLabel: "الكل" },
+  { key: "MATERIALS", label: "مخزون الخامات", shortLabel: "خامات", groupId: "invgrp_materials" },
+  { key: "ACCESSORIES_GIFTS", label: "مخزون الإكسسوارات والهدايا", shortLabel: "اكسسوارات وهدايا", groupId: "invgrp_accessories_gifts" },
+];
+
+export function parseWarehouseTab(raw: string | null | undefined): WarehouseTab {
+  if (raw === "MATERIALS" || raw === "ACCESSORIES_GIFTS") return raw;
+  return "ALL";
+}
+
+export function categoryMatchesWarehouse(
+  c: Pick<InventoryCategory, "groupId" | "groupKey" | "groupName">,
+  tab: WarehouseTab
+): boolean {
+  if (tab === "ALL") return true;
+  if (tab === "MATERIALS") {
+    return c.groupKey === "MATERIALS" || c.groupId === "invgrp_materials" || c.groupName === "خامات";
+  }
+  return c.groupKey === "ACCESSORIES_GIFTS" || c.groupId === "invgrp_accessories_gifts" || c.groupName === "اكسسوارات وهدايا";
+}
+
+export function computeScopedInventoryStats(items: InventoryItem[], todayMovementsCount: number): InventoryStats {
+  let activeCount = 0;
+  let totalQtyMilli = 0;
+  let totalValueCents = 0;
+  let availableCount = 0;
+  let lowStockCount = 0;
+  let outOfStockCount = 0;
+
+  for (const item of items) {
+    if (!item.isActive) continue;
+    activeCount++;
+    const totalVal = calcTotalValue(item.quantity, item.unitPrice ?? 0);
+    const status = item.quantity <= 0 ? "OUT_OF_STOCK" : item.quantity <= item.minQuantity ? "LOW_STOCK" : "AVAILABLE";
+
+    totalQtyMilli += Math.round(item.quantity * 1000);
+    totalValueCents += Math.round(totalVal * 100);
+    if (status === "OUT_OF_STOCK") outOfStockCount++;
+    else if (status === "LOW_STOCK") lowStockCount++;
+    else availableCount++;
+  }
+
+  return {
+    totalItems: activeCount,
+    totalQuantity: Math.round(totalQtyMilli) / 1000,
+    totalValue: Math.round(totalValueCents) / 100,
+    availableCount,
+    lowStockCount,
+    outOfStockCount,
+    shortageCount: lowStockCount + outOfStockCount,
+    todayMovementsCount,
+  };
+}
 
 export const UNASSIGNED_LABEL = "غير مصنّفة";
 

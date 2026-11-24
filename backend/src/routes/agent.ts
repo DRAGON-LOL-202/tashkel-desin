@@ -133,7 +133,13 @@ export const toAccountingRow = (o: AccountingSourceRow): AccountingRow => ({
   shippingCents: 0, // سعر شحن المحاسبة يُحسب من جدول المبيعات لا من مساحة الفتاة
 });
 
-const agentItemSelect = { ...itemSelect, addPrice: true, removePrice: true } as const;
+const ACCESSORIES_GROUP_KEY = "ACCESSORIES_GIFTS";
+const agentItemSelect = {
+  ...itemSelect,
+  addPrice: true,
+  removePrice: true,
+  category: { select: { group: { select: { key: true } } } },
+} as const;
 
 async function loadActiveProducts(db: Pick<Tx, "salesProduct">, rawProductIds: string[]) {
   const productIds = [...new Set(rawProductIds)]; // نفس البوكس قد يظهر في أكثر من بند بمحتويات مختلفة
@@ -193,6 +199,7 @@ async function resolveLines(tx: Tx, products: LoadedProducts, input: LineInput[]
   );
   const lines: ResolvedLine[] = input.map((l) => {
     const p = products.get(l.productId)!;
+    const defaultItemIds = new Set(p.components.map((c) => c.itemId));
     const components: ResolvedLine["components"] = l.components
       ? l.components.map((c) => ({ itemId: c.itemId, quantity: c.quantity }))
       : p.components.map((c) => ({ itemId: c.itemId, quantity: c.quantity.toString() }));
@@ -201,6 +208,10 @@ async function resolveLines(tx: Tx, products: LoadedProducts, input: LineInput[]
       if (!item) throw notFound(`أحد أصناف «${p.name}» غير موجود`);
       // الأصناف المؤرشفة تُرفض فقط إذا أضافتها الفتاة؛ نسخة المنتج الثابت الأصلية تمر كما كانت
       if (l.components && !item.isActive) throw badRequest(`الصنف «${item.name}» غير مفعّل`);
+      // إضافة أصناف جديدة من قِبل الفتاة مقتصرة على مجموعة «اكسسوارات وهدايا» فقط
+      if (l.components && !defaultItemIds.has(c.itemId) && item.category.group?.key !== ACCESSORIES_GROUP_KEY) {
+        throw badRequest(`يمكن إضافة أصناف الإكسسوارات والهدايا فقط؛ الصنف «${item.name}» ليس من الإكسسوارات`);
+      }
     }
     let boxPrice: number | null;
     if (p.fixedPrice !== null) {
@@ -334,12 +345,12 @@ agentRouter.get(
   })
 );
 
-// أصناف المخزون المفعّلة لإضافتها إلى محتويات بوكس (الاسم والوحدة وأسعار الإضافة/الحذف فقط: بلا تكلفة ولا سعر مخزون ولا أرصدة)
+// أصناف الإكسسوارات والهدايا المفعّلة فقط لإضافتها إلى محتويات بوكس (بلا تكلفة ولا سعر مخزون ولا أرصدة)
 agentRouter.get(
   "/items",
   asyncHandler(async (_req, res) => {
     const items = await prisma().inventoryItem.findMany({
-      where: { isActive: true },
+      where: { isActive: true, category: { group: { key: ACCESSORIES_GROUP_KEY } } },
       orderBy: { name: "asc" },
       select: { id: true, name: true, unit: true, addPrice: true, removePrice: true },
     });

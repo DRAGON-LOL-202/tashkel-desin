@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowDownToLine,
@@ -17,7 +17,13 @@ import { MovementModal } from "../components/inventory/MovementModal";
 import { MovementsModal } from "../components/inventory/MovementsModal";
 import { ItemDetailsModal } from "../components/inventory/ItemDetailsModal";
 import { CategoryOptions } from "../components/inventory/CategoryOptions";
-import { matchesCategoryFilter } from "../components/inventory/groupCategories";
+import {
+  WAREHOUSE_TABS,
+  categoryMatchesWarehouse,
+  matchesCategoryFilter,
+  parseWarehouseTab,
+  type WarehouseTab,
+} from "../components/inventory/groupCategories";
 import { ItemModal } from "../components/inventory/ItemModal";
 import { StocktakeModal } from "../components/inventory/StocktakeModal";
 import { ReturnModal } from "../components/inventory/ReturnModal";
@@ -41,6 +47,8 @@ const INVENTORY_CHANNELS: SyncChannel[] = ["inventory"];
 import type { InventoryCategory, InventoryData, InventoryItem, InventoryItemInput, InventoryMovementInput } from "../types";
 
 export default function LowStockPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const warehouseTab = parseWarehouseTab(searchParams.get("warehouse"));
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "LOW_STOCK" | "OUT_OF_STOCK">("ALL");
@@ -59,28 +67,71 @@ export default function LowStockPage() {
   const { data, loading, error, reload, retry } = useResource<InventoryData>(inventoryService.list, EMPTY_INVENTORY_DATA, INVENTORY_CHANNELS);
   const { items, categories, groups, units } = data;
 
+  const activeTabMeta = WAREHOUSE_TABS.find((t) => t.key === warehouseTab) ?? WAREHOUSE_TABS[0];
+  const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
+
   const shortages = useMemo(
     () => items.filter((i) => i.isActive && (i.isShortage || i.quantity <= i.minQuantity || i.quantity === 0)),
     [items]
   );
 
-  const lowCount = useMemo(() => shortages.filter((i) => i.status === "LOW_STOCK").length, [shortages]);
-  const outCount = useMemo(() => shortages.filter((i) => i.status === "OUT_OF_STOCK").length, [shortages]);
+  const shortageCountsByTab = useMemo(() => {
+    const counts: Record<WarehouseTab, number> = { ALL: shortages.length, MATERIALS: 0, ACCESSORIES_GIFTS: 0 };
+    for (const i of shortages) {
+      const cat = categoryById.get(i.categoryId);
+      if (!cat) continue;
+      if (categoryMatchesWarehouse(cat, "MATERIALS")) counts.MATERIALS += 1;
+      else if (categoryMatchesWarehouse(cat, "ACCESSORIES_GIFTS")) counts.ACCESSORIES_GIFTS += 1;
+    }
+    return counts;
+  }, [shortages, categoryById]);
+
+  const scopedCategories = useMemo(
+    () => (warehouseTab === "ALL" ? categories : categories.filter((c) => categoryMatchesWarehouse(c, warehouseTab))),
+    [categories, warehouseTab]
+  );
+
+  const scopedShortages = useMemo(() => {
+    if (warehouseTab === "ALL") return shortages;
+    return shortages.filter((i) => {
+      const cat = categoryById.get(i.categoryId);
+      return cat ? categoryMatchesWarehouse(cat, warehouseTab) : false;
+    });
+  }, [shortages, categoryById, warehouseTab]);
+
+  const scopedItems = useMemo(() => {
+    if (warehouseTab === "ALL") return items;
+    return items.filter((i) => {
+      const cat = categoryById.get(i.categoryId);
+      return cat ? categoryMatchesWarehouse(cat, warehouseTab) : false;
+    });
+  }, [items, categoryById, warehouseTab]);
+
+  const switchWarehouseTab = (next: WarehouseTab) => {
+    setCategoryFilter("all");
+    const params = new URLSearchParams(searchParams);
+    if (next === "ALL") params.delete("warehouse");
+    else params.set("warehouse", next);
+    setSearchParams(params, { replace: true });
+  };
+
+  const lowCount = useMemo(() => scopedShortages.filter((i) => i.status === "LOW_STOCK").length, [scopedShortages]);
+  const outCount = useMemo(() => scopedShortages.filter((i) => i.status === "OUT_OF_STOCK").length, [scopedShortages]);
   const totalReorderCost = useMemo(() => {
     let cents = 0;
-    for (const i of shortages) {
+    for (const i of scopedShortages) {
       cents += Math.round(calcTotalValue(i.suggestedReorderQty, i.unitPrice) * 100);
     }
     return Math.round(cents) / 100;
-  }, [shortages]);
+  }, [scopedShortages]);
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return shortages
-      .filter((i) => matchesCategoryFilter(i.categoryId, categoryFilter, categories))
+    return scopedShortages
+      .filter((i) => matchesCategoryFilter(i.categoryId, categoryFilter, scopedCategories))
       .filter((i) => statusFilter === "ALL" || i.status === statusFilter)
       .filter((i) => !q || `${i.name} ${i.sku ?? ""}`.toLowerCase().includes(q));
-  }, [shortages, categoryFilter, statusFilter, search, categories]);
+  }, [scopedShortages, categoryFilter, statusFilter, search, scopedCategories]);
 
   const live = (i: InventoryItem | null) => (i ? (items.find((x) => x.id === i.id) ?? i) : null);
 
@@ -128,7 +179,7 @@ export default function LowStockPage() {
   };
 
   const handleExportShortages = () => {
-    exportInventoryReport({ reportType: "shortages" }, items, []);
+    exportInventoryReport({ reportType: "shortages" }, scopedItems, []);
     show("تم تصدير تقرير نواقص المخزون إلى Excel");
   };
 
@@ -166,17 +217,54 @@ export default function LowStockPage() {
               <Button type="button" variant="secondary" size="sm" onClick={handleExportShortages} icon={<FileSpreadsheet size={16} />}>
                 تصدير النواقص Excel
               </Button>
-              <Link to="/inventory" className="task-btn task-btn--ghost text-sm">
+              <Link
+                to={warehouseTab === "ALL" ? "/inventory" : `/inventory?warehouse=${warehouseTab}`}
+                className="task-btn task-btn--ghost text-sm"
+              >
                 <ArrowRight size={16} /> العودة للوحة المخزون
               </Link>
             </div>
+          </div>
+
+          {/* تبويبات فصل النواقص: الكل / الخامات / الإكسسوارات والهدايا */}
+          <div
+            className="flex flex-wrap items-center gap-2 rounded-card border border-border bg-surface p-2"
+            role="tablist"
+            aria-label="اختيار المخزون"
+          >
+            {WAREHOUSE_TABS.map((tab) => {
+              const active = warehouseTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => switchWarehouseTab(tab.key)}
+                  className={`inline-flex items-center gap-2 rounded-control border px-3.5 py-2 text-xs font-semibold transition-colors sm:text-sm ${
+                    active
+                      ? "border-primary-deep bg-primary/15 text-primary-deep shadow-sm"
+                      : "border-transparent text-muted hover:border-border hover:bg-background/60 hover:text-text"
+                  }`}
+                >
+                  <span>{tab.key === "ALL" ? "كل النواقص" : `نواقص ${tab.shortLabel}`}</span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] tabular-nums leading-none ${
+                      active ? "bg-primary-deep text-background" : "bg-border/70 text-muted"
+                    }`}
+                  >
+                    {shortageCountsByTab[tab.key]}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           {/* بطاقات ملخص النواقص */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <div className="pp-panel p-4">
               <span className="text-xs text-muted">إجمالي المنتجات الناقصة</span>
-              <p className="mt-1 text-2xl font-bold text-text">{shortages.length}</p>
+              <p className="mt-1 text-2xl font-bold text-text">{scopedShortages.length}</p>
             </div>
             <div className="pp-panel p-4">
               <span className="text-xs text-muted">منتجات منخفضة المخزون</span>
@@ -212,8 +300,16 @@ export default function LowStockPage() {
               aria-label="فلتر التصنيف"
               className="pp-input pp-input--select cursor-pointer sm:w-48"
             >
-              <option value="all">كل التصنيفات</option>
-              <CategoryOptions categories={categories} selectableGroups />
+              <option value="all">{warehouseTab === "ALL" ? "كل التصنيفات" : `كل تصنيفات ${activeTabMeta.shortLabel}`}</option>
+              {warehouseTab === "ALL" ? (
+                <CategoryOptions categories={categories} selectableGroups />
+              ) : (
+                scopedCategories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))
+              )}
             </select>
             <select
               value={statusFilter}
@@ -221,16 +317,16 @@ export default function LowStockPage() {
               aria-label="فلتر الحالة"
               className="pp-input pp-input--select cursor-pointer sm:w-44"
             >
-              <option value="ALL">كل النواقص ({shortages.length})</option>
+              <option value="ALL">كل النواقص ({scopedShortages.length})</option>
               <option value="LOW_STOCK">منخفض فقط ({lowCount})</option>
               <option value="OUT_OF_STOCK">نافد فقط ({outCount})</option>
             </select>
           </div>
 
-          {shortages.length === 0 ? (
+          {scopedShortages.length === 0 ? (
             <EmptyState
               icon={<Package size={24} />}
-              title="لا توجد نواقص في المخزون حالياً"
+              title={warehouseTab === "ALL" ? "لا توجد نواقص في المخزون حالياً" : `لا توجد نواقص في ${activeTabMeta.label} حالياً`}
               description="جميع المنتجات النشطة أعلى من الحد الأدنى المسموح."
             />
           ) : visible.length === 0 ? (

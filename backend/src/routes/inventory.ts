@@ -74,7 +74,7 @@ const hideWithdrawalMoney = (u: Parameters<typeof effectiveInventoryAccess>[0]) 
 /** التصنيفات المسموحة لتعبئة/مشغل؛ null = بلا قيد تصنيفات (إدارة أو مصمم) */
 const categoryScope = (u: Parameters<typeof isRestrictedRole>[0] & { id: string }) => (isRestrictedRole(u) ? allowedCategoryIds(u.id) : Promise.resolve(null));
 
-const CATEGORY_INCLUDE = { group: { select: { id: true, name: true } }, _count: { select: { items: true } } } as const;
+const CATEGORY_INCLUDE = { group: { select: { id: true, key: true, name: true } }, _count: { select: { items: true } } } as const;
 
 const idOf = (v: unknown) => (typeof v === "string" && v.length > 0 && v.length <= 64 ? v : "");
 
@@ -153,22 +153,31 @@ inventoryRouter.get(
     const hidePrices = shouldHideInventoryPrices(req.user!);
     const editorPickerOnly = req.user!.role === "SALES_EDITOR";
     const scope = await categoryScope(req.user!);
-    const [allItems, todayMovementsCount] = await Promise.all([
+    const todayStart = startOfTodayUtc();
+    const skipStats = withdrawOnly || editorPickerOnly;
+    const [allItems, todayMovementsCount, todayMaterialsCount, todayAccessoriesCount] = await Promise.all([
       prisma().inventoryItem.findMany({
         // «السحب فقط» أو منفّذ الأوردرات: المفعّلة فقط، ولتعبئة/مشغل تصنيفاتهما فقط (بلا تصنيفات ← لا أصناف)
         where: withdrawOnly || editorPickerOnly ? { isActive: true, ...(scope ? { categoryId: { in: scope } } : {}) } : undefined,
         include: inventoryItemInclude,
         orderBy: [{ name: "asc" }, { id: "asc" }],
       }),
-      withdrawOnly || editorPickerOnly
+      skipStats ? Promise.resolve(0) : prisma().inventoryMovement.count({ where: { createdAt: { gte: todayStart } } }),
+      skipStats
         ? Promise.resolve(0)
-        : prisma().inventoryMovement.count({
-            where: { createdAt: { gte: startOfTodayUtc() } },
-          }),
+        : prisma().inventoryMovement.count({ where: { createdAt: { gte: todayStart }, item: { category: { group: { key: "MATERIALS" } } } } }),
+      skipStats
+        ? Promise.resolve(0)
+        : prisma().inventoryMovement.count({ where: { createdAt: { gte: todayStart }, item: { category: { group: { key: "ACCESSORIES_GIFTS" } } } } }),
     ]);
 
     // الإحصاءات تُحسب قبل توقيع روابط الصور حتى لا نوقّع مرفقات أصناف لن تُعرَض بعد الفلترة
-    const rawStats = withdrawOnly || editorPickerOnly ? undefined : computeInventoryStatsFromRows(allItems, todayMovementsCount);
+    const rawStats = skipStats
+      ? undefined
+      : computeInventoryStatsFromRows(allItems, todayMovementsCount, {
+          MATERIALS: todayMaterialsCount,
+          ACCESSORIES_GIFTS: todayAccessoriesCount,
+        });
 
     let matched = allItems.filter((i) => (includeInactive && !withdrawOnly && !hidePrices ? true : i.isActive));
     if (categoryId) matched = matched.filter((i) => i.categoryId === categoryId);

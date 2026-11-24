@@ -14,7 +14,7 @@ export function serializeInventoryCategory(c: {
   createdAt?: Date;
   updatedAt?: Date;
   groupId?: string | null;
-  group?: { id: string; name: string } | null;
+  group?: { id: string; key?: string; name: string } | null;
   _count?: { items: number };
 }) {
   return {
@@ -22,6 +22,7 @@ export function serializeInventoryCategory(c: {
     name: c.name,
     description: c.description ?? "",
     groupId: c.groupId ?? null,
+    groupKey: c.group?.key ?? null,
     groupName: c.group?.name ?? null,
     itemsCount: c._count?.items ?? 0,
     createdAt: c.createdAt ? c.createdAt.toISOString() : new Date(0).toISOString(),
@@ -122,15 +123,21 @@ export interface InventoryStats {
   outOfStockCount: number;
   shortageCount: number;
   todayMovementsCount: number;
+  todayMovementsByGroup?: { MATERIALS: number; ACCESSORIES_GIFTS: number };
 }
 
-export function computeInventoryStats(items: SerializedInventoryItem[], todayMovementsCount: number): InventoryStats {
-  return computeInventoryStatsFromRows(items, todayMovementsCount);
+export function computeInventoryStats(
+  items: SerializedInventoryItem[],
+  todayMovementsCount: number,
+  todayMovementsByGroup?: { MATERIALS: number; ACCESSORIES_GIFTS: number }
+): InventoryStats {
+  return computeInventoryStatsFromRows(items, todayMovementsCount, todayMovementsByGroup);
 }
 
 export function computeInventoryStatsFromRows(
   items: { isActive: boolean; quantity: { toString(): string } | number; minQuantity: { toString(): string } | number; unitPrice: { toString(): string } | number }[],
-  todayMovementsCount: number
+  todayMovementsCount: number,
+  todayMovementsByGroup?: { MATERIALS: number; ACCESSORIES_GIFTS: number }
 ): InventoryStats {
   let activeCount = 0;
   let totalQtyMilli = 0;
@@ -164,6 +171,7 @@ export function computeInventoryStatsFromRows(
     outOfStockCount,
     shortageCount: lowStockCount + outOfStockCount,
     todayMovementsCount,
+    ...(todayMovementsByGroup ? { todayMovementsByGroup } : {}),
   };
 }
 

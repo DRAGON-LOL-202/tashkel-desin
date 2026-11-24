@@ -84,11 +84,21 @@ describe("التصنيفات", () => {
     expect((await mkCat("بلا مجموعة")).status).toBe(400);
     expect((await mkCat("مجموعة وهمية", "nope")).status).toBe(400);
   });
-  it("الرد يحوي groupId وgroupName", async () => {
+  it("الرد يحوي groupId وgroupKey وgroupName وإحصاءات الحركات اليومية حسب المجموعة", async () => {
     const r = await mkCat("هدايا", GROUP_ACCESSORIES);
     expect(r.status).toBe(201);
     expect(r.body.category.groupId).toBe(GROUP_ACCESSORIES);
+    expect(r.body.category.groupKey).toBe("ACCESSORIES_GIFTS");
     expect(r.body.category.groupName).toBe("اكسسوارات وهدايا");
+    const catsRes = await api(admin).get("/api/inventory/categories");
+    expect(catsRes.status).toBe(200);
+    expect(catsRes.body.categories.find((c: any) => c.id === wood).groupKey).toBe("MATERIALS");
+    const invRes = await api(admin).get("/api/inventory");
+    expect(invRes.status).toBe(200);
+    expect(invRes.body.stats.todayMovementsByGroup).toMatchObject({
+      MATERIALS: expect.any(Number),
+      ACCESSORIES_GIFTS: expect.any(Number),
+    });
     await api(admin).delete(`/api/inventory/categories/${r.body.category.id}`);
   });
   it("PATCH يغيّر المجموعة ويرفض مجموعة غير موجودة؛ والقديم يظهر بلا مجموعة", async () => {
