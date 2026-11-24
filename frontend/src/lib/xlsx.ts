@@ -15,7 +15,13 @@ export type CellStyle =
   | "total"
   | "totalNumber"
   | "totalDuration"
-  | "totalPercent";
+  | "totalPercent"
+  | "salesBanner"
+  | "salesHeader"
+  | "salesSerial"
+  | "salesWaybill"
+  | "salesCell"
+  | "salesTotalCol";
 
 export interface XlsxCell {
   v: string | number | null;
@@ -36,6 +42,8 @@ export interface XlsxSheet {
   autoFilter?: string;
   /** نطاقات مدموجة (مثل A1:G1) */
   merges?: string[];
+  /** ارتفاع صفوف محددة (مفهرسة بدءاً من 1) بالنقاط */
+  rowHeights?: Record<number, number>;
 }
 
 // ترتيب الأنماط هنا = رقمها داخل cellXfs في styles.xml
@@ -53,6 +61,12 @@ const STYLE_INDEX: Record<CellStyle | "default", number> = {
   totalDuration: 10,
   totalPercent: 11,
   boldText: 12,
+  salesBanner: 13,
+  salesHeader: 14,
+  salesSerial: 15,
+  salesWaybill: 16,
+  salesCell: 17,
+  salesTotalCol: 18,
 };
 
 const MAX_CELL_CHARS = 32000; // حد Excel 32767 حرفاً للخلية
@@ -118,7 +132,9 @@ function sheetXml(sheet: XlsxSheet): string {
   const rows = sheet.rows
     .map((row, r) => {
       const cells = row.map((cell, c) => cellXml(`${columnLetter(c)}${r + 1}`, cell)).join("");
-      return `<row r="${r + 1}">${cells}</row>`;
+      const h = sheet.rowHeights?.[r + 1];
+      const htAttr = h ? ` ht="${h}" customHeight="1"` : "";
+      return `<row r="${r + 1}"${htAttr}>${cells}</row>`;
     })
     .join("");
   const filter = sheet.autoFilter ? `<autoFilter ref="${sheet.autoFilter}"/>` : "";
@@ -134,31 +150,45 @@ function sheetXml(sheet: XlsxSheet): string {
 }
 
 const BORDER = 1;
+const SALES_BORDER = 2;
 const STYLES_XML =
   `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
   `<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
   `<numFmts count="1"><numFmt numFmtId="164" formatCode="[h]:mm:ss"/></numFmts>` +
-  `<fonts count="4">` +
+  `<fonts count="8">` +
   `<font><sz val="11"/><name val="Calibri"/><family val="2"/></font>` + // 0 عادي
   `<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/></font>` + // 1 رأس
   `<font><b/><sz val="14"/><name val="Calibri"/><family val="2"/></font>` + // 2 عنوان
   `<font><b/><sz val="11"/><name val="Calibri"/><family val="2"/></font>` + // 3 عريض
+  `<font><b/><sz val="16"/><color rgb="FFC00000"/><name val="Calibri"/><family val="2"/></font>` + // 4 لافتة «عام» أحمر كبير
+  `<font><b/><sz val="11"/><color rgb="FFFFFF00"/><name val="Calibri"/><family val="2"/></font>` + // 5 رأس المبيعات أصفر
+  `<font><b/><sz val="11"/><color rgb="FF000000"/><name val="Calibri"/><family val="2"/></font>` + // 6 خلايا المبيعات أسود عريض
+  `<font><b/><sz val="11"/><color rgb="FFC00000"/><name val="Calibri"/><family val="2"/></font>` + // 7 بوليصة أحمر عريض
   `</fonts>` +
-  `<fills count="4">` +
+  `<fills count="9">` +
   `<fill><patternFill patternType="none"/></fill>` +
   `<fill><patternFill patternType="gray125"/></fill>` +
   `<fill><patternFill patternType="solid"><fgColor rgb="FF148D72"/><bgColor indexed="64"/></patternFill></fill>` + // 2 أخضر
   `<fill><patternFill patternType="solid"><fgColor rgb="FFE3EEEA"/><bgColor indexed="64"/></patternFill></fill>` + // 3 رمادي فاتح
+  `<fill><patternFill patternType="solid"><fgColor rgb="FFFFFF00"/><bgColor indexed="64"/></patternFill></fill>` + // 4 أصفر
+  `<fill><patternFill patternType="solid"><fgColor rgb="FFFF0000"/><bgColor indexed="64"/></patternFill></fill>` + // 5 أحمر
+  `<fill><patternFill patternType="solid"><fgColor rgb="FFC4BD97"/><bgColor indexed="64"/></patternFill></fill>` + // 6 بيج م
+  `<fill><patternFill patternType="solid"><fgColor rgb="FF92D050"/><bgColor indexed="64"/></patternFill></fill>` + // 7 أخضر بوليصة
+  `<fill><patternFill patternType="solid"><fgColor rgb="FF4F81BD"/><bgColor indexed="64"/></patternFill></fill>` + // 8 أزرق الإجمالي
   `</fills>` +
-  `<borders count="2">` +
+  `<borders count="3">` +
   `<border><left/><right/><top/><bottom/><diagonal/></border>` +
   `<border>` +
   `<left style="thin"><color rgb="FFBFC9C5"/></left><right style="thin"><color rgb="FFBFC9C5"/></right>` +
   `<top style="thin"><color rgb="FFBFC9C5"/></top><bottom style="thin"><color rgb="FFBFC9C5"/></bottom><diagonal/>` +
   `</border>` +
+  `<border>` +
+  `<left style="thin"><color rgb="FF000000"/></left><right style="thin"><color rgb="FF000000"/></right>` +
+  `<top style="thin"><color rgb="FF000000"/></top><bottom style="thin"><color rgb="FF000000"/></bottom><diagonal/>` +
+  `</border>` +
   `</borders>` +
   `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
-  `<cellXfs count="13">` +
+  `<cellXfs count="19">` +
   `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>` + // 0 default
   `<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>` + // 1 title
   `<xf numFmtId="0" fontId="1" fillId="2" borderId="${BORDER}" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>` + // 2 header
@@ -172,6 +202,12 @@ const STYLES_XML =
   `<xf numFmtId="164" fontId="3" fillId="3" borderId="${BORDER}" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf>` + // 10 totalDuration
   `<xf numFmtId="9" fontId="3" fillId="3" borderId="${BORDER}" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf>` + // 11 totalPercent
   `<xf numFmtId="0" fontId="3" fillId="0" borderId="${BORDER}" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>` + // 12 boldText
+  `<xf numFmtId="0" fontId="4" fillId="4" borderId="${SALES_BORDER}" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>` + // 13 salesBanner
+  `<xf numFmtId="0" fontId="5" fillId="5" borderId="${SALES_BORDER}" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>` + // 14 salesHeader
+  `<xf numFmtId="0" fontId="6" fillId="6" borderId="${SALES_BORDER}" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>` + // 15 salesSerial
+  `<xf numFmtId="0" fontId="7" fillId="7" borderId="${SALES_BORDER}" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>` + // 16 salesWaybill
+  `<xf numFmtId="0" fontId="6" fillId="0" borderId="${SALES_BORDER}" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>` + // 17 salesCell
+  `<xf numFmtId="0" fontId="6" fillId="8" borderId="${SALES_BORDER}" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>` + // 18 salesTotalCol
   `</cellXfs>` +
   `<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>` +
   `</styleSheet>`;

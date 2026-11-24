@@ -43,6 +43,7 @@ function describeLog(l: OrderLogEntry): string {
   if (l.event === "STATUS") return `تغيير الحالة: ${statusText(l.from)} ← ${statusText(l.to)}`;
   if (l.event === "RETURN_FLAG") return l.to === "true" ? "وضع علامة مرتجع" : "إزالة علامة مرتجع";
   if (l.event === "SHIPPING_PRICE") return `سعر الشحن: ${l.from ?? "غير محدد"} ← ${l.to ?? "غير محدد"}`;
+  if (l.event === "EXTRA_DEPOSIT") return `عربون إضافي: ${l.from ?? "0"} ← ${l.to ?? "0"}`;
   if (l.event === "EXPORT") return `تصدير الأوردر للمبيعات${l.to ? ` (بوليصة ${l.to})` : ""}`;
   if (l.event === "CANCEL") return `إلغاء الأوردر${l.to ? `: ${l.to}` : ""}`;
   return l.event;
@@ -181,8 +182,12 @@ export function WaybillPreviewModal({
               {effectiveStatusLabel && <Badge color={effectiveStatusColor}>{effectiveStatusLabel}</Badge>}
             </div>
             <p className="mt-1 truncate text-xs text-muted">
-              العميل: <strong className="text-text">{waybill.customerName || "—"}</strong> • الإجمالي:{" "}
+              العميل: <strong className="text-text">{waybill.customerName || "—"}</strong> •{" "}
+              {waybill.deposit > 0 ? "المتبقي" : "الإجمالي"}:{" "}
               <strong className="tabular-nums text-primary-deep">{fmtMoney(waybill.grandTotal)}</strong>
+              {waybill.deposit > 0 && (
+                <span className="ms-2">(العربون: {fmtMoney(waybill.deposit)})</span>
+              )}
             </p>
           </div>
 
@@ -327,6 +332,26 @@ export function WaybillPreviewModal({
                       <dt className="text-xs text-muted">الإجمالي بالشحن</dt>
                       <dd className="mt-0.5 font-bold tabular-nums text-primary-deep">{fmtMoney(followOrder.sellPrice + (followOrder.shippingPrice ?? 0))}</dd>
                     </div>
+                  )}
+                  {followOrder.totalDeposit > 0 && (
+                    <>
+                      <div>
+                        <dt className="text-xs text-muted">عربون الفتاة</dt>
+                        <dd className="mt-0.5 font-semibold tabular-nums text-text">{fmtMoney(followOrder.deposit)}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-muted">عربون إضافي</dt>
+                        <dd className="mt-0.5 font-semibold tabular-nums text-text">{fmtMoney(followOrder.extraDeposit)}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-muted">إجمالي العربون</dt>
+                        <dd className="mt-0.5 font-bold tabular-nums text-text">{fmtMoney(followOrder.totalDeposit)}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-muted">المتبقي للتحصيل</dt>
+                        <dd className="mt-0.5 font-bold tabular-nums text-problem">{fmtMoney(followOrder.remainingTotal)}</dd>
+                      </div>
+                    </>
                   )}
                 </dl>
                 <div className="mt-3 flex flex-wrap gap-4 border-t border-border/60 pt-2.5 text-xs text-muted">

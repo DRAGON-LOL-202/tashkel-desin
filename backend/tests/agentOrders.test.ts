@@ -1224,4 +1224,198 @@ describe("مشرف الفتيات (SALES_AGENT_SUPERVISOR)", () => {
     });
     expect(badPatch.status).toBe(400);
   });
+
+  it("عربون الفتاة (افتراضياً 0 عند الترك فارغاً) يُحفظ ويُنقل إلى SalesOrder عند التصدير مع حساب المتبقي", async () => {
+    const pagesRes = await api(ag1).get("/api/agent/pages");
+    const activePageId = pagesRes.body.pages[0].id as string;
+    const D_DEP = "2026-12-20";
+
+    const noDepRes = await api(ag1).post("/api/agent/orders").send({
+      date: D_DEP,
+      customerName: "عميلة بدون عربون",
+      salesPageId: activePageId,
+      shippingPrice: 50,
+      lines: [{ productId: box.id, quantity: 1 }],
+    });
+    expect(noDepRes.status).toBe(201);
+    expect(noDepRes.body.order).toMatchObject({ deposit: 0, sellPrice: 180, shippingPrice: 50, remainingTotal: 230 });
+
+    const withDepRes = await api(ag1).post("/api/agent/orders").send({
+      date: D_DEP,
+      customerName: "عميلة بعربون",
+      salesPageId: activePageId,
+      shippingPrice: 50,
+      deposit: 150,
+      lines: [{ productId: box.id, quantity: 1 }],
+    });
+    expect(withDepRes.status).toBe(201);
+    expect(withDepRes.body.order).toMatchObject({ deposit: 150, sellPrice: 180, shippingPrice: 50, remainingTotal: 80 });
+
+    expect((await exportIds(agSup, [noDepRes.body.order.id, withDepRes.body.order.id])).status).toBe(200);
+    const soNoDep = await prisma().salesOrder.findUniqueOrThrow({ where: { id: await salesOrderOf(noDepRes.body.order.id) } });
+    const soWithDep = await prisma().salesOrder.findUniqueOrThrow({ where: { id: await salesOrderOf(withDepRes.body.order.id) } });
+    expect(Number(soNoDep.deposit)).toBe(0);
+    expect(Number(soWithDep.deposit)).toBe(150);
+    expect(Number(soWithDep.extraDeposit)).toBe(0);
+  });
+
+  it("المشرفة تعدّل تفاصيل مسودة الفتاة والبنود والعربون قبل التصدير (وبلا تسريب للتكلفة/الرصيد)، وتُمنع بعد التصدير أو الإلغاء", async () => {
+    const pagesRes = await api(ag1).get("/api/agent/pages");
+    const activePageId = pagesRes.body.pages[0].id as string;
+    const D_SUP = "2026-12-21";
+
+    // قوائم المنتجات والأصناف للمشرفة بلا تكلفة أو كمية مخزون
+    const supProds = await api(agSup).get("/api/agent-supervisor/products");
+    expect(supProds.status).toBe(200);
+    for (const p of supProds.body.products as Record<string, unknown>[]) {
+      expect(p).not.toHaveProperty("unitPrice");
+      expect(p).not.toHaveProperty("stock");
+    }
+    const supItems = await api(agSup).get("/api/agent-supervisor/items");
+    expect(supItems.status).toBe(200);
+    for (const itItem of supItems.body.items as Record<string, unknown>[]) {
+      expect(Object.keys(itItem).sort()).toEqual(["addPrice", "id", "name", "removePrice", "unit"]);
+    }
+
+    const draft = await mk(ag1, 180, { date: D_SUP, customerName: "قبل التعديل", salesPageId: activePageId, shippingPrice: 40, deposit: 20 });
+
+    // غير المشرفة/الإدارة ← 403
+    for (const tok of [ag1, acct, edit, sup]) {
+      expect((await api(tok).patch(`/api/agent-supervisor/orders/${draft.id}`).send({ customerName: "محاولة" })).status).toBe(403);
+    }
+
+    // تعديل العميل والعربون والمكونات قبل التصدير (زيادة قطعة أخرى ← 360 ج.م)
+    const patchRes = await api(agSup).patch(`/api/agent-supervisor/orders/${draft.id}`).send({
+      customerName: "بعد تعديل المشرفة",
+      notes: "ملاحظة محدّثة",
+      deposit: 100,
+      lines: [{ productId: box.id, quantity: 1, components: [{ itemId: watch.id, quantity: 2 }] }],
+    });
+    expect(patchRes.status).toBe(200);
+    expect(patchRes.body.order).toMatchObject({
+      customerName: "بعد تعديل المشرفة",
+      notes: "ملاحظة محدّثة",
+      sellPrice: 360,
+      shippingPrice: 40,
+      deposit: 100,
+      remainingTotal: 300,
+    });
+
+    // بعد التصدير ← 409، وبعد الإلغاء ← 409
+    expect((await exportIds(agSup, [draft.id])).status).toBe(200);
+    expect((await api(agSup).patch(`/api/agent-supervisor/orders/${draft.id}`).send({ notes: "متأخر" })).status).toBe(409);
+
+    const cancelledAfterExport = await mk(ag1, 180, { date: D_SUP, customerName: "سيلغى", salesPageId: activePageId });
+    expect((await exportIds(agSup, [cancelledAfterExport.id])).status).toBe(200);
+    expect((await api(agSup).post(`/api/agent-supervisor/orders/${cancelledAfterExport.id}/cancel`).send({ reason: "إلغاء للاختبار", confirm: true })).status).toBe(200);
+    expect((await api(agSup).patch(`/api/agent-supervisor/orders/${cancelledAfterExport.id}`).send({ notes: "ممنوع" })).status).toBe(409);
+  });
+
+  it("المحاسب يضيف عربوناً إضافياً بعد التنفيذ ويخصم من المتبقي بالفاتورة دون التأثير على عمولة الفتاة أو الحسابات العامة", async () => {
+    const pagesRes = await api(ag1).get("/api/agent/pages");
+    const activePageId = pagesRes.body.pages[0].id as string;
+    const D_ACCT = "2027-01-10";
+
+    const o1 = await mk(ag1, 180, { date: D_ACCT, customerName: "عميلة حسابات", salesPageId: activePageId, shippingPrice: 50, deposit: 30 });
+    expect((await exportIds(agSup, [o1.id])).status).toBe(200);
+    const soId = await salesOrderOf(o1.id);
+
+    // قبل التنفيذ (REGISTERED) ← 400
+    expect((await api(acct).put(`/api/accounting/orders/${soId}/deposit`).send({ extraDeposit: 70 })).status).toBe(400);
+
+    expect((await execute(soId)).status).toBe(200);
+    expect((await acctStatus(soId, "SHIPPED")).status).toBe(200);
+    expect((await acctStatus(soId, "DELIVERED")).status).toBe(200);
+
+    // قراءة حسابات الفتاة والحسابات العامة قبل العربون الإضافي
+    const beforeAgentSum = await api(acct).get(`/api/accounting/agents/${ag1Id}?from=${D_ACCT}&to=${D_ACCT}`);
+    const beforeGen = await api(acct).get(`/api/accounting/general?from=${D_ACCT}&to=${D_ACCT}`);
+    expect(beforeAgentSum.status).toBe(200);
+    expect(beforeGen.status).toBe(200);
+
+    // أدوار غير مخوّلة ← 403
+    for (const tok of [ag1, agSup, edit, sup]) {
+      expect((await api(tok).put(`/api/accounting/orders/${soId}/deposit`).send({ extraDeposit: 70 })).status).toBe(403);
+    }
+
+    // إدخال عربون إضافي 70 ← إجمالي العربون 100 والمتبقي (180 + 50 - 100 = 130)
+    const putDep = await api(acct).put(`/api/accounting/orders/${soId}/deposit`).send({ extraDeposit: 70 });
+    expect(putDep.status).toBe(200);
+    expect(putDep.body.order).toMatchObject({
+      deposit: 30,
+      extraDeposit: 70,
+      totalDeposit: 100,
+      remainingTotal: 130,
+    });
+
+    const depLog = await prisma().salesOrderStatusLog.findFirstOrThrow({ where: { orderId: soId, event: "EXTRA_DEPOSIT" } });
+    expect(depLog.toValue).toBe("70.00");
+
+    // مسح العربون الإضافي إلى null (يحفظ 0) ثم إرجاعه إلى 70
+    const clearDep = await api(acct).put(`/api/accounting/orders/${soId}/deposit`).send({ extraDeposit: null });
+    expect(clearDep.status).toBe(200);
+    expect(clearDep.body.order).toMatchObject({ deposit: 30, extraDeposit: 0, totalDeposit: 30, remainingTotal: 200 });
+    expect((await api(acct).put(`/api/accounting/orders/${soId}/deposit`).send({ extraDeposit: 70 })).status).toBe(200);
+
+    // لم تتأثر عمولة الفتاة ولا إيرادات الحسابات العامة بالعربون أو العربون الإضافي
+    const afterAgentSum = await api(acct).get(`/api/accounting/agents/${ag1Id}?from=${D_ACCT}&to=${D_ACCT}`);
+    const afterGen = await api(acct).get(`/api/accounting/general?from=${D_ACCT}&to=${D_ACCT}`);
+    expect(afterAgentSum.body.summary).toEqual(beforeAgentSum.body.summary);
+    expect(afterGen.body.general).toEqual(beforeGen.body.general);
+  });
+
+  it("تصدير Excel للمحاسب (يوم / شهر) يشمل كل حالات SalesOrder المسجلة ويستبعد المسودات", async () => {
+    const pagesRes = await api(ag1).get("/api/agent/pages");
+    const activePageId = pagesRes.body.pages[0].id as string;
+    const D_EX1 = "2027-02-05";
+    const D_EX2 = "2027-02-18";
+
+    const oDraft = await mk(ag1, 180, { date: D_EX1, customerName: "مسودة مستبعدة", salesPageId: activePageId });
+    const oReg = await mk(ag1, 180, { date: D_EX1, customerName: "أوردر مسجل", salesPageId: activePageId, deposit: 30, shippingPrice: 20 });
+    const oExec = await mk(ag1, 180, { date: D_EX1, customerName: "أوردر منفذ", salesPageId: activePageId, deposit: 50, shippingPrice: 70 });
+    const oCan = await mk(ag1, 180, { date: D_EX1, customerName: "أوردر ملغي", salesPageId: activePageId });
+    const oOtherDay = await mk(ag2, 180, { date: D_EX2, customerName: "أوردر يوم آخر", salesPageId: activePageId });
+
+    expect((await exportIds(agSup, [oReg.id, oExec.id, oCan.id, oOtherDay.id])).status).toBe(200);
+    await execute(await salesOrderOf(oExec.id));
+    await api(acct).put(`/api/accounting/orders/${await salesOrderOf(oExec.id)}/deposit`).send({ extraDeposit: 20 });
+    await api(agSup).post(`/api/agent-supervisor/orders/${oCan.id}/cancel`).send({ reason: "إلغاء ظاهر بالإكسل", confirm: true });
+
+    // أدوار غير مخوّلة ← 403، ومعلمات خاطئة ← 400
+    for (const tok of [ag1, agSup, edit, sup]) {
+      expect((await api(tok).get(`/api/accounting/orders/export?mode=day&date=${D_EX1}`)).status).toBe(403);
+    }
+    expect((await api(acct).get("/api/accounting/orders/export?mode=week&date=2027-02-05")).status).toBe(400);
+    expect((await api(acct).get("/api/accounting/orders/export?mode=day&date=2027-02")).status).toBe(400);
+    expect((await api(acct).get("/api/accounting/orders/export?mode=month&date=2027-02-05")).status).toBe(400);
+
+    // يوم محدد D_EX1: يضم REGISTERED و EXECUTED و CANCELLED ويستبعد DRAFT ويوم D_EX2
+    const dayRes = await api(acct).get(`/api/accounting/orders/export?mode=day&date=${D_EX1}`);
+    expect(dayRes.status).toBe(200);
+    const dayNames = (dayRes.body.orders as { customerName: string }[]).map((o) => o.customerName);
+    expect(dayNames).toContain("أوردر مسجل");
+    expect(dayNames).toContain("أوردر منفذ");
+    expect(dayNames).toContain("أوردر ملغي");
+    expect(dayNames).not.toContain("مسودة مستبعدة");
+    expect(dayNames).not.toContain("أوردر يوم آخر");
+
+    const execRow = (dayRes.body.orders as { customerName: string; remainingTotal: number; totalDeposit: number; totalQuantity: number }[])
+      .find((o) => o.customerName === "أوردر منفذ")!;
+    // 180 + 70 - (50 + 20) = 180
+    expect(execRow.totalDeposit).toBe(70);
+    expect(execRow.remainingTotal).toBe(180);
+    expect(execRow.totalQuantity).toBe(1);
+    expect(execRow).not.toHaveProperty("costTotal");
+
+    // شهر كامل 2027-02: يضم اليومين معاً ويستبعد المسودة
+    const monthRes = await api(acct).get("/api/accounting/orders/export?mode=month&date=2027-02");
+    expect(monthRes.status).toBe(200);
+    const monthNames = (monthRes.body.orders as { customerName: string }[]).map((o) => o.customerName);
+    expect(monthNames).toContain("أوردر مسجل");
+    expect(monthNames).toContain("أوردر منفذ");
+    expect(monthNames).toContain("أوردر ملغي");
+    expect(monthNames).toContain("أوردر يوم آخر");
+    expect(monthNames).not.toContain("مسودة مستبعدة");
+    expect(oDraft.id).toBeTruthy();
+  });
 });

@@ -79,6 +79,12 @@
   - فصل العرض والإحصائيات والقيمة والنواقص والجرد وتصدير Excel عبر 3 تبويبات (**كل المخزون | مخزون الخامات | مخزون الإكسسوارات والهدايا**) في [Inventory.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/Inventory.tsx) و[LowStock.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/LowStock.tsx) و[groupCategories.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/inventory/groupCategories.ts).
   - قصر `GET /api/agent/items` والإضافات الجديدة في `resolveLines` بـ [agent.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/src/routes/agent.ts) على أصناف «اكسسوارات وهدايا» (`ACCESSORIES_GIFTS`) فقط دون المساس بالمكونات الخام الافتراضية للبوكسات الثابتة.
   - إصلاح قراءة `notes` في [accounting.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/src/routes/accounting.ts) بحيث تُؤخذ ملاحظات الفتاة مباشرة (`o.agentOrder.notes`) ولا تعود لملخص العميل المخزّن في `SalesOrder.notes` عند فراغها.
+- **العربون (فتاة + عربون إضافي للمحاسب) وتعديل المشرفة قبل التصدير وتصدير Excel لمتابعة المبيعات (`0031_order_deposits`)**:
+  - إضافة migration `0031_order_deposits` ([0031_order_deposits](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/prisma/migrations/0031_order_deposits/migration.sql)) لحقول `AgentOrder.deposit` و`SalesOrder.deposit` و`SalesOrder.extraDeposit` (`DECIMAL(12, 2) NOT NULL DEFAULT 0`).
+  - **عربون الفتاة**: حقل «مبلغ العربون» الاختياري في [AgentOrderModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/AgentOrderModal.tsx) (يُحسب `0` عند تركه فارغاً) مع حفظه وعرضه في [AgentOrders.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/AgentOrders.tsx) ونسخه إلى `SalesOrder.deposit` عند التصدير.
+  - **تعديل المشرفة قبل التصدير**: إتاحة `GET /api/agent-supervisor/products` و`GET /api/agent-supervisor/items` و`PATCH /api/agent-supervisor/orders/:id` في [agent.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/src/routes/agent.ts) وزر «تعديل» بجدول [SupervisorOrdersTable.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/SupervisorOrdersTable.tsx) و[AgentSupervisorOrders.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/AgentSupervisorOrders.tsx) لمسودات `DRAFT` فقط (`409` بعد التصدير/الإلغاء) دون أي تسريب لأسعار التكلفة أو أرصدة المخزون.
+  - **عربون المحاسب الإضافي وخصمه من الفاتورة فقط**: إضافة عمود «العربون» ([DepositCell.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/DepositCell.tsx)) بجانب «سعر الشحن» في [FollowOrdersTable.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/FollowOrdersTable.tsx) عبر `PUT /api/accounting/orders/:id/deposit` (مع سجل `EXTRA_DEPOSIT`)، وخصم `totalDeposit = deposit + extraDeposit` من `sellPrice + shippingPrice` لإظهار صف «العربون | المتبقى» بالفاتورة المطبوعة والـ PDF ([WaybillSheet.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/WaybillSheet.tsx) و[waybillPdf.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/lib/waybillPdf.ts) و[WaybillPreviewModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/WaybillPreviewModal.tsx))، مع بقاء عمولات الفتيات والحسابات العامة دون أي تغيير.
+  - **تصدير Excel لمتابعة أوردرات المبيعات**: إضافة زر ونافذة [ExportSalesExcelModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/ExportSalesExcelModal.tsx) في [SalesFollowUp.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/SalesFollowUp.tsx) ومولّد [exportSalesOrders.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/lib/exportSalesOrders.ts) عبر `GET /api/accounting/orders/export` باختيار «يوم» (`YYYY-MM-DD`) أو «شهر» (`YYYY-MM`) لكل الأوردرات المسجلة بجميع حالاتها وبنفس الترتيب والتنسيق الـ RTL الـ 11 عموداً (`م | بوليصه | الاسم | العنوان | رقم التليفون | السعر | م شحن | الاجمالي | الملاحظات | العدد | المنتج`).
 - **ملفات المستودع والاختبارات**:
   - إضافة `.env.example` في `backend/` و`frontend/` وملف `.github/workflows/ci.yml`.
   - إضافة [sync.test.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/tests/sync.test.ts) و[performance.test.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/tests/performance.test.ts) وإصلاح وإضافة اختبارات التغطية في `backend/tests/` (شاملةً اختبارات القنوات والبث اللحظي SSE والفهارس والـ Pagination وتفاصيل المتابعة وعدم تسرب التكاليف).
@@ -96,15 +102,20 @@
 - `backend/prisma/migrations/0028_box_fixed_price_and_item_adjust_prices/migration.sql`
 - `backend/prisma/migrations/0029_sales_pages/migration.sql`
 - `backend/prisma/migrations/0030_sales_agent_supervisor_role/migration.sql`
+- `backend/prisma/migrations/0031_order_deposits/migration.sql`
 - `backend/src/utils/salesStock.ts`
 - `backend/tests/sync.test.ts`
 - `backend/tests/performance.test.ts`
 - `frontend/.env.example`
 - `frontend/src/lib/boxPricing.ts`
 - `frontend/src/lib/departments.ts`
+- `frontend/src/lib/exportSalesOrders.ts`
 - `frontend/src/lib/imageOptimize.ts`
 - `frontend/src/lib/waybillPdf.ts`
+- `frontend/src/lib/xlsx.ts`
 - `frontend/src/components/departments/DepartmentProvider.tsx`
+- `frontend/src/components/agent/DepositCell.tsx`
+- `frontend/src/components/agent/ExportSalesExcelModal.tsx`
 - `frontend/src/components/agent/FollowOrdersTable.tsx`
 - `frontend/src/components/agent/SalesPagesManager.tsx`
 - `frontend/src/components/agent/SupervisorOrdersTable.tsx`
@@ -230,11 +241,11 @@
 | الفحص | الأمر | النتيجة | التفاصيل المرصودة |
 | --- | --- | --- | --- |
 | فحص أنواع Backend | `cd backend && npm run typecheck` | **PASS** | `tsc -p tsconfig.json --noEmit` — خروج برمز 0 (0 أخطاء) |
-| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **28 ملفاً نجح / 28**، **457 اختباراً نجح / 457** (0 فشل، 0 تخطي) في `51.03s` |
-| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (224ms) + `tsc -p tsconfig.json` — خروج برمز 0 |
+| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **28 ملفاً نجح / 28**، **461 اختباراً نجح / 461** (0 فشل، 0 تخطي) في `51.52s` |
+| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (215ms) + `tsc -p tsconfig.json` — خروج برمز 0 |
 | اختبار قبول الإدارات والصلاحيات | `tsx verify_departments.ts` | **PASS** | طباعة `ALL_DEPARTMENTS_ACCEPTANCE_CHECKS_PASSED` (تحقق من `/workspace` و`manageUsers` لـ `admin`/`manager` فقط، إزالة `/products` من `Workspace`/`App`/`Sidebar`، عدّ الروابط `6/8/4/1`، وتغطية `sales_agent_supervisor` و`/agent-supervisor`) |
-| فحص Frontend Lint | `cd frontend && npm run lint` | **PASS** | `oxlint` — `0 errors`, `19 warnings` (على 181 ملفاً في `79ms`) |
-| بناء Frontend | `cd frontend && npm run build` | **PASS** | `tsc -b && vite build` — اكتمل في `1.58s`؛ الحزمة الرئيسية `231.15 kB` (مع تحميل `jspdf` و`html2canvas` و`AgentSupervisorOrders` كحزم منفصلة كسولة) |
+| فحص Frontend Lint | `cd frontend && npm run lint` | **PASS** | `oxlint` — `0 errors`, `19 warnings` (على 184 ملفاً في `74ms`) |
+| بناء Frontend | `cd frontend && npm run build` | **PASS** | `tsc -b && vite build` — اكتمل في `1.60s`؛ الحزمة الرئيسية `231.14 kB` (مع تحميل `jspdf` و`html2canvas` و`AgentSupervisorOrders` كحزم منفصلة كسولة) |
 | اختبار المتصفح الحي (E2E) | — | **NOT RUN** | لم يُشغَّل متصفح فعلي للنقر البصري |
 
 ---
@@ -251,7 +262,7 @@
    npx prisma migrate deploy
    npm run build
    ```
-   (تتضمن migrations الجديدة `0025_user_token_version` لعمود `tokenVersion`، و`0026_agent_line_price_shipping` لحقول `boxPrice` و`shippingPrice`، و`0027_performance_indexes` لفهارس الأداء، و`0028_box_fixed_price_and_item_adjust_prices` لحقول `SalesProduct.fixedPrice` و`InventoryItem.addPrice`/`removePrice`، و`0029_sales_pages` لجدول `SalesPage` وعمود `salesPageId`، و`0030_sales_agent_supervisor_role` لإضافة دور `SALES_AGENT_SUPERVISOR` وفهرس `AgentOrder_status_date_idx`).
+   (تتضمن migrations الجديدة `0025_user_token_version` لعمود `tokenVersion`، و`0026_agent_line_price_shipping` لحقول `boxPrice` و`shippingPrice`، و`0027_performance_indexes` لفهارس الأداء، و`0028_box_fixed_price_and_item_adjust_prices` لحقول `SalesProduct.fixedPrice` و`InventoryItem.addPrice`/`removePrice`، و`0029_sales_pages` لجدول `SalesPage` وعمود `salesPageId`، و`0030_sales_agent_supervisor_role` لإضافة دور `SALES_AGENT_SUPERVISOR` وفهرس `AgentOrder_status_date_idx`، و`0031_order_deposits` لحقول `AgentOrder.deposit` و`SalesOrder.deposit`/`extraDeposit`).
 3. **بناء ونشر الواجهة**:
    ```bash
    cd frontend
@@ -269,4 +280,4 @@
 - **تسجيل خروج لمرة واحدة بعد الترحيل `0025`**: لأن `authenticateToken` يفرض وجود رقم `tv` مطابق لـ `user.tokenVersion` داخل JWT، فإن أي توكن صدر *قبل* نشر التحديث `0025_user_token_version` لن يحتوي على `tv` وسيعيد `401` حتى يعيد المستخدم تسجيل الدخول مرة واحدة.
 - **بيئة البث اللحظي SSE على الإنتاج**: رقم نسخة التزامن وقنواتها (`syncVersion.ts`) يعملان في ذاكرة عملية Node، مما يتطلب تشغيل نسخة خادم واحدة على Render (Single Instance) لتصل إشعارات `SSE /api/sync/stream` الفورية لجميع المستخدمين.
 - **مستخدم `ADMIN` أو `MANAGER` لديه `showTaskCard` أو `showProductionCard`**: نقطة الدخول بعد التسجيل لهما هي `/workspace` دائماً، ويمكنهما فتح `/daily-tasks` أو `/production-tasks` من بطاقتَي «إدارة التصميم» و«إدارة الإنتاج والمخزون».
-- **تحذيرات `oxlint` المتبقية (`20 warnings`)**: كلها تحذيرات React Compiler / `exhaustive-deps` موجودة أساساً في الملفات القائمة مسبقاً، بالإضافة إلى تحذيرَي `only-export-components` في `DepartmentProvider.tsx` (بسبب تصدير `clearStoredDepartment` و`useDepartment` مع المكوّن) دون أي أخطاء (`0 errors`).
+- **تحذيرات `oxlint` المتبقية (`19 warnings`)**: كلها تحذيرات React Compiler / `exhaustive-deps` موجودة أساساً في الملفات القائمة مسبقاً، بالإضافة إلى تحذيرَي `only-export-components` في `DepartmentProvider.tsx` (بسبب تصدير `clearStoredDepartment` و`useDepartment` مع المكوّن) دون أي أخطاء (`0 errors`).

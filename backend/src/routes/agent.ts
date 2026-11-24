@@ -80,10 +80,11 @@ type LineRow = AgentOrderRow["lines"][number];
 /** محتويات البند الفعلية: المعدَّلة إن وُجدت، وإلا محتويات المنتج الثابت (أسطر أُنشئت قبل ميزة التعديل) */
 const effectiveComponents = (l: LineRow) => (l.components.length > 0 ? l.components : (l.product?.components ?? []));
 
-/** الفتاة ترى بيانات الفاتورة وأسعار البوكسات/الشحن التي أدخلتها فقط؛ لا ترى أسعار مكونات المخزون ولا التكاليف */
+/** الفتاة ترى بيانات الفاتورة وأسعار البوكسات/الشحن/العربون التي أدخلتها فقط؛ لا ترى أسعار مكونات المخزون ولا التكاليف */
 export function serializeAgentOrder(o: AgentOrderRow) {
   const exitCents = agentExitCents(o);
   const shipCents = toCents(o.shippingPrice);
+  const depositCents = toCents(o.deposit);
   return {
     id: o.id,
     seq: o.seq,
@@ -102,6 +103,8 @@ export function serializeAgentOrder(o: AgentOrderRow) {
           totalWithShipping: fromCents(exitCents + shipCents),
         }
       : {}),
+    deposit: num2(o.deposit),
+    remainingTotal: fromCents(Math.max(0, exitCents + shipCents - depositCents)),
     status: o.status,
     salesStatus: o.salesOrder?.status ?? null,
     returnFlagged: o.salesOrder?.returnFlagged ?? false,
@@ -310,38 +313,55 @@ agentRouter.get(
   })
 );
 
+async function listAgentProducts() {
+  const products = await prisma().salesProduct.findMany({
+    where: { isActive: true, components: { some: {} } },
+    orderBy: { name: "asc" },
+    select: {
+      id: true,
+      name: true,
+      fixedPrice: true,
+      components: {
+        orderBy: { id: "asc" },
+        select: { itemId: true, quantity: true, item: { select: { name: true, unit: true, addPrice: true, removePrice: true } } },
+      },
+    },
+  });
+  return products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    fixedPrice: p.fixedPrice === null ? null : num2(p.fixedPrice),
+    components: p.components.map((c) => ({
+      itemId: c.itemId,
+      itemName: c.item.name,
+      unit: c.item.unit,
+      quantity: num3(c.quantity),
+      addPrice: num2(c.item.addPrice),
+      removePrice: num2(c.item.removePrice),
+    })),
+  }));
+}
+
+async function listAgentItems() {
+  const items = await prisma().inventoryItem.findMany({
+    where: { isActive: true, category: { group: { key: ACCESSORIES_GROUP_KEY } } },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, unit: true, addPrice: true, removePrice: true },
+  });
+  return items.map((i) => ({
+    id: i.id,
+    name: i.name,
+    unit: i.unit,
+    addPrice: num2(i.addPrice),
+    removePrice: num2(i.removePrice),
+  }));
+}
+
 // البوكسات المتاحة للاختيار: الاسم والسعر الثابت ومحتوياته (صنف + كمية + أسعار الإضافة والحذف)؛ بلا تكلفة ولا سعر مخزون ولا رصيد مخزون
 agentRouter.get(
   "/products",
   asyncHandler(async (_req, res) => {
-    const products = await prisma().salesProduct.findMany({
-      where: { isActive: true, components: { some: {} } },
-      orderBy: { name: "asc" },
-      select: {
-        id: true,
-        name: true,
-        fixedPrice: true,
-        components: {
-          orderBy: { id: "asc" },
-          select: { itemId: true, quantity: true, item: { select: { name: true, unit: true, addPrice: true, removePrice: true } } },
-        },
-      },
-    });
-    res.json({
-      products: products.map((p) => ({
-        id: p.id,
-        name: p.name,
-        fixedPrice: p.fixedPrice === null ? null : num2(p.fixedPrice),
-        components: p.components.map((c) => ({
-          itemId: c.itemId,
-          itemName: c.item.name,
-          unit: c.item.unit,
-          quantity: num3(c.quantity),
-          addPrice: num2(c.item.addPrice),
-          removePrice: num2(c.item.removePrice),
-        })),
-      })),
-    });
+    res.json({ products: await listAgentProducts() });
   })
 );
 
@@ -349,20 +369,7 @@ agentRouter.get(
 agentRouter.get(
   "/items",
   asyncHandler(async (_req, res) => {
-    const items = await prisma().inventoryItem.findMany({
-      where: { isActive: true, category: { group: { key: ACCESSORIES_GROUP_KEY } } },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true, unit: true, addPrice: true, removePrice: true },
-    });
-    res.json({
-      items: items.map((i) => ({
-        id: i.id,
-        name: i.name,
-        unit: i.unit,
-        addPrice: num2(i.addPrice),
-        removePrice: num2(i.removePrice),
-      })),
-    });
+    res.json({ items: await listAgentItems() });
   })
 );
 
@@ -478,6 +485,7 @@ agentRouter.post(
           notes: body.notes,
           salesPageId,
           sellPrice: centsToDecimalString(resolved.sellCents),
+          deposit: centsToDecimalString(body.deposit ? toCents(body.deposit) : 0),
           ...(body.shippingPrice !== undefined
             ? { shippingPrice: body.shippingPrice === null ? null : centsToDecimalString(toCents(body.shippingPrice)) }
             : {}),
@@ -490,41 +498,61 @@ agentRouter.post(
   })
 );
 
+/**
+ * تعديل أوردر مسودة (DRAFT فقط) قبل التصدير: مشترك بين الفتاة (أوردراتها فقط) ومشرف الفتيات والإدارة.
+ */
+async function updateDraftAgentOrder(orderId: string, body: ReturnType<typeof updateAgentOrderSchema.parse>, restrictToAgentId?: string) {
+  return prisma().$transaction(async (tx) => {
+    let locked: { id: string; status: string; salesPageId: string | null };
+    if (restrictToAgentId) {
+      locked = await lockOwnOrder(tx, restrictToAgentId, orderId);
+    } else {
+      const rows = await tx.$queryRaw<{ id: string; status: string; salesPageId: string | null }[]>`
+        SELECT "id","status"::text AS "status","salesPageId" FROM "AgentOrder" WHERE "id" = ${orderId} FOR UPDATE
+      `;
+      if (rows.length === 0) throw notFound("الأوردر غير موجود");
+      locked = rows[0];
+    }
+    if (locked.status !== "DRAFT") throw conflict("لا يمكن تعديل أوردر بعد تصديره. يمكنك إلغاؤه مع ذكر السبب.");
+    const nextSalesPageId = body.salesPageId !== undefined ? await validateOrderPage(tx, body.salesPageId, locked.salesPageId) : undefined;
+    if (body.lines) {
+      const products = await loadActiveProducts(tx, body.lines.map((l) => l.productId));
+      const resolved = await resolveLines(tx, products, body.lines);
+      await tx.agentOrderLine.deleteMany({ where: { orderId: locked.id } }); // المحتويات تُحذف معها (cascade)
+      for (const l of linesCreate(resolved.lines)) await tx.agentOrderLine.create({ data: { orderId: locked.id, ...l } });
+    }
+    await tx.agentOrder.update({
+      where: { id: locked.id },
+      data: {
+        ...(body.date !== undefined ? { date: body.date } : {}),
+        ...(body.customerName !== undefined ? { customerName: body.customerName } : {}),
+        ...(body.customerPhone !== undefined ? { customerPhone: body.customerPhone } : {}),
+        ...(body.customerAddress !== undefined ? { customerAddress: body.customerAddress } : {}),
+        ...(body.notes !== undefined ? { notes: body.notes } : {}),
+        ...(nextSalesPageId !== undefined ? { salesPageId: nextSalesPageId } : {}),
+        ...(body.shippingPrice !== undefined
+          ? { shippingPrice: body.shippingPrice === null ? null : centsToDecimalString(toCents(body.shippingPrice)) }
+          : {}),
+        ...(body.deposit !== undefined
+          ? { deposit: centsToDecimalString(body.deposit ? toCents(body.deposit) : 0) }
+          : {}),
+      },
+    });
+    // السعر: يُعاد حسابه من سعر البوكسات أو من مكوناتها عند كل تعديل للمسودة
+    const current = await tx.agentOrderLine.findMany({ where: { orderId: locked.id }, include: lineInclude });
+    await tx.agentOrder.update({ where: { id: locked.id }, data: { sellPrice: centsToDecimalString(storedLinesExitCents(current)) } });
+    return locked.id;
+  });
+}
+
 agentRouter.patch(
   "/orders/:id",
   asyncHandler(async (req, res) => {
     const body = updateAgentOrderSchema.parse(req.body);
     const agentId = req.user!.id;
     const own = await getOwnOrder(agentId, req.params.id);
-    const updated = await prisma().$transaction(async (tx) => {
-      const locked = await lockOwnOrder(tx, agentId, own.id);
-      if (locked.status !== "DRAFT") throw conflict("لا يمكن تعديل أوردر بعد تصديره. يمكنك إلغاؤه مع ذكر السبب.");
-      const nextSalesPageId = body.salesPageId !== undefined ? await validateOrderPage(tx, body.salesPageId, locked.salesPageId) : undefined;
-      if (body.lines) {
-        const products = await loadActiveProducts(tx, body.lines.map((l) => l.productId));
-        const resolved = await resolveLines(tx, products, body.lines);
-        await tx.agentOrderLine.deleteMany({ where: { orderId: own.id } }); // المحتويات تُحذف معها (cascade)
-        for (const l of linesCreate(resolved.lines)) await tx.agentOrderLine.create({ data: { orderId: own.id, ...l } });
-      }
-      await tx.agentOrder.update({
-        where: { id: own.id },
-        data: {
-          ...(body.date !== undefined ? { date: body.date } : {}),
-          ...(body.customerName !== undefined ? { customerName: body.customerName } : {}),
-          ...(body.customerPhone !== undefined ? { customerPhone: body.customerPhone } : {}),
-          ...(body.customerAddress !== undefined ? { customerAddress: body.customerAddress } : {}),
-          ...(body.notes !== undefined ? { notes: body.notes } : {}),
-          ...(nextSalesPageId !== undefined ? { salesPageId: nextSalesPageId } : {}),
-          ...(body.shippingPrice !== undefined
-            ? { shippingPrice: body.shippingPrice === null ? null : centsToDecimalString(toCents(body.shippingPrice)) }
-            : {}),
-        },
-      });
-      // السعر: يُعاد حسابه من سعر البوكسات أو من مكوناتها عند كل تعديل للمسودة
-      const current = await tx.agentOrderLine.findMany({ where: { orderId: own.id }, include: lineInclude });
-      await tx.agentOrder.update({ where: { id: own.id }, data: { sellPrice: centsToDecimalString(storedLinesExitCents(current)) } });
-      return tx.agentOrder.findUniqueOrThrow({ where: { id: own.id }, include: agentOrderInclude });
-    });
+    await updateDraftAgentOrder(own.id, body, agentId);
+    const updated = await prisma().agentOrder.findUniqueOrThrow({ where: { id: own.id }, include: agentOrderInclude });
     res.json({ order: serializeAgentOrder(updated) });
   })
 );
@@ -579,6 +607,7 @@ async function exportAgentOrder(actorId: string, orderId: string) {
         source: "AGENT",
         salesPageId: order.salesPageId,
         agentSellPrice: centsToDecimalString(exitCents),
+        deposit: order.deposit,
         ...(order.shippingPrice !== null ? { shippingPrice: order.shippingPrice } : {}),
         lines: {
           create: order.lines.map((l) => {
@@ -981,6 +1010,34 @@ agentSupervisorRouter.post(
     }
     const fresh = await prisma().agentOrder.findMany({ where: { id: { in: ids } }, include: supervisorOrderInclude });
     res.json({ results, orders: fresh.map(serializeSupervisorOrder) });
+  })
+);
+
+// البوكسات وأصناف الإكسسوارات للمشرف لتعديل المسودات قبل التصدير (بلا تكاليف أو أرصدة)
+agentSupervisorRouter.get(
+  "/products",
+  asyncHandler(async (_req, res) => {
+    res.json({ products: await listAgentProducts() });
+  })
+);
+
+agentSupervisorRouter.get(
+  "/items",
+  asyncHandler(async (_req, res) => {
+    res.json({ items: await listAgentItems() });
+  })
+);
+
+// تعديل مسودة أوردر فتاة قبل التصدير من شاشة مشرف الفتيات (أو الإدارة)
+agentSupervisorRouter.patch(
+  "/orders/:id",
+  asyncHandler(async (req, res) => {
+    const body = updateAgentOrderSchema.parse(req.body);
+    const orderId = idOf(req.params.id);
+    if (!orderId) throw notFound("الأوردر غير موجود");
+    const updatedId = await updateDraftAgentOrder(orderId, body);
+    const updated = await prisma().agentOrder.findUniqueOrThrow({ where: { id: updatedId }, include: supervisorOrderInclude });
+    res.json({ order: serializeSupervisorOrder(updated) });
   })
 );
 

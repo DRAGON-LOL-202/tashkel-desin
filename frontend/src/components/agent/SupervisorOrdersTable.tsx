@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Ban, Eye, Phone, Send } from "lucide-react";
+import { Ban, Eye, Pencil, Phone, Send } from "lucide-react";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { fmtMoney } from "../inventory/format";
@@ -14,6 +14,7 @@ interface SupervisorOrdersTableProps {
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
   onToggleSelectAllDrafts: (checked: boolean) => void;
+  onEditOne: (o: SupervisorAgentOrder) => void;
   onExportOne: (o: SupervisorAgentOrder) => void;
   onCancelOne: (o: SupervisorAgentOrder) => void;
 }
@@ -29,6 +30,7 @@ export function SupervisorOrdersTable({
   selectedIds,
   onToggleSelect,
   onToggleSelectAllDrafts,
+  onEditOne,
   onExportOne,
   onCancelOne,
 }: SupervisorOrdersTableProps) {
@@ -124,6 +126,9 @@ export function SupervisorOrdersTable({
                       {o.shippingPrice != null && (
                         <span className="ms-1.5 font-normal">+ شحن {fmtMoney(o.shippingPrice)}</span>
                       )}
+                      {(o.deposit ?? 0) > 0 && (
+                        <span className="ms-1.5 text-accent">- عربون {fmtMoney(o.deposit ?? 0)}</span>
+                      )}
                     </p>
                   </td>
 
@@ -171,13 +176,23 @@ export function SupervisorOrdersTable({
                         <Eye size={15} />
                       </button>
                       {isDraft && (
-                        <Button
-                          size="sm"
-                          icon={<Send size={13} />}
-                          onClick={() => onExportOne(o)}
-                        >
-                          تصدير للإنتاج
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            icon={<Pencil size={13} />}
+                            onClick={() => onEditOne(o)}
+                          >
+                            تعديل
+                          </Button>
+                          <Button
+                            size="sm"
+                            icon={<Send size={13} />}
+                            onClick={() => onExportOne(o)}
+                          >
+                            تصدير للإنتاج
+                          </Button>
+                        </>
                       )}
                       {canCancelOrder && (
                         <Button

@@ -200,6 +200,17 @@ export default function AgentOrdersPage() {
                         + شحن {fmtMoney(o.shippingPrice)} = <strong className="text-primary-deep">{fmtMoney(o.totalWithShipping ?? o.sellPrice + o.shippingPrice)}</strong>
                       </span>
                     )}
+                    {(o.deposit ?? 0) > 0 && (
+                      <span className="text-xs tabular-nums text-accent">
+                        - عربون {fmtMoney(o.deposit ?? 0)} = المتبقي{" "}
+                        <strong>
+                          {fmtMoney(
+                            o.remainingTotal ??
+                              Math.max(0, (o.totalWithShipping ?? o.sellPrice + (o.shippingPrice ?? 0)) - (o.deposit ?? 0)),
+                          )}
+                        </strong>
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="mt-2 grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">

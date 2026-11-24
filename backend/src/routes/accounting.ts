@@ -5,9 +5,9 @@ import { requireAuth, requireRole } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { badRequest, conflict, notFound } from "../utils/httpError.js";
 import { centsToDecimalString, fromCents, generalAccounts, matchesBucket, summarize, toCents, BUCKETS, type AccountingRow, type Bucket } from "../utils/agentMath.js";
-import { num3 } from "../utils/inventorySerialize.js";
+import { num2, num3 } from "../utils/inventorySerialize.js";
 import { itemSelect, orderSellCents } from "../utils/salesSerialize.js";
-import { accountantStatusSchema, returnFlagSchema, shippingPriceSchema } from "../validators/agent.js";
+import { accountantStatusSchema, extraDepositSchema, returnFlagSchema, shippingPriceSchema } from "../validators/agent.js";
 
 // متابعة أوردرات المبيعات + حسابات الفتيات. للمحاسب (SALES_ACCOUNTANT) والإدارة.
 // المحاسب هنا لا يعدّل محتوى الأوردر ولا ينفّذ مرتجعاً مخزنياً ولا يخصم مخزوناً: يغيّر الحالة (شحن/تسليم) وعلامة المرتجع وسعر الشحن فقط.
@@ -74,6 +74,10 @@ const rowOf = (o: Row): AccountingRow => ({
 function serialize(o: Row) {
   const invCents = orderSellCents(o.lines);
   const exitCents = orderExitCents(o);
+  const shipCents = toCents(o.shippingPrice);
+  const depositCents = toCents(o.deposit);
+  const extraDepositCents = toCents(o.extraDeposit);
+  const totalDepositCents = depositCents + extraDepositCents;
   return {
     id: o.id,
     waybill: o.waybill,
@@ -106,6 +110,11 @@ function serialize(o: Row) {
     sellPrice: fromCents(exitCents),
     inventorySellPrice: fromCents(invCents),
     shippingPrice: o.shippingPrice === null ? null : Number(o.shippingPrice.toString()),
+    deposit: num2(o.deposit),
+    extraDeposit: num2(o.extraDeposit),
+    totalDeposit: fromCents(totalDepositCents),
+    remainingTotal: fromCents(Math.max(0, exitCents + shipCents - totalDepositCents)),
+    totalQuantity: o.lines.reduce((acc, l) => acc + l.quantity, 0),
     status: o.status,
     returnFlagged: o.returnFlagged,
     returnFlaggedAt: o.returnFlaggedAt?.toISOString() ?? null,
@@ -233,6 +242,57 @@ accountingRouter.get(
   })
 );
 
+const monthRe = /^(\d{4})-(\d{2})$/;
+
+// تصدير كل الأوردرات المسجلة/المصدَّرة خلال يوم أو شهر محدد لملف Excel (بجميع الحالات بما فيها مسجّل وملغي، باستثناء مسودات الفتيات غير المصدَّرة فقط)
+accountingRouter.get(
+  "/orders/export",
+  asyncHandler(async (req, res) => {
+    const mode = req.query.mode === "day" || req.query.mode === "month" ? req.query.mode : "";
+    if (!mode) throw badRequest("حدّد نوع التصدير: يوم (day) أو شهر (month)");
+    const rawDate = typeof req.query.date === "string" ? req.query.date.trim() : "";
+    let from = "";
+    let to = "";
+    if (mode === "day") {
+      if (!dateRe.test(rawDate)) throw badRequest("صيغة اليوم غير صالحة (YYYY-MM-DD)");
+      from = rawDate;
+      to = rawDate;
+    } else {
+      const m = monthRe.exec(rawDate);
+      const monthNum = m ? Number(m[2]) : 0;
+      if (!m || monthNum < 1 || monthNum > 12) throw badRequest("صيغة الشهر غير صالحة (YYYY-MM)");
+      const lastDay = new Date(Date.UTC(Number(m[1]), monthNum, 0)).getUTCDate();
+      from = `${m[1]}-${m[2]}-01`;
+      to = `${m[1]}-${m[2]}-${String(lastDay).padStart(2, "0")}`;
+    }
+
+    const agentId = typeof req.query.agentId === "string" ? idOf(req.query.agentId) : "";
+    const salesPageQ = typeof req.query.salesPageId === "string" ? req.query.salesPageId.trim() : "";
+    const where: Prisma.SalesOrderWhereInput = {
+      date: { gte: from, lte: to },
+      ...(agentId ? { agentId } : {}),
+      ...(salesPageQ === "unassigned" ? { salesPageId: null } : salesPageQ ? { salesPageId: idOf(salesPageQ) || "__none__" } : {}),
+    };
+
+    const collected: ReturnType<typeof serialize>[] = [];
+    let cursor: string | undefined;
+    for (;;) {
+      const batch = await prisma().salesOrder.findMany({
+        where,
+        include,
+        orderBy: [{ date: "asc" }, { waybill: "asc" }, { id: "asc" }],
+        take: SCAN_BATCH,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      for (const o of batch) collected.push(serialize(o));
+      if (batch.length < SCAN_BATCH) break;
+      cursor = batch[batch.length - 1].id;
+    }
+
+    res.json({ orders: collected, total: collected.length, mode, from, to });
+  })
+);
+
 accountingRouter.patch(
   "/orders/:id/status",
   asyncHandler(async (req, res) => {
@@ -292,6 +352,26 @@ accountingRouter.put(
       if (before === next) return o;
       await tx.salesOrder.update({ where: { id: o.id }, data: { shippingPrice: next } });
       await tx.salesOrderStatusLog.create({ data: { orderId: o.id, event: "SHIPPING_PRICE", fromValue: before, toValue: next, byId: req.user!.id } });
+      return tx.salesOrder.findUniqueOrThrow({ where: { id: o.id }, include });
+    });
+    res.json({ order: serialize(updated) });
+  })
+);
+
+// عربون إضافي من المحاسب: يُضاف إلى عربون الفتاة ويُخصم من «المتبقي» في الفاتورة وExcel دون المساس بعمولات الفتاة أو الحسابات العامة
+accountingRouter.put(
+  "/orders/:id/deposit",
+  asyncHandler(async (req, res) => {
+    const { extraDeposit } = extraDepositSchema.parse(req.body);
+    const orderId = idOf(req.params.id);
+    const updated = await prisma().$transaction(async (tx) => {
+      const o = await lockAgentOrder(tx, orderId);
+      if (o.status === "REGISTERED") throw badRequest("أدخل العربون الإضافي بعد «تم التنفيذ»");
+      const next = extraDeposit === null ? "0.00" : centsToDecimalString(toCents(extraDeposit));
+      const before = o.extraDeposit.toFixed(2);
+      if (before === next) return o;
+      await tx.salesOrder.update({ where: { id: o.id }, data: { extraDeposit: next } });
+      await tx.salesOrderStatusLog.create({ data: { orderId: o.id, event: "EXTRA_DEPOSIT", fromValue: before, toValue: next, byId: req.user!.id } });
       return tx.salesOrder.findUniqueOrThrow({ where: { id: o.id }, include });
     });
     res.json({ order: serialize(updated) });

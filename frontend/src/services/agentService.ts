@@ -92,6 +92,16 @@ export const agentService = {
 
 // مشرف الفتيات (SALES_AGENT_SUPERVISOR) والإدارة: تجميع وتصدير أوردرات الفتيات للإنتاج
 export const agentSupervisorService = {
+  async products(): Promise<AgentProduct[]> {
+    const { products } = await api<{ products: AgentProduct[] }>("/agent-supervisor/products");
+    return products;
+  },
+
+  async items(): Promise<AgentItem[]> {
+    const { items } = await api<{ items: AgentItem[] }>("/agent-supervisor/items");
+    return items;
+  },
+
   async filters(): Promise<SupervisorFilters> {
     return api<SupervisorFilters>("/agent-supervisor/filters");
   },
@@ -107,6 +117,14 @@ export const agentSupervisorService = {
     offset?: string;
   }): Promise<SupervisorOrdersList> {
     return api<SupervisorOrdersList>("/agent-supervisor/orders", { query: params });
+  },
+
+  async update(id: string, input: Partial<AgentOrderInput>): Promise<SupervisorAgentOrder> {
+    const { order } = await api<{ order: SupervisorAgentOrder }>(`/agent-supervisor/orders/${id}`, {
+      method: "PATCH",
+      body: input,
+    });
+    return order;
   },
 
   async exportOrders(ids: string[]): Promise<{ results: ExportResult[]; orders: SupervisorAgentOrder[] }> {
@@ -150,6 +168,20 @@ export const accountingService = {
   async setShipping(id: string, shippingPrice: number | null): Promise<FollowOrder> {
     const { order } = await api<{ order: FollowOrder }>(`/accounting/orders/${id}/shipping`, { method: "PUT", body: { shippingPrice } });
     return order;
+  },
+
+  async setExtraDeposit(id: string, extraDeposit: number | null): Promise<FollowOrder> {
+    const { order } = await api<{ order: FollowOrder }>(`/accounting/orders/${id}/deposit`, { method: "PUT", body: { extraDeposit } });
+    return order;
+  },
+
+  async exportOrders(params: {
+    mode: "day" | "month";
+    date: string;
+    agentId?: string;
+    salesPageId?: string;
+  }): Promise<{ orders: FollowOrder[]; total: number; mode: "day" | "month"; from: string; to: string }> {
+    return api("/accounting/orders/export", { query: params });
   },
 
   async log(id: string): Promise<OrderLogEntry[]> {

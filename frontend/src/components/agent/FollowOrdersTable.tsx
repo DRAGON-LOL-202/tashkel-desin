@@ -5,6 +5,7 @@ import { fmtMoney } from "../inventory/format";
 import { formatArabicDate } from "../../lib/date";
 import { waybillFromFollowOrder } from "../../lib/waybillPdf";
 import { SALES_STATUS_META } from "../sales/status";
+import { DepositCell } from "./DepositCell";
 import { rowBadge } from "./meta";
 import { ShippingCell } from "./ShippingCell";
 import { WaybillPreviewModal } from "./WaybillPreviewModal";
@@ -20,6 +21,7 @@ interface FollowOrdersTableProps {
   onStatus: (o: FollowOrder, status: "SHIPPED" | "DELIVERED") => Promise<void>;
   onFlag: (o: FollowOrder, flagged: boolean) => Promise<void>;
   onShipping: (o: FollowOrder, price: number | null) => Promise<boolean>;
+  onExtraDeposit: (o: FollowOrder, amount: number | null) => Promise<boolean>;
   onPrintOne: (o: FollowOrder) => void;
   onDelete?: (o: FollowOrder) => void;
 }
@@ -40,6 +42,7 @@ export function FollowOrdersTable({
   onStatus,
   onFlag,
   onShipping,
+  onExtraDeposit,
   onPrintOne,
   onDelete,
 }: FollowOrdersTableProps) {
@@ -61,7 +64,7 @@ export function FollowOrdersTable({
   return (
     <>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[980px] border-collapse text-right text-sm">
+        <table className="w-full min-w-[1120px] border-collapse text-right text-sm">
           <thead>
             <tr className="border-b border-border bg-primary/10 text-xs font-semibold text-muted dark:bg-[#0c2720]">
               <th className="w-10 px-3 py-3 text-center">
@@ -80,6 +83,7 @@ export function FollowOrdersTable({
               <th className="whitespace-nowrap px-4 py-3">الحالة</th>
               <th className="whitespace-nowrap px-4 py-3">الفتاة</th>
               <th className="whitespace-nowrap px-4 py-3">سعر الشحن</th>
+              <th className="whitespace-nowrap px-4 py-3">العربون</th>
               <th className="whitespace-nowrap px-4 py-3">إجراء</th>
             </tr>
           </thead>
@@ -162,6 +166,9 @@ export function FollowOrdersTable({
                     </p>
                     <p className="mt-0.5 text-xs font-semibold tabular-nums text-muted">
                       {o.sellPrice === null ? "—" : fmtMoney(o.sellPrice)}
+                      {o.totalDeposit > 0 && (
+                        <span className="ms-1.5 text-accent">• المتبقي {fmtMoney(o.remainingTotal)}</span>
+                      )}
                     </p>
                   </td>
 
@@ -242,6 +249,22 @@ export function FollowOrdersTable({
                     ) : (
                       <span className="tabular-nums text-muted">
                         {o.shippingPrice === null ? "—" : fmtMoney(o.shippingPrice)}
+                      </span>
+                    )}
+                  </td>
+
+                  {/* العربون (عربون الفتاة + عربون إضافي من المحاسب) */}
+                  <td className="whitespace-nowrap px-4 py-3 align-middle">
+                    {canAct ? (
+                      <DepositCell
+                        baseDeposit={o.deposit}
+                        extraDeposit={o.extraDeposit}
+                        disabled={o.cancelled || o.status === "REGISTERED"}
+                        onSave={(v) => onExtraDeposit(o, v)}
+                      />
+                    ) : (
+                      <span className="tabular-nums text-muted">
+                        {o.totalDeposit > 0 ? fmtMoney(o.totalDeposit) : "—"}
                       </span>
                     )}
                   </td>

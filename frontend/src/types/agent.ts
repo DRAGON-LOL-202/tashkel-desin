@@ -63,6 +63,8 @@ export interface AgentOrder {
   sellPrice: number;
   shippingPrice?: number | null;
   totalWithShipping?: number;
+  deposit?: number;
+  remainingTotal?: number;
   status: AgentOrderStatus;
   /** حالة أوردر المبيعات المرتبط بعد التصدير */
   salesStatus: SalesOrderStatus | null;
@@ -82,6 +84,7 @@ export interface AgentOrderInput {
   notes: string;
   salesPageId?: string | null;
   shippingPrice?: number | null;
+  deposit?: number | null;
   lines: { productId: string; quantity: number; boxPrice?: number; components: { itemId: string; quantity: number }[] }[];
 }
 
@@ -152,6 +155,11 @@ export interface FollowOrder {
   /** سعر الخروج من المخزون */
   inventorySellPrice: number | null;
   shippingPrice: number | null;
+  deposit: number;
+  extraDeposit: number;
+  totalDeposit: number;
+  remainingTotal: number;
+  totalQuantity: number;
   status: SalesOrderStatus;
   returnFlagged: boolean;
   returnFlaggedAt: string | null;

@@ -81,10 +81,29 @@ export function WaybillSheet({ data }: { data: WaybillData }) {
             <th scope="row" className={`${labelCell} leading-tight`}>
               الاجمالى بالشحن
             </th>
-            <td dir="ltr" className="border border-black px-2 py-2 text-center text-[14px] font-extrabold tabular-nums text-[#b91c1c]">
-              {fmtInvoiceAmount(data.grandTotal)}
+            <td
+              dir="ltr"
+              className={
+                data.deposit > 0
+                  ? `${valCell} tabular-nums`
+                  : "border border-black px-2 py-2 text-center text-[14px] font-extrabold tabular-nums text-[#b91c1c]"
+              }
+            >
+              {fmtInvoiceAmount(data.grossTotal)}
             </td>
           </tr>
+          {data.deposit > 0 && (
+            <tr>
+              <th scope="row" className={labelCell}>العربون</th>
+              <td dir="ltr" className={`${valCell} tabular-nums`}>
+                {fmtInvoiceAmount(data.deposit)}
+              </td>
+              <th scope="row" className={labelCell}>المتبقى</th>
+              <td dir="ltr" className="border border-black px-2 py-2 text-center text-[14px] font-extrabold tabular-nums text-[#b91c1c]">
+                {fmtInvoiceAmount(data.grandTotal)}
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
 

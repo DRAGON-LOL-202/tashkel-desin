@@ -72,6 +72,7 @@ export function AgentOrderModal({ open, onClose, products, items, pages, editing
   const [customerPhone, setCustomerPhone] = useState(editing?.customerPhone ?? "");
   const [customerAddress, setCustomerAddress] = useState(editing?.customerAddress ?? "");
   const [shippingPrice, setShippingPrice] = useState(editing?.shippingPrice != null ? String(editing.shippingPrice) : "");
+  const [deposit, setDeposit] = useState(editing?.deposit && editing.deposit > 0 ? String(editing.deposit) : "");
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [lines, setLines] = useState<LineDraft[]>(() =>
     editing && editing.lines.length > 0
@@ -171,8 +172,10 @@ export function AgentOrderModal({ open, onClose, products, items, pages, editing
     return unitPrice !== null ? acc + qty * unitCents : acc;
   }, 0);
   const shippingCents = validMoney(shippingPrice) ? Math.round(Number(shippingPrice) * 100) : 0;
+  const depositCents = validMoney(deposit) ? Math.round(Number(deposit) * 100) : 0;
   const boxesTotal = Math.round(boxesTotalCents) / 100;
   const grandTotal = Math.round(boxesTotalCents + shippingCents) / 100;
+  const remainingTotal = Math.max(0, Math.round(boxesTotalCents + shippingCents - depositCents)) / 100;
 
   const submit = async () => {
     if (!salesPageId) return setError("اختر اسم الصفحة (إجباري)");
@@ -191,6 +194,9 @@ export function AgentOrderModal({ open, onClose, products, items, pages, editing
     if (shippingPrice.trim() !== "" && !validMoney(shippingPrice)) {
       return setError("مصاريف الشحن غير صالحة");
     }
+    if (deposit.trim() !== "" && !validMoney(deposit)) {
+      return setError("مبلغ العربون غير صالح");
+    }
 
     const parsedLines = filled.map((l) => {
       const product = products.find((p) => p.id === l.productId);
@@ -202,6 +208,7 @@ export function AgentOrderModal({ open, onClose, products, items, pages, editing
       };
     });
     const parsedShipping = shippingPrice.trim() === "" ? (editing ? null : undefined) : Math.round(Number(shippingPrice) * 100) / 100;
+    const parsedDeposit = deposit.trim() === "" ? 0 : Math.round(Number(deposit) * 100) / 100;
 
     setError("");
     setSaving(true);
@@ -214,6 +221,7 @@ export function AgentOrderModal({ open, onClose, products, items, pages, editing
         customerAddress: customerAddress.trim(),
         notes: notes.trim(),
         ...(parsedShipping !== undefined ? { shippingPrice: parsedShipping } : {}),
+        deposit: parsedDeposit,
         lines: parsedLines,
       });
       if (ok) onClose();
@@ -432,23 +440,39 @@ export function AgentOrderModal({ open, onClose, products, items, pages, editing
         </Button>
       </div>
 
-      {/* م شحن + ملخص الفاتورة */}
-      <div className="mb-4 grid grid-cols-1 gap-3 rounded-control border border-border bg-background/60 p-3 sm:grid-cols-12 sm:items-end">
-        <div className="sm:col-span-4">
-          <label htmlFor="ao-shipping" className="mb-1.5 block text-sm font-medium text-text">
-            م شحن (اختياري)
-          </label>
-          <Input
-            id="ao-shipping"
-            dir="ltr"
-            inputMode="decimal"
-            placeholder="مثال: 70"
-            value={shippingPrice}
-            onChange={(e) => setShippingPrice(e.target.value)}
-            className="text-center font-semibold tabular-nums"
-          />
+      {/* م شحن + مبلغ العربون + ملخص الفاتورة */}
+      <div className="mb-4 flex flex-col gap-3 rounded-control border border-border bg-background/60 p-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label htmlFor="ao-shipping" className="mb-1.5 block text-sm font-medium text-text">
+              م شحن (اختياري)
+            </label>
+            <Input
+              id="ao-shipping"
+              dir="ltr"
+              inputMode="decimal"
+              placeholder="مثال: 70"
+              value={shippingPrice}
+              onChange={(e) => setShippingPrice(e.target.value)}
+              className="text-center font-semibold tabular-nums"
+            />
+          </div>
+          <div>
+            <label htmlFor="ao-deposit" className="mb-1.5 block text-sm font-medium text-text">
+              مبلغ العربون (اختياري — يُحسب صفر عند الترك فارغاً)
+            </label>
+            <Input
+              id="ao-deposit"
+              dir="ltr"
+              inputMode="decimal"
+              placeholder="0"
+              value={deposit}
+              onChange={(e) => setDeposit(e.target.value)}
+              className="text-center font-semibold tabular-nums"
+            />
+          </div>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-3 sm:col-span-8 sm:justify-end">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-2.5 sm:justify-end">
           <div className="text-center sm:text-end">
             <p className="text-[11px] text-muted">سعر الخروج</p>
             <p className="font-bold tabular-nums text-text">{fmtMoney(boxesTotal)}</p>
@@ -463,6 +487,18 @@ export function AgentOrderModal({ open, onClose, products, items, pages, editing
             <p className="text-[11px] font-medium text-primary-deep">الإجمالي بالشحن</p>
             <p className="text-base font-bold tabular-nums text-primary-deep">{fmtMoney(grandTotal)}</p>
           </div>
+          {depositCents > 0 && (
+            <>
+              <div className="text-center sm:text-end">
+                <p className="text-[11px] text-muted">العربون</p>
+                <p className="font-semibold tabular-nums text-text">{fmtMoney(depositCents / 100)}</p>
+              </div>
+              <div className="rounded-control border border-problem/40 bg-problem/10 px-3 py-1.5 text-center sm:text-end">
+                <p className="text-[11px] font-medium text-problem">المتبقي للتحصيل</p>
+                <p className="text-base font-bold tabular-nums text-problem">{fmtMoney(remainingTotal)}</p>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

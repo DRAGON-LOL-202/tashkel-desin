@@ -544,6 +544,9 @@ model SalesOrder {
   agentSellPrice Decimal?        @db.Decimal(12, 2)
   // سعر الشحن: يدخله المحاسب يدوياً ولا قيمة افتراضية له
   shippingPrice Decimal?         @db.Decimal(12, 2)
+  // العربون المدفوع مسبقاً (عربون الفتاة + العربون الإضافي من المحاسب)؛ يُخصم من المطلوب تحصيله دون المساس بالعمولة
+  deposit       Decimal          @default(0) @db.Decimal(12, 2)
+  extraDeposit  Decimal          @default(0) @db.Decimal(12, 2)
   shippedAt     DateTime?
   deliveredAt   DateTime?
   // إلغاء أوردر فتاة بعد التصدير (migration 0023): يظهر في المبيعات الرئيسية ويمنع أي تعديل/تنفيذ. لا حركة مخزون.
@@ -653,6 +656,7 @@ model AgentOrder {
   notes           String           @default("")
   sellPrice       Decimal          @db.Decimal(12, 2)
   shippingPrice   Decimal?         @db.Decimal(12, 2)
+  deposit         Decimal          @default(0) @db.Decimal(12, 2)
   salesPageId     String?
   status          AgentOrderStatus @default(DRAFT)
   exportedAt    DateTime?

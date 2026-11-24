@@ -9,13 +9,21 @@ import { Input, Select } from "../components/ui/Field";
 import { PaginationBar } from "../components/ui/PaginationBar";
 import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { useToast } from "../components/ui/ToastProvider";
+import { AgentOrderModal } from "../components/agent/AgentOrderModal";
 import { CancelModal, ExportModal } from "../components/agent/ExportCancelModals";
 import { SupervisorOrdersTable } from "../components/agent/SupervisorOrdersTable";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
 import type { SyncChannel } from "../lib/liveSync";
 import { agentSupervisorService } from "../services/agentService";
-import type { SupervisorAgentOrder, SupervisorFilters, SupervisorOrdersList } from "../types";
+import type {
+  AgentItem,
+  AgentOrderInput,
+  AgentProduct,
+  SupervisorAgentOrder,
+  SupervisorFilters,
+  SupervisorOrdersList,
+} from "../types";
 
 const NO_ORDERS: SupervisorOrdersList = {
   orders: [],
@@ -33,6 +41,7 @@ const STATUS_TAB_LABEL: Record<(typeof STATUS_TABS)[number], string> = {
 };
 const ORDERS_CHANNELS: SyncChannel[] = ["sales", "accounting"];
 const FILTER_CHANNELS: SyncChannel[] = ["users", "accounting", "sales"];
+const CATALOG_CHANNELS: SyncChannel[] = ["sales", "inventory"];
 const PAGE_SIZE = 20;
 
 // شاشة مشرف الفتيات (والإدارة): تجميع كل مسودات الفتيات، معاينة البوليصة، وتصديرها فردياً أو جماعياً للإنتاج.
@@ -45,6 +54,7 @@ export default function AgentSupervisorOrdersPage() {
   const [to, setTo] = useState("");
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState<SupervisorAgentOrder | null>(null);
   const [exporting, setExporting] = useState<SupervisorAgentOrder[] | null>(null);
   const [cancelling, setCancelling] = useState<SupervisorAgentOrder | null>(null);
   const { show } = useToast();
@@ -67,6 +77,8 @@ export default function AgentSupervisorOrdersPage() {
   );
   const orders = useResource<SupervisorOrdersList>(loader, NO_ORDERS, ORDERS_CHANNELS);
   const filters = useResource<SupervisorFilters>(agentSupervisorService.filters, NO_FILTERS, FILTER_CHANNELS);
+  const products = useResource<AgentProduct[]>(agentSupervisorService.products, [], CATALOG_CHANNELS);
+  const items = useResource<AgentItem[]>(agentSupervisorService.items, [], CATALOG_CHANNELS);
 
   const draftsOnPage = useMemo(() => orders.data.orders.filter((o) => o.status === "DRAFT"), [orders.data.orders]);
   const selectedDrafts = useMemo(
@@ -102,6 +114,14 @@ export default function AgentSupervisorOrdersPage() {
   const doCancel = async (o: SupervisorAgentOrder, reason: string) => {
     const r = await run(() => agentSupervisorService.cancel(o.id, reason));
     if (r.ok) show("تم إلغاء الأوردر");
+    await orders.reload();
+    return r.ok;
+  };
+
+  const doEdit = async (input: AgentOrderInput) => {
+    if (!editing) return false;
+    const r = await run(() => agentSupervisorService.update(editing.id, input));
+    if (r.ok) show("تم حفظ تعديلات الأوردر");
     await orders.reload();
     return r.ok;
   };
@@ -346,6 +366,7 @@ export default function AgentSupervisorOrdersPage() {
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
             onToggleSelectAllDrafts={toggleSelectAllDrafts}
+            onEditOne={setEditing}
             onExportOne={(o) => setExporting([o])}
             onCancelOne={setCancelling}
           />
@@ -361,6 +382,17 @@ export default function AgentSupervisorOrdersPage() {
         </Card>
       )}
 
+      {editing && (
+        <AgentOrderModal
+          open
+          editing={editing}
+          products={products.data}
+          items={items.data}
+          pages={filters.data.pages.filter((p) => p.isActive || p.id === editing.salesPageId)}
+          onClose={() => setEditing(null)}
+          onSubmit={doEdit}
+        />
+      )}
       {exporting && (
         <ExportModal
           open

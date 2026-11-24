@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { Download, Printer, RotateCcw, Search, X } from "lucide-react";
+import { Download, FileSpreadsheet, Printer, RotateCcw, Search, X } from "lucide-react";
 import { AppLayout } from "../components/layout/AppLayout";
 import { Header } from "../components/header/Header";
 import { Button } from "../components/ui/Button";
@@ -10,6 +10,7 @@ import { Input, Select } from "../components/ui/Field";
 import { PaginationBar } from "../components/ui/PaginationBar";
 import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { useToast } from "../components/ui/ToastProvider";
+import { ExportSalesExcelModal } from "../components/agent/ExportSalesExcelModal";
 import { FollowOrdersTable } from "../components/agent/FollowOrdersTable";
 import { SALES_STATUS_META } from "../components/sales/status";
 import { downloadWaybillsPdf, printWaybills, waybillFromFollowOrder } from "../lib/waybillPdf";
@@ -43,6 +44,7 @@ export default function SalesFollowUpPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [busyPdf, setBusyPdf] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState<FollowOrder | null>(null);
+  const [excelOpen, setExcelOpen] = useState(false);
   const { show } = useToast();
   const { canDeleteSalesOrders } = usePermissions();
   const run = useSafeAction();
@@ -94,6 +96,13 @@ export default function SalesFollowUpPage() {
   const shipping = async (o: FollowOrder, price: number | null) => {
     const r = await run(() => accountingService.setShipping(o.id, price));
     if (r.ok) show("تم حفظ سعر الشحن");
+    await orders.reload();
+    return r.ok;
+  };
+
+  const extraDeposit = async (o: FollowOrder, amount: number | null) => {
+    const r = await run(() => accountingService.setExtraDeposit(o.id, amount));
+    if (r.ok) show("تم حفظ العربون الإضافي");
     await orders.reload();
     return r.ok;
   };
@@ -160,6 +169,15 @@ export default function SalesFollowUpPage() {
           title="متابعة أوردرات المبيعات"
           description="متابعة كل أوردر بعد «تم التنفيذ»: الحالة، الشحن، الفتاة، المعاينة، والطباعة PDF"
           onOpenMobileNav={openMobileNav}
+          action={
+            <Button
+              variant="secondary"
+              icon={<FileSpreadsheet size={16} />}
+              onClick={() => setExcelOpen(true)}
+            >
+              تصدير Excel
+            </Button>
+          }
         />
       )}
     >
@@ -368,6 +386,7 @@ export default function SalesFollowUpPage() {
             onStatus={changeStatus}
             onFlag={flag}
             onShipping={shipping}
+            onExtraDeposit={extraDeposit}
             onPrintOne={(o) => void handlePrintList([o])}
             onDelete={setDeletingOrder}
           />
@@ -394,6 +413,12 @@ export default function SalesFollowUpPage() {
             : undefined
         }
         confirmLabel="حذف نهائياً"
+      />
+
+      <ExportSalesExcelModal
+        open={excelOpen}
+        onClose={() => setExcelOpen(false)}
+        agentId={agentId || undefined}
       />
     </AppLayout>
   );

@@ -19,6 +19,8 @@ export interface WaybillData {
   notes: string;
   lines: WaybillLine[];
   shippingPrice: number | null;
+  grossTotal: number;
+  deposit: number;
   grandTotal: number;
 }
 
@@ -43,7 +45,9 @@ export function fmtInvoiceAmount(n: number | null): string {
 
 export function waybillFromAgentOrder(o: AgentOrder): WaybillData {
   const ship = o.shippingPrice ?? null;
-  const grandTotal = o.totalWithShipping ?? Math.round((o.sellPrice + (ship ?? 0)) * 100) / 100;
+  const deposit = o.deposit ?? 0;
+  const grossTotal = o.totalWithShipping ?? Math.round((o.sellPrice + (ship ?? 0)) * 100) / 100;
+  const grandTotal = o.remainingTotal ?? Math.max(0, Math.round((grossTotal - deposit) * 100) / 100);
   const lines: WaybillLine[] =
     o.lines.length > 0
       ? o.lines.map((l) => {
@@ -79,6 +83,8 @@ export function waybillFromAgentOrder(o: AgentOrder): WaybillData {
     notes: o.notes,
     lines,
     shippingPrice: ship,
+    grossTotal,
+    deposit,
     grandTotal,
   };
 }
@@ -86,7 +92,9 @@ export function waybillFromAgentOrder(o: AgentOrder): WaybillData {
 export function waybillFromFollowOrder(o: FollowOrder): WaybillData {
   const sell = o.sellPrice ?? 0;
   const ship = o.shippingPrice ?? null;
-  const grandTotal = Math.round((sell + (ship ?? 0)) * 100) / 100;
+  const deposit = o.totalDeposit ?? Math.round(((o.deposit ?? 0) + (o.extraDeposit ?? 0)) * 100) / 100;
+  const grossTotal = Math.round((sell + (ship ?? 0)) * 100) / 100;
+  const grandTotal = o.remainingTotal ?? Math.max(0, Math.round((grossTotal - deposit) * 100) / 100);
   const lines: WaybillLine[] =
     o.lines.length > 0
       ? o.lines.map((l) => {
@@ -121,6 +129,8 @@ export function waybillFromFollowOrder(o: FollowOrder): WaybillData {
     notes: o.notes,
     lines,
     shippingPrice: ship,
+    grossTotal,
+    deposit,
     grandTotal,
   };
 }
@@ -225,8 +235,18 @@ function buildWaybillMarkup(w: WaybillData, logoSrc: string): string {
           <th class="lbl">م شحن</th>
           <td class="val num" dir="ltr">${escapeHtml(w.shippingPrice === null ? "—" : fmtInvoiceAmount(w.shippingPrice))}</td>
           <th class="lbl tight">الاجمالى بالشحن</th>
-          <td class="val num red lg" dir="ltr">${escapeHtml(fmtInvoiceAmount(w.grandTotal))}</td>
+          <td class="val num ${w.deposit > 0 ? "" : "red lg"}" dir="ltr">${escapeHtml(fmtInvoiceAmount(w.grossTotal))}</td>
         </tr>
+        ${
+          w.deposit > 0
+            ? `<tr>
+          <th class="lbl">العربون</th>
+          <td class="val num" dir="ltr">${escapeHtml(fmtInvoiceAmount(w.deposit))}</td>
+          <th class="lbl">المتبقى</th>
+          <td class="val num red lg" dir="ltr">${escapeHtml(fmtInvoiceAmount(w.grandTotal))}</td>
+        </tr>`
+            : ""
+        }
       </tbody>
     </table>
     <div class="notes-wrap">
