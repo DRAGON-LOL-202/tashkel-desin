@@ -1078,4 +1078,69 @@ describe("مشرف الفتيات (SALES_AGENT_SUPERVISOR)", () => {
     expect(exportedList.body.counts).toMatchObject({ all: 2, DRAFT: 0, EXPORTED: 2, CANCELLED: 0 });
     expect(exportedList.body.orders[0].exportedByName).toBe(supUser.name);
   });
+
+  it("مشرف الفتيات يلغي أوردراً مصدَّراً قبل التنفيذ مع مزامنة المبيعات دون لمس المخزون، مع بقاء الإلغاء متاحاً للفتاة", async () => {
+    const D7 = "2026-12-12";
+    const supUser = await makeUser("ag_sup_cancel", "SALES_AGENT_SUPERVISOR");
+    const supTok = await login(supUser.username);
+    const pagesRes = await api(ag1).get("/api/agent/pages");
+    const activePageId = pagesRes.body.pages[0].id as string;
+
+    const draftOrder = await mk(ag1, 180, { date: D7, customerName: "مسودة لا تُلغى", salesPageId: activePageId });
+    const preExecOrder = await mk(ag1, 180, { date: D7, customerName: "ملغي من المشرف", salesPageId: activePageId });
+    const execOrder = await mk(ag2, 180, { date: D7, customerName: "منفذ لا يُلغى", salesPageId: activePageId });
+
+    // مسودة ← 409، وبلا تأكيد/سبب قصير ← 400
+    expect((await api(supTok).post(`/api/agent-supervisor/orders/${draftOrder.id}/cancel`).send({ reason: "سبب صالح", confirm: true })).status).toBe(409);
+
+    expect((await api(supTok).post("/api/agent-supervisor/orders/export").send({ ids: [preExecOrder.id, execOrder.id], confirm: true })).status).toBe(200);
+    const soExecId = await salesOrderOf(execOrder.id);
+    expect((await execute(soExecId)).status).toBe(200);
+
+    // بعد التنفيذ ← 409
+    expect((await api(supTok).post(`/api/agent-supervisor/orders/${execOrder.id}/cancel`).send({ reason: "سبب بعد التنفيذ", confirm: true })).status).toBe(409);
+
+    // أدوار غير مخوّلة ← 403، والمدخلات الناقصة ← 400
+    for (const tok of [ag1, acct, edit, sup]) {
+      expect((await api(tok).post(`/api/agent-supervisor/orders/${preExecOrder.id}/cancel`).send({ reason: "غير مصرح", confirm: true })).status).toBe(403);
+    }
+    expect((await api(supTok).post(`/api/agent-supervisor/orders/${preExecOrder.id}/cancel`).send({ reason: "ل", confirm: true })).status).toBe(400);
+    expect((await api(supTok).post(`/api/agent-supervisor/orders/${preExecOrder.id}/cancel`).send({ reason: "سبب بدون تأكيد" })).status).toBe(400);
+
+    // إلغاء ناجح قبل التنفيذ عبر المشرف
+    const beforeStock = await stock();
+    const beforeMoves = await movements();
+    const cancelRes = await api(supTok).post(`/api/agent-supervisor/orders/${preExecOrder.id}/cancel`).send({
+      reason: "إلغاء بناءً على طلب العميلة",
+      confirm: true,
+    });
+    expect(cancelRes.status).toBe(200);
+    expect(cancelRes.body.order).toMatchObject({
+      id: preExecOrder.id,
+      status: "CANCELLED",
+      cancelReason: "إلغاء بناءً على طلب العميلة",
+      cancelledByName: supUser.name,
+    });
+    expect(await stock()).toBe(beforeStock);
+    expect(await movements()).toBe(beforeMoves);
+
+    // مزامنة SalesOrder وسجل CANCEL باسم المشرف
+    const soPreId = await salesOrderOf(preExecOrder.id);
+    const soPre = await prisma().salesOrder.findUniqueOrThrow({ where: { id: soPreId } });
+    expect(soPre.cancelledAt).not.toBeNull();
+    expect(soPre.cancelReason).toBe("إلغاء بناءً على طلب العميلة");
+    expect(soPre.cancelledById).toBe(supUser.id);
+    const cancelLog = await prisma().salesOrderStatusLog.findFirstOrThrow({ where: { orderId: soPreId, event: "CANCEL" } });
+    expect(cancelLog.byId).toBe(supUser.id);
+
+    // تكرار الإلغاء ← 409
+    expect((await api(supTok).post(`/api/agent-supervisor/orders/${preExecOrder.id}/cancel`).send({ reason: "مرة ثانية", confirm: true })).status).toBe(409);
+
+    // الفتاة نفسها لا تزال تملك صلاحية إلغاء أوردرها المصدَّر قبل التنفيذ
+    const girlOwn = await mk(ag1, 180, { date: D7, customerName: "ملغي من الفتاة", salesPageId: activePageId });
+    expect((await api(supTok).post("/api/agent-supervisor/orders/export").send({ ids: [girlOwn.id], confirm: true })).status).toBe(200);
+    const girlCancel = await api(ag1).post(`/api/agent/orders/${girlOwn.id}/cancel`).send({ reason: "ألغت الفتاة", confirm: true });
+    expect(girlCancel.status).toBe(200);
+    expect(girlCancel.body.order.status).toBe("CANCELLED");
+  });
 });

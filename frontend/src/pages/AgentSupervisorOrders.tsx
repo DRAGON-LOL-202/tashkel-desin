@@ -9,7 +9,7 @@ import { Input, Select } from "../components/ui/Field";
 import { PaginationBar } from "../components/ui/PaginationBar";
 import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { useToast } from "../components/ui/ToastProvider";
-import { ExportModal } from "../components/agent/ExportCancelModals";
+import { CancelModal, ExportModal } from "../components/agent/ExportCancelModals";
 import { SupervisorOrdersTable } from "../components/agent/SupervisorOrdersTable";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
@@ -46,6 +46,7 @@ export default function AgentSupervisorOrdersPage() {
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState<SupervisorAgentOrder[] | null>(null);
+  const [cancelling, setCancelling] = useState<SupervisorAgentOrder | null>(null);
   const { show } = useToast();
   const run = useSafeAction();
 
@@ -96,6 +97,13 @@ export default function AgentSupervisorOrdersPage() {
       setSelectedIds(new Set());
     }
     await orders.reload();
+  };
+
+  const doCancel = async (o: SupervisorAgentOrder, reason: string) => {
+    const r = await run(() => agentSupervisorService.cancel(o.id, reason));
+    if (r.ok) show("تم إلغاء الأوردر");
+    await orders.reload();
+    return r.ok;
   };
 
   const tabCount = (tab: (typeof STATUS_TABS)[number]) => {
@@ -339,6 +347,7 @@ export default function AgentSupervisorOrdersPage() {
             onToggleSelect={toggleSelect}
             onToggleSelectAllDrafts={toggleSelectAllDrafts}
             onExportOne={(o) => setExporting([o])}
+            onCancelOne={setCancelling}
           />
           <PaginationBar
             page={page}
@@ -358,6 +367,14 @@ export default function AgentSupervisorOrdersPage() {
           orders={exporting}
           onClose={() => setExporting(null)}
           onConfirm={() => doExport(exporting)}
+        />
+      )}
+      {cancelling && (
+        <CancelModal
+          open
+          order={cancelling}
+          onClose={() => setCancelling(null)}
+          onConfirm={(reason) => doCancel(cancelling, reason)}
         />
       )}
     </AppLayout>

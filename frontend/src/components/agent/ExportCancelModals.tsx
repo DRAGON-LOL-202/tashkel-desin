@@ -78,7 +78,7 @@ export function CancelModal({ open, onClose, order, onConfirm }: CancelModalProp
     }
   };
   return (
-    <Modal open={open} onClose={onClose} title={`إلغاء الأوردر ${order.waybill}`} description="يبقى الأوردر ورقم بوليصته محفوظين، ولا يدخل في حساب مستحقاتك. لا تتأثر حركة المخزون تلقائياً." size="md">
+    <Modal open={open} onClose={onClose} title={`إلغاء الأوردر ${order.waybill}`} description="يبقى الأوردر ورقم بوليصته محفوظين، ولا يدخل في حساب المستحقات. لا تتأثر حركة المخزون تلقائياً." size="md">
       <FieldWrap label="سبب الإلغاء" htmlFor="cancel-reason" error={error}>
         <Textarea id="cancel-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} autoFocus />
       </FieldWrap>

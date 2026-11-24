@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Eye, Phone, Send } from "lucide-react";
+import { Ban, Eye, Phone, Send } from "lucide-react";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { fmtMoney } from "../inventory/format";
@@ -15,6 +15,7 @@ interface SupervisorOrdersTableProps {
   onToggleSelect: (id: string) => void;
   onToggleSelectAllDrafts: (checked: boolean) => void;
   onExportOne: (o: SupervisorAgentOrder) => void;
+  onCancelOne: (o: SupervisorAgentOrder) => void;
 }
 
 function initialChar(name: string): string {
@@ -29,6 +30,7 @@ export function SupervisorOrdersTable({
   onToggleSelect,
   onToggleSelectAllDrafts,
   onExportOne,
+  onCancelOne,
 }: SupervisorOrdersTableProps) {
   const [previewId, setPreviewId] = useState<string | null>(null);
   const previewOrder = previewId ? orders.find((x) => x.id === previewId) ?? null : null;
@@ -63,6 +65,7 @@ export function SupervisorOrdersTable({
           <tbody className="divide-y divide-border/70">
             {orders.map((o) => {
               const isDraft = o.status === "DRAFT";
+              const canCancelOrder = o.status === "EXPORTED" && (o.salesStatus === null || o.salesStatus === "REGISTERED");
               const isChecked = isDraft && selectedIds.has(o.id);
               const badge = agentOrderBadge(o);
               const displayCustomer = o.customerName || "—";
@@ -136,6 +139,11 @@ export function SupervisorOrdersTable({
                           {o.cancelReason}
                         </span>
                       )}
+                      {o.status === "CANCELLED" && o.cancelledByName && (
+                        <span className="max-w-full truncate text-[11px] text-muted" title={`ألغاه: ${o.cancelledByName}`}>
+                          ألغاه: {o.cancelledByName}
+                        </span>
+                      )}
                       {o.status === "EXPORTED" && o.exportedByName && (
                         <span className="max-w-full truncate text-[11px] text-muted" title={`صدّره: ${o.exportedByName}`}>
                           بواسطة: {o.exportedByName}
@@ -169,6 +177,16 @@ export function SupervisorOrdersTable({
                           onClick={() => onExportOne(o)}
                         >
                           تصدير للإنتاج
+                        </Button>
+                      )}
+                      {canCancelOrder && (
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          icon={<Ban size={13} />}
+                          onClick={() => onCancelOne(o)}
+                        >
+                          إلغاء الأوردر
                         </Button>
                       )}
                     </div>

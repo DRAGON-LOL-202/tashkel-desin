@@ -272,6 +272,7 @@ export interface SupervisorAgentOrder extends AgentOrder {
   agentName: string;
   boxName: string;
   exportedByName: string | null;
+  cancelledByName?: string | null;
 }
 
 export interface SupervisorStatusCounts {

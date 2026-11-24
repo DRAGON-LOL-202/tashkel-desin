@@ -601,6 +601,46 @@ agentRouter.post(
   })
 );
 
+/**
+ * إلغاء أوردر مصدَّر قبل التنفيذ مع مزامنة أوردر المبيعات الرئيسي وسجل الحالات.
+ * عند تمرير restrictToAgentId يُقفل الأوردر للفتاة صاحبته فقط.
+ */
+async function cancelExportedAgentOrder(actorId: string, orderId: string, reason: string, restrictToAgentId?: string) {
+  return prisma().$transaction(async (tx) => {
+    let locked: { id: string; status: string; salesOrderId: string | null };
+    if (restrictToAgentId) {
+      locked = await lockOwnOrder(tx, restrictToAgentId, orderId);
+    } else {
+      const rows = await tx.$queryRaw<{ id: string; status: string; salesOrderId: string | null }[]>`
+        SELECT "id","status"::text AS "status","salesOrderId" FROM "AgentOrder" WHERE "id" = ${orderId} FOR UPDATE
+      `;
+      if (rows.length === 0) throw notFound("الأوردر غير موجود");
+      locked = rows[0];
+    }
+    if (locked.status === "DRAFT") {
+      throw conflict(
+        restrictToAgentId
+          ? "الأوردر لم يُصدَّر بعد؛ يمكنك حذفه بدل إلغائه."
+          : "الأوردر لم يُصدَّر بعد؛ يمكن للفتاة تعديله أو حذفه قبل التصدير."
+      );
+    }
+    if (locked.status === "CANCELLED") throw conflict("الأوردر ملغي بالفعل");
+    const now = new Date();
+    // مزامنة أوردر المبيعات الرئيسي في نفس المعاملة بناءً على locked.salesOrderId المقروء بعد القفل (يمنع سباق التصدير والإلغاء)
+    if (locked.salesOrderId) {
+      await tx.$queryRaw`SELECT "id" FROM "SalesOrder" WHERE "id" = ${locked.salesOrderId} FOR UPDATE`;
+      const so = await tx.salesOrder.findUnique({ where: { id: locked.salesOrderId }, select: { status: true, stockDeducted: true } });
+      if (so && (so.stockDeducted || so.status !== "REGISTERED")) {
+        throw conflict("لا يمكن إلغاء أوردر بعد تنفيذه أو شحنه أو تسليمه. تواصل مع المشرف أو الإدارة لتسجيل مرتجع.");
+      }
+      await tx.salesOrder.update({ where: { id: locked.salesOrderId }, data: { cancelledAt: now, cancelReason: reason, cancelledById: actorId } });
+      await tx.salesOrderStatusLog.create({ data: { orderId: locked.salesOrderId, event: "CANCEL", fromValue: null, toValue: reason.slice(0, 200), byId: actorId } });
+    }
+    await tx.agentOrder.update({ where: { id: locked.id }, data: { status: "CANCELLED", cancelledAt: now, cancelReason: reason, cancelledById: actorId } });
+    return locked.id;
+  });
+}
+
 // إلغاء بعد التصدير وقبل التنفيذ فقط: سبب إلزامي + تأكيد، يُحفظ السجل ويبقى الأوردر ورقم بوليصته. بعد التنفيذ يُعالج عبر المرتجع من المشرف/الإدارة.
 agentRouter.post(
   "/orders/:id/cancel",
@@ -609,24 +649,8 @@ agentRouter.post(
     const agentId = req.user!.id;
     const orderId = idOf(req.params.id);
     if (!orderId) throw notFound("الأوردر غير موجود");
-    const updated = await prisma().$transaction(async (tx) => {
-      const locked = await lockOwnOrder(tx, agentId, orderId);
-      if (locked.status === "DRAFT") throw conflict("الأوردر لم يُصدَّر بعد؛ يمكنك حذفه بدل إلغائه.");
-      if (locked.status === "CANCELLED") throw conflict("الأوردر ملغي بالفعل");
-      const now = new Date();
-      // مزامنة أوردر المبيعات الرئيسي في نفس المعاملة بناءً على locked.salesOrderId المقروء بعد القفل (يمنع سباق التصدير والإلغاء)
-      if (locked.salesOrderId) {
-        await tx.$queryRaw`SELECT "id" FROM "SalesOrder" WHERE "id" = ${locked.salesOrderId} FOR UPDATE`;
-        const so = await tx.salesOrder.findUnique({ where: { id: locked.salesOrderId }, select: { status: true, stockDeducted: true } });
-        if (so && (so.stockDeducted || so.status !== "REGISTERED")) {
-          throw conflict("لا يمكن إلغاء أوردر بعد تنفيذه أو شحنه أو تسليمه. تواصل مع المشرف أو الإدارة لتسجيل مرتجع.");
-        }
-        await tx.salesOrder.update({ where: { id: locked.salesOrderId }, data: { cancelledAt: now, cancelReason: body.reason, cancelledById: agentId } });
-        await tx.salesOrderStatusLog.create({ data: { orderId: locked.salesOrderId, event: "CANCEL", fromValue: null, toValue: body.reason.slice(0, 200), byId: agentId } });
-      }
-      await tx.agentOrder.update({ where: { id: locked.id }, data: { status: "CANCELLED", cancelledAt: now, cancelReason: body.reason, cancelledById: agentId } });
-      return tx.agentOrder.findUniqueOrThrow({ where: { id: locked.id }, include: agentOrderInclude });
-    });
+    const cancelledId = await cancelExportedAgentOrder(agentId, orderId, body.reason, agentId);
+    const updated = await prisma().agentOrder.findUniqueOrThrow({ where: { id: cancelledId }, include: agentOrderInclude });
     res.json({ order: serializeAgentOrder(updated) });
   })
 );
@@ -830,6 +854,7 @@ const supervisorOrderInclude = {
   ...agentOrderInclude,
   agent: { select: { id: true, name: true } },
   exportedBy: { select: { id: true, name: true } },
+  cancelledBy: { select: { id: true, name: true } },
 } satisfies Prisma.AgentOrderInclude;
 type SupervisorOrderRow = Prisma.AgentOrderGetPayload<{ include: typeof supervisorOrderInclude }>;
 
@@ -840,6 +865,7 @@ function serializeSupervisorOrder(o: SupervisorOrderRow) {
     agentName: o.agent.name,
     boxName: o.lines.map((l) => (l.quantity > 1 ? `${l.productName} × ${l.quantity}` : l.productName)).join("، "),
     exportedByName: o.exportedBy?.name ?? null,
+    cancelledByName: o.cancelledBy?.name ?? null,
   };
 }
 
@@ -944,6 +970,19 @@ agentSupervisorRouter.post(
     }
     const fresh = await prisma().agentOrder.findMany({ where: { id: { in: ids } }, include: supervisorOrderInclude });
     res.json({ results, orders: fresh.map(serializeSupervisorOrder) });
+  })
+);
+
+// إلغاء أوردر مصدَّر قبل التنفيذ عبر مشرف الفتيات (أو الإدارة): سبب إلزامي + تأكيد مع حفظ السجل وبوليصة الفتاة.
+agentSupervisorRouter.post(
+  "/orders/:id/cancel",
+  asyncHandler(async (req, res) => {
+    const body = cancelOrderSchema.parse(req.body);
+    const orderId = idOf(req.params.id);
+    if (!orderId) throw notFound("الأوردر غير موجود");
+    const cancelledId = await cancelExportedAgentOrder(req.user!.id, orderId, body.reason);
+    const updated = await prisma().agentOrder.findUniqueOrThrow({ where: { id: cancelledId }, include: supervisorOrderInclude });
+    res.json({ order: serializeSupervisorOrder(updated) });
   })
 );
 

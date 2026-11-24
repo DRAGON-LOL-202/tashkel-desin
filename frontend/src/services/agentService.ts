@@ -112,6 +112,14 @@ export const agentSupervisorService = {
   async exportOrders(ids: string[]): Promise<{ results: ExportResult[]; orders: SupervisorAgentOrder[] }> {
     return api("/agent-supervisor/orders/export", { method: "POST", body: { ids, confirm: true } });
   },
+
+  async cancel(id: string, reason: string): Promise<SupervisorAgentOrder> {
+    const { order } = await api<{ order: SupervisorAgentOrder }>(`/agent-supervisor/orders/${id}/cancel`, {
+      method: "POST",
+      body: { reason, confirm: true },
+    });
+    return order;
+  },
 };
 
 // المحاسب والإدارة
