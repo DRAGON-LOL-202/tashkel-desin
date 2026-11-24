@@ -238,7 +238,7 @@ describe("users: حماية حذف المبيعات والسجلات", () => {
     const expOrderRes = await api(agTok).post("/api/agent/orders").send({ date: "2026-11-01", customerName: "منفذ", lines: [{ productId: prod.id, quantity: 2 }] });
     expect(draftRes.status).toBe(201);
     expect(expOrderRes.status).toBe(201);
-    expect((await api(agTok).post("/api/agent/orders/export").send({ ids: [expOrderRes.body.order.id], confirm: true })).status).toBe(200);
+    expect((await api(admin).post("/api/agent-supervisor/orders/export").send({ ids: [expOrderRes.body.order.id], confirm: true })).status).toBe(200);
     const linked = await prisma().agentOrder.findUniqueOrThrow({ where: { id: expOrderRes.body.order.id } });
     expect((await api(admin).patch(`/api/sales/orders/${linked.salesOrderId}`).send({ status: "EXECUTED" })).status).toBe(200);
     expect(Number((await prisma().inventoryItem.findUniqueOrThrow({ where: { id: item.id } })).quantity)).toBe(8);

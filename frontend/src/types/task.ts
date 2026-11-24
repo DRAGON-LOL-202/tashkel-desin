@@ -13,7 +13,8 @@ export type UserRole =
   | "sales_accountant"
   | "sales_editor"
   | "sales_supervisor"
-  | "sales_agent";
+  | "sales_agent"
+  | "sales_agent_supervisor";
 /** وصول المستخدم للمخزون: بلا وصول / السحب فقط / كامل (الإدارة كامل دائماً، وتعبئة/مشغل سحب فقط) */
 export type InventoryAccessLevel = "none" | "withdraw" | "full";
 

@@ -16,6 +16,7 @@ export type AppPage =
   | "profile"
   | "notifications"
   | "agentOrders"
+  | "agentSupervisor"
   | "salesFollowUp"
   | "agentAccounts"
   | "generalAccounts";
@@ -37,6 +38,7 @@ const STAFF_PAGES: AppPage[] = [
   "sales",
   "salesOrders",
   "salesFollowUp",
+  "agentSupervisor",
   "agentAccounts",
   "generalAccounts",
   "manageUsers",
@@ -51,13 +53,19 @@ const RESTRICTED_PAGES: AppPage[] = ["withdrawals", "profile"];
 const SALES_ACCOUNTANT_PAGES: AppPage[] = ["salesFollowUp", "agentAccounts", "generalAccounts", "salesOrders", "profile"];
 // الفتاة: مساحتها فقط (أوردراتي + لوحتها)
 const SALES_AGENT_PAGES: AppPage[] = ["agentOrders", "profile"];
+// مشرف الفتيات: تجميع وتصدير أوردرات الفتيات وصفحته فقط
+const SALES_AGENT_SUPERVISOR_PAGES: AppPage[] = ["agentSupervisor", "profile"];
 // منفّذ الأوردرات ومشرف المبيعات: يضاف لهما السحب من المخزون
 const SALES_EDITOR_PAGES: AppPage[] = ["salesOrders", "withdrawals", "profile"];
 const SALES_SUPERVISOR_PAGES: AppPage[] = ["salesOrders", "inventory", "withdrawals", "profile"];
 
 export const isRestrictedRole = (role: UserRole) => role === "packer" || role === "operator";
 export const isSalesRole = (role: UserRole) =>
-  role === "sales_accountant" || role === "sales_editor" || role === "sales_supervisor" || role === "sales_agent";
+  role === "sales_accountant" ||
+  role === "sales_editor" ||
+  role === "sales_supervisor" ||
+  role === "sales_agent" ||
+  role === "sales_agent_supervisor";
 
 /** بوابة الإدارات لمدير النظام والمدير فقط (حسب الدور الفعلي، لا isSystemUser) */
 export function canAccessWorkspace(user: Pick<AccessSubject, "accessRole">): boolean {
@@ -84,6 +92,8 @@ function basePagesFor(user: AccessSubject): AppPage[] {
       return SALES_ACCOUNTANT_PAGES;
     case "sales_agent":
       return SALES_AGENT_PAGES;
+    case "sales_agent_supervisor":
+      return SALES_AGENT_SUPERVISOR_PAGES;
     case "sales_editor":
       return SALES_EDITOR_PAGES;
     case "sales_supervisor":
@@ -109,6 +119,7 @@ export function defaultPathForRole(user: AccessSubject): string {
   if (canAccessWorkspace(user)) return "/workspace";
   if (isRestrictedRole(user.accessRole)) return "/withdrawals";
   if (user.accessRole === "sales_agent") return "/agent-orders";
+  if (user.accessRole === "sales_agent_supervisor") return "/agent-supervisor";
   if (user.accessRole === "sales_accountant") return "/sales-follow-up";
   if (isSalesRole(user.accessRole)) return "/sales-orders";
   // المصمم: أول صفحة مهام لكرته، وإلا صفحته الشخصية

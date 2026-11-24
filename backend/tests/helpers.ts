@@ -19,7 +19,7 @@ export async function resetDb() {
 
 export async function makeUser(
   username: string,
-  role: "ADMIN" | "MANAGER" | "DESIGNER" | "PACKER" | "OPERATOR" | "SALES_ACCOUNTANT" | "SALES_EDITOR" | "SALES_SUPERVISOR" | "SALES_AGENT" = "DESIGNER",
+  role: "ADMIN" | "MANAGER" | "DESIGNER" | "PACKER" | "OPERATOR" | "SALES_ACCOUNTANT" | "SALES_EDITOR" | "SALES_SUPERVISOR" | "SALES_AGENT" | "SALES_AGENT_SUPERVISOR" = "DESIGNER",
   extra: Record<string, unknown> = {}
 ) {
   return prisma().user.create({

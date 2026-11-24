@@ -2,8 +2,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "../src/db.ts";
 import { api, GROUP_ACCESSORIES, login, makeUser, resetDb } from "./helpers.ts";
 
-let admin: string, ag1: string, ag2: string, acct: string, sup: string, edit: string;
-let ag1Id: string, ag2Id: string;
+let admin: string, ag1: string, ag2: string, acct: string, sup: string, edit: string, agSup: string;
+let ag1Id: string, ag2Id: string, agSupId: string;
 let box: { id: string };
 let watch: { id: string };
 
@@ -27,7 +27,7 @@ const mk = async (token: string, price = 180, extra: Record<string, unknown> = {
   expect(r.status).toBe(201);
   return r.body.order as { id: string; waybill: string; seq: number };
 };
-const exportIds = (token: string, ids: string[]) => api(token).post("/api/agent/orders/export").send({ ids, confirm: true });
+const exportIds = (_token: string, ids: string[]) => api(agSup).post("/api/agent-supervisor/orders/export").send({ ids, confirm: true });
 const salesOrderOf = async (agentOrderId: string) => (await prisma().agentOrder.findUniqueOrThrow({ where: { id: agentOrderId } })).salesOrderId!;
 const execute = (soId: string) => api(admin).patch(`/api/sales/orders/${soId}`).send({ status: "EXECUTED" });
 const acctStatus = (soId: string, status: string) => api(acct).patch(`/api/accounting/orders/${soId}/status`).send({ status });
@@ -39,12 +39,14 @@ beforeAll(async () => {
   await makeUser("acct1", "SALES_ACCOUNTANT");
   await makeUser("sup1", "SALES_SUPERVISOR");
   await makeUser("edit1", "SALES_EDITOR");
+  agSupId = (await makeUser("agent_sup1", "SALES_AGENT_SUPERVISOR")).id;
   admin = await login("lol");
   ag1 = await login("agent_one");
   ag2 = await login("agent_two");
   acct = await login("acct1");
   sup = await login("sup1");
   edit = await login("edit1");
+  agSup = await login("agent_sup1");
   const cat = await api(admin).post("/api/inventory/categories").send({ name: "هدايا", groupId: GROUP_ACCESSORIES });
   const w = await api(admin).post("/api/inventory").send({ unit: "قطعة", categoryId: cat.body.category.id, name: "ساعة", initialQuantity: 100, unitPrice: 100, sellPrice: 180 });
   watch = w.body.item;
@@ -106,8 +108,9 @@ describe("العزل والصلاحيات", () => {
     expect(list.body.orders.find((o: any) => o.id === foreign.id)).toBeUndefined();
     expect((await api(ag1).patch(`/api/agent/orders/${foreign.id}`).send({ notes: "x" })).status).toBe(404);
     expect((await api(ag1).delete(`/api/agent/orders/${foreign.id}`)).status).toBe(404);
-    const ex = await exportIds(ag1, [foreign.id]);
-    expect(ex.body.results[0].result).toBe("ERROR");
+    // التصدير أصبح محصوراً في مشرف الفتيات (والإدارة): الفتاة تتلقى 403 حتى على أوردراتها
+    expect((await api(ag1).post("/api/agent/orders/export").send({ ids: [foreign.id], confirm: true })).status).toBe(403);
+    expect((await api(ag1).post("/api/agent-supervisor/orders/export").send({ ids: [foreign.id], confirm: true })).status).toBe(403);
     expect((await api(ag1).post(`/api/agent/orders/${foreign.id}/cancel`).send({ reason: "سبب", confirm: true })).status).toBe(404);
     expect((await prisma().agentOrder.findUniqueOrThrow({ where: { id: foreign.id } })).status).toBe("DRAFT");
   });
@@ -138,8 +141,8 @@ describe("التصدير وتدفق المخزون", () => {
   it("التصدير يتطلب تأكيداً، ثم ينشئ أوردر المبيعات دون خصم", async () => {
     const before = await stock();
     const mv = await movements();
-    expect((await api(ag1).post("/api/agent/orders/export").send({ ids: [o.id] })).status).toBe(400);
-    const r = await exportIds(ag1, [o.id]);
+    expect((await api(agSup).post("/api/agent-supervisor/orders/export").send({ ids: [o.id] })).status).toBe(400);
+    const r = await exportIds(agSup, [o.id]);
     expect(r.status).toBe(200);
     expect(r.body.results[0].result).toBe("EXPORTED");
     so = await salesOrderOf(o.id);
@@ -923,5 +926,156 @@ describe("صفحات البيع (مصدر الأوردر) وحسابات كل ص
     expect(followA.body.orders.map((o: { id: string }) => o.id)).toEqual([soA]);
     expect(followA.body.orders[0]).toMatchObject({ salesPageId: pageA.id, salesPageName: "صفحة التشكيل 1" });
     expect(JSON.stringify(followA.body)).not.toMatch(/unitCost|unitPrice|unitSell|costTotal|profit|available/);
+  });
+});
+
+describe("مشرف الفتيات (SALES_AGENT_SUPERVISOR)", () => {
+  it("إنشاء حساب مشرف فتيات من الإدارة، مع العزل الكامل (403) وحصر التصدير", async () => {
+    const createRes = await api(admin).post("/api/users").send({
+      name: "سمر مشرفة",
+      username: "ag_sup_created",
+      email: "ag_sup_created@example.test",
+      password: "Password123!",
+      role: "sales_agent_supervisor",
+    });
+    expect(createRes.status).toBe(201);
+    expect(createRes.body.user).toMatchObject({
+      role: "sales_agent_supervisor",
+      jobTitle: "مشرف فتيات",
+      inventoryAccess: "none",
+      showTaskCard: false,
+      showProductionCard: false,
+    });
+    const supTok = await login("ag_sup_created", "Password123!");
+
+    // محظور من جميع المسارات خارج /api/agent-supervisor
+    for (const url of [
+      "/api/agent/orders",
+      "/api/sales/orders?date=2026-11-10",
+      "/api/sales/products",
+      "/api/inventory",
+      "/api/accounting/orders",
+      "/api/accounting/agents",
+      "/api/accounting/general",
+      "/api/sales-agents",
+      "/api/users",
+      "/api/tasks?date=2026-11-10",
+      "/api/feedback?date=2026-11-10",
+    ]) {
+      expect((await api(supTok).get(url)).status, url).toBe(403);
+    }
+
+    // لا تعديل ولا حذف على مسارات مشرف الفتيات
+    expect((await api(supTok).patch("/api/agent-supervisor/orders/fake").send({ notes: "x" })).status).toBe(404);
+    expect((await api(supTok).delete("/api/agent-supervisor/orders/fake")).status).toBe(404);
+
+    // بقية الأدوار محظورة من /api/agent-supervisor
+    const des = await makeUser("des_sup_chk", "DESIGNER");
+    const desTok = await login(des.username);
+    for (const [label, tok] of [
+      ["SALES_AGENT", ag1],
+      ["SALES_ACCOUNTANT", acct],
+      ["SALES_EDITOR", edit],
+      ["SALES_SUPERVISOR", sup],
+      ["DESIGNER", desTok],
+    ] as const) {
+      expect((await api(tok).get("/api/agent-supervisor/orders")).status, `${label} GET orders`).toBe(403);
+      expect((await api(tok).get("/api/agent-supervisor/filters")).status, `${label} GET filters`).toBe(403);
+      expect(
+        (await api(tok).post("/api/agent-supervisor/orders/export").send({ ids: ["x"], confirm: true })).status,
+        `${label} POST export`
+      ).toBe(403);
+    }
+    // الفتاة محظورة أيضاً من /api/agent/orders/export
+    expect((await api(ag1).post("/api/agent/orders/export").send({ ids: ["x"], confirm: true })).status).toBe(403);
+  });
+
+  it("تجميع المسودات من عدة فتيات، الفلترة، التصدير الجماعي مع حفظ هوية الفتاة والمُصدِّر، ومنع تسريب التكاليف", async () => {
+    const D5 = "2026-12-10";
+    const D6 = "2026-12-11";
+    const supUser = await makeUser("ag_sup_flow", "SALES_AGENT_SUPERVISOR");
+    const supTok = await login(supUser.username);
+    const mgrTok = await login("amr");
+    const page1 = (await api(admin).post("/api/sales-agents/pages").send({ name: "صفحة المشرف 1" })).body.page as { id: string; name: string };
+    const page2 = (await api(admin).post("/api/sales-agents/pages").send({ name: "صفحة المشرف 2" })).body.page as { id: string; name: string };
+
+    const g1 = await mk(ag1, 180, {
+      date: D5,
+      customerName: "عميلة مشرف 1",
+      customerPhone: "01055511111",
+      salesPageId: page1.id,
+    });
+    const g2 = await mk(ag2, 180, {
+      date: D6,
+      customerName: "عميلة مشرف 2",
+      customerPhone: "01055522222",
+      salesPageId: page2.id,
+    });
+
+    // فلاتر مشرف الفتيات
+    const filtersRes = await api(supTok).get("/api/agent-supervisor/filters");
+    expect(filtersRes.status).toBe(200);
+    expect(filtersRes.body.agents.length).toBeGreaterThanOrEqual(2);
+    expect(filtersRes.body.pages.some((p: { id: string }) => p.id === page1.id)).toBe(true);
+    expect(JSON.stringify(filtersRes.body)).not.toMatch(/unitCost|unitPrice|unitSell|inventorySellPrice|costTotal|profit|available|passwordHash/);
+
+    // عرض المسودات المجمّعة من عدة فتيات (D5..D6)
+    const draftsList = await api(supTok).get(`/api/agent-supervisor/orders?status=DRAFT&from=${D5}&to=${D6}`);
+    expect(draftsList.status).toBe(200);
+    expect(draftsList.body.total).toBe(2);
+    expect(draftsList.body.counts).toMatchObject({ all: 2, DRAFT: 2, EXPORTED: 0, CANCELLED: 0 });
+    expect(draftsList.body.orders.map((o: { id: string }) => o.id).sort()).toEqual([g1.id, g2.id].sort());
+    expect(JSON.stringify(draftsList.body)).not.toMatch(/unitCost|unitPrice|unitSell|inventorySellPrice|costTotal|profit|available/);
+
+    // التصفية بالفتاة والصفحة والبحث والـ Pagination
+    const byAg1 = await api(supTok).get(`/api/agent-supervisor/orders?status=DRAFT&agentId=${ag1Id}&from=${D5}&to=${D6}`);
+    expect(byAg1.status).toBe(200);
+    expect(byAg1.body.orders.map((o: { id: string }) => o.id)).toEqual([g1.id]);
+
+    const byPage2 = await api(supTok).get(`/api/agent-supervisor/orders?status=DRAFT&salesPageId=${page2.id}&from=${D5}&to=${D6}`);
+    expect(byPage2.status).toBe(200);
+    expect(byPage2.body.orders.map((o: { id: string }) => o.id)).toEqual([g2.id]);
+
+    const paged1 = await api(supTok).get(`/api/agent-supervisor/orders?status=DRAFT&from=${D5}&to=${D6}&limit=1&offset=0`);
+    expect(paged1.status).toBe(200);
+    expect(paged1.body.total).toBe(2);
+    expect(paged1.body.hasMore).toBe(true);
+    expect(paged1.body.orders).toHaveLength(1);
+
+    // الإدارة (MANAGER / ADMIN) تصل أيضاً لشاشة مشرف الفتيات
+    expect((await api(mgrTok).get(`/api/agent-supervisor/orders?status=DRAFT&from=${D5}&to=${D6}`)).status).toBe(200);
+
+    // التصدير الجماعي لأوردرات عدة فتيات دفعة واحدة دون خصم مخزون مع الحفاظ على ملكية الفتاة وتسجيل المشرف كمُصدِّر
+    const beforeStock = await stock();
+    const beforeMoves = await movements();
+    const batchRes = await api(supTok).post("/api/agent-supervisor/orders/export").send({ ids: [g1.id, g2.id], confirm: true });
+    expect(batchRes.status).toBe(200);
+    expect(batchRes.body.results.every((r: { result: string }) => r.result === "EXPORTED")).toBe(true);
+    expect(await stock()).toBe(beforeStock);
+    expect(await movements()).toBe(beforeMoves);
+
+    // التحقق من ملكية الفتاة والصفحة والمُصدِّر وسجل الحالة
+    const ao1 = await prisma().agentOrder.findUniqueOrThrow({ where: { id: g1.id } });
+    const ao2 = await prisma().agentOrder.findUniqueOrThrow({ where: { id: g2.id } });
+    expect(ao1.exportedById).toBe(supUser.id);
+    expect(ao2.exportedById).toBe(supUser.id);
+
+    const so1 = await prisma().salesOrder.findUniqueOrThrow({ where: { id: ao1.salesOrderId! } });
+    const so2 = await prisma().salesOrder.findUniqueOrThrow({ where: { id: ao2.salesOrderId! } });
+    expect(so1).toMatchObject({ agentId: ag1Id, closerName: "agent_one", salesPageId: page1.id, source: "AGENT", status: "REGISTERED" });
+    expect(so2).toMatchObject({ agentId: ag2Id, closerName: "agent_two", salesPageId: page2.id, source: "AGENT", status: "REGISTERED" });
+
+    const expLog = await prisma().salesOrderStatusLog.findFirstOrThrow({ where: { orderId: so1.id, event: "EXPORT" } });
+    expect(expLog.byId).toBe(supUser.id);
+
+    // إعادة التصدير idempotent وتظهر في تبويب EXPORTED مع اسم المُصدِّر
+    const again = await api(supTok).post("/api/agent-supervisor/orders/export").send({ ids: [g1.id, g2.id], confirm: true });
+    expect(again.status).toBe(200);
+    expect(again.body.results.every((r: { result: string }) => r.result === "ALREADY_EXPORTED")).toBe(true);
+
+    const exportedList = await api(supTok).get(`/api/agent-supervisor/orders?status=EXPORTED&from=${D5}&to=${D6}`);
+    expect(exportedList.status).toBe(200);
+    expect(exportedList.body.counts).toMatchObject({ all: 2, DRAFT: 0, EXPORTED: 2, CANCELLED: 0 });
+    expect(exportedList.body.orders[0].exportedByName).toBe(supUser.name);
   });
 });

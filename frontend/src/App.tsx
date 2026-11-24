@@ -22,6 +22,7 @@ const WithdrawalsPage = lazy(() => import("./pages/Withdrawals"));
 const SalesPage = lazy(() => import("./pages/Sales"));
 const SalesOrdersPage = lazy(() => import("./pages/SalesOrders"));
 const AgentOrdersPage = lazy(() => import("./pages/AgentOrders"));
+const AgentSupervisorOrdersPage = lazy(() => import("./pages/AgentSupervisorOrders"));
 const SalesFollowUpPage = lazy(() => import("./pages/SalesFollowUp"));
 const AgentAccountsPage = lazy(() => import("./pages/AgentAccounts"));
 const GeneralAccountsPage = lazy(() => import("./pages/GeneralAccounts"));
@@ -70,6 +71,7 @@ export default function App() {
                   <Route path="/sales" element={<ProtectedRoute page="sales"><SalesPage /></ProtectedRoute>} />
                   <Route path="/sales-orders" element={<ProtectedRoute page="salesOrders"><SalesOrdersPage /></ProtectedRoute>} />
                   <Route path="/agent-orders" element={<ProtectedRoute page="agentOrders"><AgentOrdersPage /></ProtectedRoute>} />
+                  <Route path="/agent-supervisor" element={<ProtectedRoute page="agentSupervisor"><AgentSupervisorOrdersPage /></ProtectedRoute>} />
                   <Route path="/sales-follow-up" element={<ProtectedRoute page="salesFollowUp"><SalesFollowUpPage /></ProtectedRoute>} />
                   <Route path="/agent-accounts" element={<ProtectedRoute page="agentAccounts"><AgentAccountsPage /></ProtectedRoute>} />
                   <Route path="/general-accounts" element={<ProtectedRoute page="generalAccounts"><GeneralAccountsPage /></ProtectedRoute>} />

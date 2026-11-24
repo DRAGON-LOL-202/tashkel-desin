@@ -12,6 +12,7 @@ import {
   MessageSquare,
   PackageMinus,
   Palette,
+  Send,
   ShoppingBag,
   Target,
   Users,
@@ -76,11 +77,12 @@ export const DEPARTMENTS: readonly DepartmentConfig[] = [
   {
     key: "accounting",
     title: "إدارة الحسابات",
-    subtitle: "متابعة أوردرات المبيعات، حسابات الفتيات والحسابات العامة.",
+    subtitle: "متابعة أوردرات المبيعات، تصدير أوردرات الفتيات، حسابات الفتيات والحسابات العامة.",
     icon: Wallet,
     defaultPath: "/sales-follow-up",
     items: [
       { to: "/sales-follow-up", label: "متابعة أوردرات المبيعات", icon: ListChecks, page: "salesFollowUp" },
+      { to: "/agent-supervisor", label: "تصدير أوردرات الفتيات", icon: Send, page: "agentSupervisor" },
       { to: "/agent-accounts", label: "حسابات الفتيات", icon: Wallet, page: "agentAccounts" },
       { to: "/general-accounts", label: "الحسابات العامة", icon: Calculator, page: "generalAccounts" },
     ],

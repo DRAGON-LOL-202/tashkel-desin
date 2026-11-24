@@ -17,6 +17,7 @@ enum Role {
   SALES_EDITOR
   SALES_SUPERVISOR
   SALES_AGENT
+  SALES_AGENT_SUPERVISOR
 }
 
 // وصول المستخدم للمخزون (يخص المصمم؛ الإدارة كاملة دائماً، وتعبئة/مشغل سحب فقط بتصنيفات محددة)
@@ -673,6 +674,7 @@ model AgentOrder {
   @@unique([agentId, seq])
   @@index([agentId, status])
   @@index([agentId, date, seq])
+  @@index([status, date])
   @@index([salesPageId])
 }
 

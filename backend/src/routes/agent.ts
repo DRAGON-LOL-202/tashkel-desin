@@ -3,7 +3,7 @@ import type { Prisma } from "../generated/prisma/client.ts";
 import { prisma } from "../db.js";
 import { requireAuth, requireRole, requireStaff } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
-import { badRequest, conflict, notFound } from "../utils/httpError.js";
+import { badRequest, conflict, forbidden, notFound } from "../utils/httpError.js";
 import { BUCKETS, calcAdjustedBoxPriceCents, centsToDecimalString, fromCents, matchesBucket, summarize, toCents, waybillNumber, waybillUpperBound, type AccountingRow, type Bucket } from "../utils/agentMath.js";
 import { itemSelect, orderSellCents } from "../utils/salesSerialize.js";
 import { num2, num3 } from "../utils/inventorySerialize.js";
@@ -534,12 +534,22 @@ agentRouter.delete(
 );
 
 /** تصدير أوردر واحد داخل معاملة واحدة: قفل صفه، ثم إنشاء أوردر المبيعات وربطه. إعادة المحاولة لا تنشئ نسخة ثانية. */
-async function exportOne(agentId: string, agentName: string, orderId: string) {
+async function exportAgentOrder(actorId: string, orderId: string) {
   return prisma().$transaction(async (tx) => {
-    const locked = await lockOwnOrder(tx, agentId, orderId);
+    const rows = await tx.$queryRaw<{ id: string; status: string }[]>`
+      SELECT "id","status"::text AS "status" FROM "AgentOrder" WHERE "id" = ${orderId} FOR UPDATE
+    `;
+    const locked = rows[0];
+    if (!locked) throw notFound("الأوردر غير موجود");
     if (locked.status === "EXPORTED") return { id: orderId, result: "ALREADY_EXPORTED" as const };
     if (locked.status === "CANCELLED") return { id: orderId, result: "CANCELLED" as const };
-    const order = await tx.agentOrder.findUniqueOrThrow({ where: { id: orderId }, include: { lines: { orderBy: { id: "asc" }, include: lineInclude } } });
+    const order = await tx.agentOrder.findUniqueOrThrow({
+      where: { id: orderId },
+      include: {
+        agent: { select: { id: true, name: true } },
+        lines: { orderBy: { id: "asc" }, include: lineInclude },
+      },
+    });
     if (order.lines.length === 0) throw badRequest(`الأوردر ${order.waybill} بلا منتجات`);
     const products = await loadActiveProducts(tx, order.lines.map((l) => l.productId).filter((v): v is string => v !== null));
     if (order.lines.some((l) => l.productId === null)) throw badRequest(`الأوردر ${order.waybill} يحتوي منتجاً لم يعد موجوداً`);
@@ -551,10 +561,10 @@ async function exportOne(agentId: string, agentName: string, orderId: string) {
       data: {
         date: order.date,
         waybill: order.waybill,
-        closerName: agentName,
+        closerName: order.agent.name,
         notes: [customer ? `العميل: ${customer}` : "", order.notes].filter(Boolean).join("\n"),
-        createdById: agentId,
-        agentId,
+        createdById: order.agentId,
+        agentId: order.agentId,
         source: "AGENT",
         salesPageId: order.salesPageId,
         agentSellPrice: centsToDecimalString(exitCents),
@@ -576,30 +586,18 @@ async function exportOne(agentId: string, agentName: string, orderId: string) {
     });
     await tx.agentOrder.update({
       where: { id: orderId },
-      data: { status: "EXPORTED", exportedAt: new Date(), exportedById: agentId, salesOrderId: salesOrder.id, sellPrice: centsToDecimalString(exitCents) },
+      data: { status: "EXPORTED", exportedAt: new Date(), exportedById: actorId, salesOrderId: salesOrder.id, sellPrice: centsToDecimalString(exitCents) },
     });
-    await tx.salesOrderStatusLog.create({ data: { orderId: salesOrder.id, event: "EXPORT", fromValue: null, toValue: order.waybill, byId: agentId } });
+    await tx.salesOrderStatusLog.create({ data: { orderId: salesOrder.id, event: "EXPORT", fromValue: null, toValue: order.waybill, byId: actorId } });
     return { id: orderId, result: "EXPORTED" as const };
   });
 }
 
-// لا خصم مخزون هنا إطلاقاً: الخصم يحدث فقط عند «تم التنفيذ» في نظام المبيعات الحالي.
+// التصدير محصور في مشرف الفتيات (والإدارة) عبر /api/agent-supervisor/orders/export
 agentRouter.post(
   "/orders/export",
-  asyncHandler(async (req, res) => {
-    const body = exportOrdersSchema.parse(req.body);
-    const ids = [...new Set(body.ids)];
-    const results: { id: string; result: "EXPORTED" | "ALREADY_EXPORTED" | "CANCELLED" | "ERROR"; message?: string }[] = [];
-    for (const id of ids) {
-      try {
-        results.push(await exportOne(req.user!.id, req.user!.name, id));
-      } catch (e) {
-        // كل أوردر معاملة مستقلة: فشل أحدها لا يُبقي سجلاً جزئياً ولا يمنع الباقي
-        results.push({ id, result: "ERROR", message: e instanceof Error ? e.message : "تعذّر التصدير" });
-      }
-    }
-    const fresh = await prisma().agentOrder.findMany({ where: { agentId: req.user!.id, id: { in: ids } }, include: agentOrderInclude });
-    res.json({ results, orders: fresh.map(serializeAgentOrder) });
+  asyncHandler(async () => {
+    throw forbidden("التصدير للإنتاج متاح لمشرف الفتيات أو الإدارة فقط");
   })
 );
 
@@ -823,4 +821,130 @@ salesAgentsAdminRouter.delete(
     }
   })
 );
+
+// ===== مساحة مشرف الفتيات (SALES_AGENT_SUPERVISOR) والإدارة =====
+export const agentSupervisorRouter = Router();
+agentSupervisorRouter.use(requireAuth, requireRole("ADMIN", "MANAGER", "SALES_AGENT_SUPERVISOR"));
+
+const supervisorOrderInclude = {
+  ...agentOrderInclude,
+  agent: { select: { id: true, name: true } },
+  exportedBy: { select: { id: true, name: true } },
+} satisfies Prisma.AgentOrderInclude;
+type SupervisorOrderRow = Prisma.AgentOrderGetPayload<{ include: typeof supervisorOrderInclude }>;
+
+function serializeSupervisorOrder(o: SupervisorOrderRow) {
+  return {
+    ...serializeAgentOrder(o),
+    agentId: o.agentId,
+    agentName: o.agent.name,
+    boxName: o.lines.map((l) => (l.quantity > 1 ? `${l.productName} × ${l.quantity}` : l.productName)).join("، "),
+    exportedByName: o.exportedBy?.name ?? null,
+  };
+}
+
+const supervisorDateRe = /^\d{4}-\d{2}-\d{2}$/;
+
+// خيارات التصفية (أسماء الفتيات وصفحات البيع فقط — بلا أي مبالغ أو تكاليف أو عمولات)
+agentSupervisorRouter.get(
+  "/filters",
+  asyncHandler(async (_req, res) => {
+    const [agents, pages] = await Promise.all([
+      prisma().user.findMany({
+        where: { OR: [{ role: "SALES_AGENT" }, { agentOrders: { some: {} } }] },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, isActive: true },
+      }),
+      prisma().salesPage.findMany({
+        orderBy: [{ name: "asc" }, { id: "asc" }],
+        select: { id: true, name: true, isActive: true },
+      }),
+    ]);
+    res.json({ agents, pages });
+  })
+);
+
+agentSupervisorRouter.get(
+  "/orders",
+  asyncHandler(async (req, res) => {
+    const statusRaw = typeof req.query.status === "string" ? req.query.status.trim() : "";
+    const agentId = typeof req.query.agentId === "string" ? idOf(req.query.agentId) : "";
+    const salesPageQ = typeof req.query.salesPageId === "string" ? req.query.salesPageId.trim() : "";
+    const from = typeof req.query.from === "string" && supervisorDateRe.test(req.query.from) ? req.query.from : undefined;
+    const to = typeof req.query.to === "string" && supervisorDateRe.test(req.query.to) ? req.query.to : undefined;
+    const q = typeof req.query.q === "string" ? req.query.q.trim().slice(0, 80) : "";
+    const rawLimit = Number(req.query.limit);
+    const rawOffset = Number(req.query.offset);
+    const limit = Number.isInteger(rawLimit) && rawLimit >= 1 ? Math.min(rawLimit, 1000) : 500;
+    const offset = Number.isInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+
+    const baseAnd: Prisma.AgentOrderWhereInput[] = [];
+    if (agentId) baseAnd.push({ agentId });
+    if (salesPageQ === "__NONE__") baseAnd.push({ salesPageId: null });
+    else if (salesPageQ && idOf(salesPageQ)) baseAnd.push({ salesPageId: idOf(salesPageQ) });
+    if (from || to) baseAnd.push({ date: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } });
+    if (q) {
+      baseAnd.push({
+        OR: [
+          { waybill: { contains: q } },
+          { customerName: { contains: q, mode: "insensitive" } },
+          { customerPhone: { contains: q } },
+          { agent: { is: { name: { contains: q, mode: "insensitive" } } } },
+          { salesPage: { is: { name: { contains: q, mode: "insensitive" } } } },
+        ],
+      });
+    }
+
+    const baseWhere: Prisma.AgentOrderWhereInput = baseAnd.length > 0 ? { AND: baseAnd } : {};
+    const statusFilter =
+      statusRaw === "DRAFT" || statusRaw === "EXPORTED" || statusRaw === "CANCELLED" ? statusRaw : undefined;
+    const where: Prisma.AgentOrderWhereInput = statusFilter ? { ...baseWhere, status: statusFilter } : baseWhere;
+
+    const [rows, total, grouped] = await Promise.all([
+      prisma().agentOrder.findMany({
+        where,
+        include: supervisorOrderInclude,
+        orderBy: [{ date: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+        take: limit,
+        skip: offset,
+      }),
+      prisma().agentOrder.count({ where }),
+      prisma().agentOrder.groupBy({
+        by: ["status"],
+        where: baseWhere,
+        _count: { _all: true },
+      }),
+    ]);
+
+    const counts = { all: 0, DRAFT: 0, EXPORTED: 0, CANCELLED: 0 };
+    for (const g of grouped) {
+      counts[g.status] = g._count._all;
+      counts.all += g._count._all;
+    }
+
+    const orders = rows.map(serializeSupervisorOrder);
+    res.json({ orders, total, hasMore: offset + orders.length < total, counts });
+  })
+);
+
+// لا خصم مخزون هنا إطلاقاً: الخصم يحدث فقط عند «تم التنفيذ» في نظام المبيعات الحالي.
+agentSupervisorRouter.post(
+  "/orders/export",
+  asyncHandler(async (req, res) => {
+    const body = exportOrdersSchema.parse(req.body);
+    const ids = [...new Set(body.ids)];
+    const results: { id: string; result: "EXPORTED" | "ALREADY_EXPORTED" | "CANCELLED" | "ERROR"; message?: string }[] = [];
+    for (const id of ids) {
+      try {
+        results.push(await exportAgentOrder(req.user!.id, id));
+      } catch (e) {
+        // كل أوردر معاملة مستقلة: فشل أحدها لا يُبقي سجلاً جزئياً ولا يمنع الباقي
+        results.push({ id, result: "ERROR", message: e instanceof Error ? e.message : "تعذّر التصدير" });
+      }
+    }
+    const fresh = await prisma().agentOrder.findMany({ where: { id: { in: ids } }, include: supervisorOrderInclude });
+    res.json({ results, orders: fresh.map(serializeSupervisorOrder) });
+  })
+);
+
 

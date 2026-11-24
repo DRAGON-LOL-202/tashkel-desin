@@ -32,6 +32,7 @@ const ROLE_LABEL: Record<Role, string> = {
   SALES_EDITOR: "منفّذ أوردرات",
   SALES_SUPERVISOR: "مشرف مبيعات",
   SALES_AGENT: "فتاة مبيعات",
+  SALES_AGENT_SUPERVISOR: "مشرف فتيات",
 };
 // المسمى الوظيفي الافتراضي لدوري تعبئة/مشغل وأدوار المبيعات (المصمم يأخذ افتراضي الـ schema)
 const DEFAULT_TITLE: Partial<Record<Role, string>> = {
@@ -42,6 +43,7 @@ const DEFAULT_TITLE: Partial<Record<Role, string>> = {
   SALES_EDITOR: "منفّذ أوردرات",
   SALES_SUPERVISOR: "مشرف مبيعات",
   SALES_AGENT: "فتاة مبيعات",
+  SALES_AGENT_SUPERVISOR: "مشرف فتيات",
 };
 
 /** مستوى وصول المخزون المخزَّن: تعبئة/مشغل = سحب فقط، الإدارة = كامل، أدوار المبيعات = تحكّم خاص بالدور، والمصمم حسب اختيار المدير (الافتراضي بلا وصول). */

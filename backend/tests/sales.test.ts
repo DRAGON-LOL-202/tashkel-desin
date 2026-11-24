@@ -904,7 +904,7 @@ describe("sales roles: الأدوار الثلاثة المحصورة في ال�
       lines: [{ productId: bigBox.id, quantity: 2, boxPrice: 450 }],
     });
     expect(created.status).toBe(201);
-    const exportRes = await api(agTok).post("/api/agent/orders/export").send({ ids: [created.body.order.id], confirm: true });
+    const exportRes = await api(admin).post("/api/agent-supervisor/orders/export").send({ ids: [created.body.order.id], confirm: true });
     expect(exportRes.status).toBe(200);
 
     for (const [label, tok] of [["SALES_EDITOR", editor], ["SALES_SUPERVISOR", supervisor]] as const) {

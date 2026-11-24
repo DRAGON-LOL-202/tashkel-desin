@@ -11,9 +11,10 @@ export function usePermissions() {
   const isStaff = role === "admin" || role === "manager";
   const isSalesAccountant = role === "sales_accountant";
   const isSalesAgent = role === "sales_agent";
+  const isSalesAgentSupervisor = role === "sales_agent_supervisor";
   const isSalesEditor = role === "sales_editor";
   const isSalesSupervisor = role === "sales_supervisor";
-  const isSalesRestricted = isSalesAccountant || isSalesEditor || isSalesSupervisor || isSalesAgent;
+  const isSalesRestricted = isSalesAccountant || isSalesEditor || isSalesSupervisor || isSalesAgent || isSalesAgentSupervisor;
   return {
     isAdmin,
     isStaff,
@@ -42,6 +43,8 @@ export function usePermissions() {
     /** صفحة متابعة المبيعات وحسابات الفتيات: المحاسب والإدارة */
     isSalesAccountant,
     isSalesAgent,
+    isSalesAgentSupervisor,
+    canExportAgentOrders: isStaff || isSalesAgentSupervisor,
     canViewAgentAccounts: isStaff || isSalesAccountant,
     /** المبيعات: تعديل أو إيقاف أو حذف منتج ثابت موجود — الإدارة + منفّذ الأوردرات + مشرف المبيعات */
     canManageSalesProducts: isStaff || isSalesEditor || isSalesSupervisor,

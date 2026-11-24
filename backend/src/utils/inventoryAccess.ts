@@ -6,7 +6,7 @@ export const RESTRICTED_ROLES: readonly Role[] = ["PACKER", "OPERATOR"];
 export const isRestrictedRole = (u: { role: Role }) => RESTRICTED_ROLES.includes(u.role);
 
 // أدوار المبيعات الإلكترونية المحصورة
-export const SALES_ROLES: readonly Role[] = ["SALES_ACCOUNTANT", "SALES_EDITOR", "SALES_SUPERVISOR", "SALES_AGENT"];
+export const SALES_ROLES: readonly Role[] = ["SALES_ACCOUNTANT", "SALES_EDITOR", "SALES_SUPERVISOR", "SALES_AGENT", "SALES_AGENT_SUPERVISOR"];
 export const isSalesRole = (u: { role: Role }) => SALES_ROLES.includes(u.role);
 
 export function effectiveInventoryAccess(u: { role: Role; inventoryAccess: InventoryAccess }): InventoryAccess {
@@ -134,8 +134,9 @@ export function isSalesRoleAllowed(role: Role, method: string, path: string, bod
   if (p === "/inventory" || p.startsWith("/inventory/")) {
     return isSalesInventoryAllowed(role, method, p.slice("/inventory".length) || "/", body);
   }
-  // نظام الفتيات: مساحة الفتاة لها وحدها، ومتابعة/حسابات المبيعات لمحاسب المبيعات وحده (فحص الدور يتكرر داخل الراوترات)
+  // نظام الفتيات: مساحة الفتاة لها وحدها، ومشرف الفتيات يجمع ويصدّر مسودات الفتيات، ومتابعة/حسابات المبيعات لمحاسب المبيعات وحده (فحص الدور يتكرر داخل الراوترات)
   if (role === "SALES_AGENT") return p === "/agent" || p.startsWith("/agent/");
+  if (role === "SALES_AGENT_SUPERVISOR") return p === "/agent-supervisor" || p.startsWith("/agent-supervisor/");
   if (role === "SALES_ACCOUNTANT") return p === "/accounting" || p.startsWith("/accounting/");
   // مشرف المبيعات يرفع ويحذف صور أصناف المخزون على R2 فقط (نطاق inventory)
   if (role === "SALES_SUPERVISOR") {

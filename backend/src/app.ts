@@ -18,7 +18,7 @@ import { internalRouter } from "./routes/internal.js";
 import { pushRouter } from "./routes/push.js";
 import { inventoryRouter } from "./routes/inventory.js";
 import { salesRouter } from "./routes/sales.js";
-import { agentRouter, salesAgentsAdminRouter } from "./routes/agent.js";
+import { agentRouter, agentSupervisorRouter, salesAgentsAdminRouter } from "./routes/agent.js";
 import { accountingRouter } from "./routes/accounting.js";
 import { bumpDataVersion, type SyncChannel } from "./utils/syncVersion.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
@@ -35,6 +35,7 @@ export function channelsForWritePath(path: string): SyncChannel[] {
   if (path.startsWith("/api/inventory")) return ["inventory", "sales", "notifications"];
   if (path.startsWith("/api/sales-agents")) return ["accounting", "sales", "users"];
   if (path.startsWith("/api/sales")) return ["sales", "inventory", "accounting", "notifications"];
+  // يشمل /api/agent و /api/agent-supervisor
   if (path.startsWith("/api/agent")) return ["sales", "accounting"];
   if (path.startsWith("/api/accounting")) return ["accounting", "sales"];
   if (path.startsWith("/api/notifications")) return ["notifications"];
@@ -104,6 +105,7 @@ export function createApp() {
   app.use("/api/inventory", inventoryRouter);
   app.use("/api/sales", salesRouter);
   app.use("/api/agent", agentRouter);
+  app.use("/api/agent-supervisor", agentSupervisorRouter);
   app.use("/api/sales-agents", salesAgentsAdminRouter);
   app.use("/api/accounting", accountingRouter);
   app.use("/api/calendar-events", calendarEventsRouter);

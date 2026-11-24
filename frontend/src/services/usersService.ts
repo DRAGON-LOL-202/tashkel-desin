@@ -11,6 +11,7 @@ export const roleLabel: Record<UserRole, string> = {
   sales_editor: "منفّذ أوردرات",
   sales_supervisor: "مشرف مبيعات",
   sales_agent: "فتاة مبيعات",
+  sales_agent_supervisor: "مشرف فتيات",
 };
 
 export const inventoryAccessLabel = {

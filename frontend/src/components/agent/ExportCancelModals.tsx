@@ -8,7 +8,7 @@ import type { AgentOrder } from "../../types";
 interface ExportModalProps {
   open: boolean;
   onClose: () => void;
-  orders: AgentOrder[];
+  orders: (AgentOrder & { agentName?: string })[];
   onConfirm: () => Promise<void>;
 }
 
@@ -17,12 +17,15 @@ export function ExportModal({ open, onClose, orders, onConfirm }: ExportModalPro
   const [busy, setBusy] = useState(false);
   const total = orders.reduce((a, o) => a + Math.round(o.sellPrice * 100), 0) / 100;
   return (
-    <Modal open={open} onClose={onClose} title={`تصدير ${orders.length} ${orders.length === 1 ? "أوردر" : "أوردرات"}`} description="راجع الأوردرات قبل التأكيد" size="lg">
+    <Modal open={open} onClose={onClose} title={`تصدير ${orders.length} ${orders.length === 1 ? "أوردر" : "أوردرات"} للإنتاج`} description="راجع الأوردرات قبل التأكيد" size="lg">
       <div className="mb-3 max-h-64 overflow-y-auto rounded-control border border-border">
         {orders.map((o) => (
           <div key={o.id} className="flex items-center gap-3 border-b border-border px-3 py-2 text-sm last:border-b-0">
             <span className="font-bold tabular-nums">{o.waybill}</span>
-            <span className="min-w-0 flex-1 truncate">{o.customerName}</span>
+            <span className="min-w-0 flex-1 truncate">
+              {o.customerName}
+              {o.agentName && <span className="ms-1.5 text-xs text-muted">({o.agentName})</span>}
+            </span>
             <span className="hidden min-w-0 max-w-[40%] truncate text-xs text-muted sm:block">{o.lines.map((l) => (l.quantity > 1 ? `${l.productName} × ${l.quantity}` : l.productName)).join("، ")}</span>
             <span className="tabular-nums text-muted">{fmtMoney(o.sellPrice)}</span>
           </div>

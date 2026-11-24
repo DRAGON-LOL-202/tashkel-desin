@@ -3,7 +3,7 @@ import { prisma } from "../src/db.ts";
 import { api, GROUP_ACCESSORIES, login, makeUser, resetDb } from "./helpers.ts";
 
 // سلامة الأوردرات (HANDOFF النواقص): مزامنة الإلغاء، قيد البوليصة في قاعدة البيانات، توحيد العدّادات، فلتر المسودات، تجاوز 5000.
-let admin: string, ag1: string, ag2: string, acct: string;
+let admin: string, ag1: string, ag2: string, acct: string, agSup: string;
 let ag1Id: string, ag2Id: string, userId: string;
 let box: { id: string };
 let watch: { id: string };
@@ -16,7 +16,7 @@ const mk = async (token: string, extra: Record<string, unknown> = {}) => {
   expect(r.status).toBe(201);
   return r.body.order as { id: string; waybill: string };
 };
-const exportIds = (token: string, ids: string[]) => api(token).post("/api/agent/orders/export").send({ ids, confirm: true });
+const exportIds = (_token: string, ids: string[]) => api(agSup).post("/api/agent-supervisor/orders/export").send({ ids, confirm: true });
 const soOf = async (agentOrderId: string) => (await prisma().agentOrder.findUniqueOrThrow({ where: { id: agentOrderId } })).salesOrderId!;
 const execute = (soId: string) => api(admin).patch(`/api/sales/orders/${soId}`).send({ status: "EXECUTED" });
 const acctStatus = (soId: string, status: string) => api(acct).patch(`/api/accounting/orders/${soId}/status`).send({ status });
@@ -32,10 +32,12 @@ beforeAll(async () => {
   ag1Id = (await makeUser("agent_one", "SALES_AGENT")).id;
   ag2Id = (await makeUser("agent_two", "SALES_AGENT")).id;
   userId = (await makeUser("acct1", "SALES_ACCOUNTANT")).id;
+  await makeUser("ag_sup_int", "SALES_AGENT_SUPERVISOR");
   admin = await login("lol");
   ag1 = await login("agent_one");
   ag2 = await login("agent_two");
   acct = await login("acct1");
+  agSup = await login("ag_sup_int");
   await api(admin).put(`/api/sales-agents/${ag1Id}/prefix`).send({ prefix: 500 });
   await api(admin).put(`/api/sales-agents/${ag2Id}/prefix`).send({ prefix: 600 });
   const cat = await api(admin).post("/api/inventory/categories").send({ name: "هدايا", groupId: GROUP_ACCESSORIES });

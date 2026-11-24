@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from "react";
-import { Ban, ChevronDown, ChevronUp, Eye, Pencil, Plus, Search, Send, Trash2 } from "lucide-react";
+import { useCallback, useState } from "react";
+import { Ban, ChevronDown, ChevronUp, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { AppLayout } from "../components/layout/AppLayout";
 import { Header } from "../components/header/Header";
 import { Badge } from "../components/ui/Badge";
@@ -12,7 +12,7 @@ import { PaginationBar } from "../components/ui/PaginationBar";
 import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { useToast } from "../components/ui/ToastProvider";
 import { AgentOrderModal } from "../components/agent/AgentOrderModal";
-import { CancelModal, ExportModal } from "../components/agent/ExportCancelModals";
+import { CancelModal } from "../components/agent/ExportCancelModals";
 import { WaybillPreviewModal } from "../components/agent/WaybillPreviewModal";
 import { waybillFromAgentOrder } from "../lib/waybillPdf";
 import { BUCKET_LABEL, BUCKET_ORDER, agentOrderBadge } from "../components/agent/meta";
@@ -47,9 +47,7 @@ export default function AgentOrdersPage() {
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<AgentOrder | "new" | null>(null);
   const [previewing, setPreviewing] = useState<AgentOrder | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expandedBoxes, setExpandedBoxes] = useState<Set<string>>(new Set());
-  const [exporting, setExporting] = useState<AgentOrder[] | null>(null);
   const [cancelling, setCancelling] = useState<AgentOrder | null>(null);
   const [deleting, setDeleting] = useState<AgentOrder | null>(null);
 
@@ -72,16 +70,6 @@ export default function AgentOrdersPage() {
   }, [orders, profile]);
 
   const orderRows = orders.data.orders;
-  const drafts = useMemo(() => orderRows.filter((o) => o.status === "DRAFT"), [orderRows]);
-  const selectedDrafts = useMemo(() => drafts.filter((o) => selected.has(o.id)), [drafts, selected]);
-
-  const toggle = (id: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
 
   const toggleBoxes = (id: string) =>
     setExpandedBoxes((prev) => {
@@ -97,20 +85,6 @@ export default function AgentOrdersPage() {
     if (r.ok) show(target && target !== "new" ? "تم حفظ التعديل" : `أُضيف الأوردر ${r.value.waybill}`);
     await refresh();
     return r.ok;
-  };
-
-  const doExport = async (list: AgentOrder[]) => {
-    const r = await run(() => agentService.exportOrders(list.map((o) => o.id)));
-    if (r.ok) {
-      const done = r.value.results.filter((x) => x.result === "EXPORTED").length;
-      const already = r.value.results.filter((x) => x.result === "ALREADY_EXPORTED").length;
-      const failed = r.value.results.filter((x) => x.result === "ERROR" || x.result === "CANCELLED");
-      if (done > 0) show(`تم تصدير ${done} ${done === 1 ? "أوردر" : "أوردرات"}`);
-      if (already > 0) show(`${already} مصدَّر بالفعل`);
-      for (const f of failed) show(f.message ?? "تعذّر تصدير أوردر", "error");
-      setSelected(new Set());
-    }
-    await refresh();
   };
 
   const doDelete = async (o: AgentOrder) => {
@@ -131,7 +105,7 @@ export default function AgentOrdersPage() {
       headerSlot={(openMobileNav) => (
         <Header
           title="أوردراتي"
-          description={profile.data ? `الرقم التالي: ${profile.data.prefix * 100 + profile.data.nextSeq}` : "أدخل أوردراتك وصدّرها بعد المراجعة"}
+          description={profile.data ? `الرقم التالي: ${profile.data.prefix * 100 + profile.data.nextSeq}` : "أدخل أوردراتك وتابع حالتها — يتم تصديرها للإنتاج عبر مشرف الفتيات"}
           onOpenMobileNav={openMobileNav}
           action={
             <Button icon={<Plus size={16} />} onClick={() => setEditing("new")} disabled={!profile.data}>
@@ -157,7 +131,6 @@ export default function AgentOrdersPage() {
               onClick={() => {
                 setBucket(b);
                 setPage(1);
-                setSelected(new Set());
               }}
               className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${bucket === b ? "border-primary-deep bg-primary/15 text-primary-deep" : "border-border text-muted hover:text-text"}`}
             >
@@ -172,18 +145,12 @@ export default function AgentOrdersPage() {
             onChange={(e) => {
               setSearch(e.target.value);
               setPage(1);
-              setSelected(new Set());
             }}
             placeholder="بحث برقم البوليصة أو اسم/هاتف العميل"
             aria-label="بحث"
             className="!pr-9"
           />
         </div>
-        {selectedDrafts.length > 0 && (
-          <Button icon={<Send size={15} />} onClick={() => setExporting(selectedDrafts)}>
-            تصدير المحدد ({selectedDrafts.length})
-          </Button>
-        )}
       </div>
 
       {orders.loading ? (
@@ -203,7 +170,6 @@ export default function AgentOrdersPage() {
                   variant="secondary"
                   onClick={() => {
                     setPage(Math.max(1, Math.ceil(orders.data.total / PAGE_SIZE)));
-                    setSelected(new Set());
                   }}
                 >
                   العودة لآخر صفحة متاحة
@@ -214,12 +180,6 @@ export default function AgentOrdersPage() {
         </Card>
       ) : (
         <div className="flex flex-col gap-2.5">
-          {drafts.length > 1 && (
-            <label className="flex items-center gap-2 px-1 text-xs text-muted">
-              <input type="checkbox" checked={selectedDrafts.length === drafts.length} onChange={(e) => setSelected(e.target.checked ? new Set(drafts.map((d) => d.id)) : new Set())} />
-              تحديد كل المسودات المعروضة
-            </label>
-          )}
           {orderRows.map((o) => {
             const badge = agentOrderBadge(o);
             const isDraft = o.status === "DRAFT";
@@ -229,7 +189,6 @@ export default function AgentOrdersPage() {
             return (
               <Card key={o.id} className="p-3.5">
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  {isDraft && <input type="checkbox" aria-label={`تحديد ${o.waybill}`} checked={selected.has(o.id)} onChange={() => toggle(o.id)} />}
                   <span className="text-base font-bold tabular-nums text-text">{o.waybill}</span>
                   <Badge color={badge.color}>{badge.label}</Badge>
                   {o.salesPageName && <Badge color="#2E8BC0">{o.salesPageName}</Badge>}
@@ -294,7 +253,10 @@ export default function AgentOrdersPage() {
                   </div>
                 )}
 
-                <div className="mt-2.5 flex flex-wrap justify-end gap-1.5">
+                <div className="mt-2.5 flex flex-wrap items-center justify-end gap-1.5">
+                  {isDraft && (
+                    <span className="me-auto text-[11px] text-muted">بانتظار التصدير عبر مشرف الفتيات</span>
+                  )}
                   <Button size="sm" variant="secondary" icon={<Eye size={14} />} onClick={() => setPreviewing(o)}>
                     معاينة البوليصة
                   </Button>
@@ -302,9 +264,6 @@ export default function AgentOrdersPage() {
                     <>
                       <Button size="sm" variant="secondary" icon={<Pencil size={13} />} onClick={() => setEditing(o)}>
                         تعديل
-                      </Button>
-                      <Button size="sm" variant="secondary" icon={<Send size={13} />} onClick={() => setExporting([o])}>
-                        تصدير
                       </Button>
                       <Button size="sm" variant="danger" icon={<Trash2 size={13} />} onClick={() => setDeleting(o)}>
                         حذف
@@ -328,7 +287,6 @@ export default function AgentOrdersPage() {
                 total={orders.data.total}
                 onPageChange={(p) => {
                   setPage(p);
-                  setSelected(new Set());
                 }}
                 className="!border-t-0"
               />
@@ -373,7 +331,6 @@ export default function AgentOrdersPage() {
           onSubmit={save}
         />
       )}
-      {exporting && <ExportModal open orders={exporting} onClose={() => setExporting(null)} onConfirm={() => doExport(exporting)} />}
       {cancelling && <CancelModal open order={cancelling} onClose={() => setCancelling(null)} onConfirm={(reason) => doCancel(cancelling, reason)} />}
       <ConfirmDialog open={!!deleting} onClose={() => setDeleting(null)} onConfirm={() => deleting && void doDelete(deleting)} title="حذف المسودة؟" description={deleting ? `سيُحذف الأوردر ${deleting.waybill} نهائياً قبل التصدير، ولن يُعاد استخدام رقمه.` : undefined} confirmLabel="حذف" />
     </AppLayout>

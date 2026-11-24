@@ -18,6 +18,9 @@ import type {
   GeneralAccountsResponse,
   OrderLogEntry,
   SalesPageAdminRow,
+  SupervisorAgentOrder,
+  SupervisorFilters,
+  SupervisorOrdersList,
 } from "../types";
 
 // مساحة الفتاة (SALES_AGENT). العزل مفروض في الباكند بمعرّف الفتاة من التوكن.
@@ -81,13 +84,33 @@ export const agentService = {
     await api<{ ok: true }>(`/agent/orders/${id}`, { method: "DELETE" });
   },
 
-  async exportOrders(ids: string[]): Promise<{ results: ExportResult[]; orders: AgentOrder[] }> {
-    return api("/agent/orders/export", { method: "POST", body: { ids, confirm: true } });
-  },
-
   async cancel(id: string, reason: string): Promise<AgentOrder> {
     const { order } = await api<{ order: AgentOrder }>(`/agent/orders/${id}/cancel`, { method: "POST", body: { reason, confirm: true } });
     return order;
+  },
+};
+
+// مشرف الفتيات (SALES_AGENT_SUPERVISOR) والإدارة: تجميع وتصدير أوردرات الفتيات للإنتاج
+export const agentSupervisorService = {
+  async filters(): Promise<SupervisorFilters> {
+    return api<SupervisorFilters>("/agent-supervisor/filters");
+  },
+
+  async orders(params: {
+    status?: string;
+    agentId?: string;
+    salesPageId?: string;
+    q?: string;
+    from?: string;
+    to?: string;
+    limit?: string;
+    offset?: string;
+  }): Promise<SupervisorOrdersList> {
+    return api<SupervisorOrdersList>("/agent-supervisor/orders", { query: params });
+  },
+
+  async exportOrders(ids: string[]): Promise<{ results: ExportResult[]; orders: SupervisorAgentOrder[] }> {
+    return api("/agent-supervisor/orders/export", { method: "POST", body: { ids, confirm: true } });
   },
 };
 

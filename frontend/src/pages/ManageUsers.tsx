@@ -33,6 +33,7 @@ const roleColor: Record<UserRole, string> = {
   sales_editor: "#2A9D8F",
   sales_supervisor: "#3D5A80",
   sales_agent: "#C0709B",
+  sales_agent_supervisor: "#8B5CF6",
 };
 
 /** شارة مجموعات السحب: اسم المجموعة، أو «الاثنتان» عند منح كل المجموعات */

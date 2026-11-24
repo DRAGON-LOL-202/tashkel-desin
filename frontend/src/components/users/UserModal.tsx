@@ -77,8 +77,8 @@ export function UserModal({ open, onClose, editing, actor, onSubmit }: UserModal
   // دور ADMIN لا يُمنح إلا من ADMIN؛ ولا يُغيَّر دور الذات ولا دور مستخدم النظام (يرفضه الـ backend أيضاً)
   const roleLocked = !!editing && (editing.id === actor.id || editing.isSystemUser);
   const roleOptions: UserRole[] = isAdminActor
-    ? ["designer", "packer", "operator", "sales_accountant", "sales_editor", "sales_supervisor", "sales_agent", "manager", "admin"]
-    : ["designer", "packer", "operator", "sales_accountant", "sales_editor", "sales_supervisor", "sales_agent", "manager"];
+    ? ["designer", "packer", "operator", "sales_accountant", "sales_editor", "sales_supervisor", "sales_agent", "sales_agent_supervisor", "manager", "admin"]
+    : ["designer", "packer", "operator", "sales_accountant", "sales_editor", "sales_supervisor", "sales_agent", "sales_agent_supervisor", "manager"];
   const restricted = isRestrictedRole(role);
 
   // المجموعتان وتصنيفاتهما تُجلبان عند الحاجة فقط (اختيار تعبئة/مشغل)

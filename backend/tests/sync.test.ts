@@ -173,7 +173,7 @@ describe("sync: تتبّع القنوات، منع الكاش، والبث ال�
     expect(after.channels.accounting).toBeGreaterThan(before.channels.accounting);
     expect(after.channels.general).toBe(before.channels.general);
 
-    const expRes = await api(agent).post("/api/agent/orders/export").send({ ids: [agOrderRes.body.order.id], confirm: true });
+    const expRes = await api(admin).post("/api/agent-supervisor/orders/export").send({ ids: [agOrderRes.body.order.id], confirm: true });
     expect(expRes.status).toBe(200);
     const exportedRow = await prisma().agentOrder.findUniqueOrThrow({ where: { id: agOrderRes.body.order.id } });
     const followOrderId = exportedRow.salesOrderId!;

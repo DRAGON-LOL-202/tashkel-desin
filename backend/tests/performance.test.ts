@@ -90,7 +90,7 @@ describe("performance: الفهارس الجديدة والـ Pagination الخ�
     expect(new Set(agPageIds).size).toBe(5);
 
     // 2) تصدير وتنفيذ 5 أوردرات ثم Pagination في متابعة أوردرات المبيعات
-    expect((await api(agent).post("/api/agent/orders/export").send({ ids: createdIds, confirm: true })).status).toBe(200);
+    expect((await api(admin).post("/api/agent-supervisor/orders/export").send({ ids: createdIds, confirm: true })).status).toBe(200);
     const linked = await prisma().agentOrder.findMany({ where: { id: { in: createdIds } }, select: { salesOrderId: true } });
     for (let i = 0; i < linked.length; i += 1) {
       const soId = linked[i].salesOrderId!;

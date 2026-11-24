@@ -266,3 +266,29 @@ export interface GeneralAccountsResponse {
   general: GeneralAccounts;
   byPage: PageGeneralAccounts[];
 }
+
+export interface SupervisorAgentOrder extends AgentOrder {
+  agentId: string;
+  agentName: string;
+  boxName: string;
+  exportedByName: string | null;
+}
+
+export interface SupervisorStatusCounts {
+  all: number;
+  DRAFT: number;
+  EXPORTED: number;
+  CANCELLED: number;
+}
+
+export interface SupervisorOrdersList {
+  orders: SupervisorAgentOrder[];
+  total: number;
+  hasMore: boolean;
+  counts: SupervisorStatusCounts;
+}
+
+export interface SupervisorFilters {
+  agents: { id: string; name: string; isActive: boolean }[];
+  pages: { id: string; name: string; isActive: boolean }[];
+}

@@ -8,20 +8,20 @@
   - تحتوي على البطاقات الأربع المطلوبة حرفياً دون أي أرقام أو رسوم أو صفحات إحصائيات وهمية:
     1. **إدارة التصميم** (`design`) — تفتح `/daily-tasks`، وتضم 6 روابط بالضبط.
     2. **إدارة الإنتاج والمخزون** (`production_inventory`) — تفتح `/production-tasks`، وتضم 8 روابط بالضبط.
-    3. **إدارة الحسابات** (`accounting`) — تفتح `/sales-follow-up`، وتضم 3 روابط بالضبط.
+    3. **إدارة الحسابات** (`accounting`) — تفتح `/sales-follow-up`، وتضم 4 روابط بالضبط (منها «تصدير أوردرات الفتيات» `/agent-supervisor`).
     4. **الحسابات العامة والإحصائيات** (`general_stats`) — تفتح `/general-accounts`، وتضم رابطاً واحداً فقط («الحسابات العامة») مع ملاحظة نصية خفيفة: «ستُضاف بقية الإحصائيات والتقارير لاحقاً.».
   - روابط سريعة هادئة خارج بطاقات الإدارات الأربع للوصول إلى الأدوات الإدارية العامة (`/manage-users`، `/profile`)، بعد إزالة واجهة ومسار «أسعار منتجات» (`/products`) من الواجهة بناءً على طلب المالك مع الحفاظ على جداول/راوتر `/api/products` في الـ Backend دون فقدان بيانات.
 - **التعريف المركزي وإدارة سياق التنقل**:
   - تعريف مركزي موحّد ومصنّف (`DepartmentKey`, `DepartmentConfig`, `DEPARTMENTS`, `departmentsForPath`) في [departments.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/lib/departments.ts).
   - سياق تنقل بحت [DepartmentProvider.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/departments/DepartmentProvider.tsx) يشتق الإدارة النشطة أثناء التقديم (`useMemo`) من المسار الحالي و`localStorage` (`tashkeel_active_department`) دون `setState` داخل `useEffect` ودون حلقات تحويل عند التحديث أو فتح الروابط المباشرة (Deep Links)، ويُصفَّر تلقائياً عند تسجيل الخروج أو حدث انتهاء الجلسة (`auth:unauthorized`).
 - **القائمة الجانبية (Sidebar)**:
-  - تحديث [Sidebar.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/sidebar/Sidebar.tsx) للمدير ومدير النظام لتعرض روابط الإدارة النشطة فقط (`6` / `8` / `3` / `1`)، مع محوّل فوري بين الإدارات (`<select aria-label="تغيير الإدارة">`) دون تسجيل خروج، وزر واضح «العودة إلى الإدارات» يتجه إلى `/workspace`، بالإضافة إلى عنصر **«إدارة المستخدمين» (`/manage-users`) ظاهر دائماً** أسفل فاصل خفيف في كل الإدارات والحالات (الموسّعة والمطوية ودرج الهاتف) للمدير ومدير النظام فقط، مع الحفاظ الكامل على عداد الإشعارات (`data-testid="unread-badge"`), تسجيل الخروج، واتجاه RTL.
+  - تحديث [Sidebar.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/sidebar/Sidebar.tsx) للمدير ومدير النظام لتعرض روابط الإدارة النشطة فقط (`6` / `8` / `4` / `1`)، مع محوّل فوري بين الإدارات (`<select aria-label="تغيير الإدارة">`) دون تسجيل خروج، وزر واضح «العودة إلى الإدارات» يتجه إلى `/workspace`، بالإضافة إلى عنصر **«إدارة المستخدمين» (`/manage-users`) ظاهر دائماً** أسفل فاصل خفيف في كل الإدارات والحالات (الموسّعة والمطوية ودرج الهاتف) للمدير ومدير النظام فقط، مع الحفاظ الكامل على عداد الإشعارات (`data-testid="unread-badge"`), تسجيل الخروج، واتجاه RTL.
   - القائمة المختصرة لبقية الأدوار (`memberItems` المرشحة بـ `pagesFor(user)`) بقيت كما هي دون أي تغيير أو توسيع.
 - **حراسة الصلاحيات وتدفق الدخول**:
   - تحديث [permissions.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/lib/permissions.ts) و[App.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/App.tsx) بحيث:
     - `canAccessWorkspace(user)` يعتمد حصراً على `user.accessRole === "admin" || user.accessRole === "manager"` (لا يُعتمد على `isSystemUser` أبداً).
     - `defaultPathForRole(user)` يوجّه `admin` و`manager` فقط إلى `/workspace` بعد الدخول أو عند `/`.
-    - بقية الأدوار (`designer`, `packer`, `operator`, `sales_accountant`, `sales_editor`, `sales_supervisor`, `sales_agent`) ممنوعة من `/workspace` عبر `ProtectedRoute page="workspace"`، وتُحوَّل إلى `defaultPathForRole(user)` دون تغيير وجهاتها أو صلاحياتها في الواجهة أو الـ Backend.
+    - بقية الأدوار (`designer`, `packer`, `operator`, `sales_accountant`, `sales_editor`, `sales_supervisor`, `sales_agent`, `sales_agent_supervisor`) ممنوعة من `/workspace` عبر `ProtectedRoute page="workspace"`، وتُحوَّل إلى `defaultPathForRole(user)` دون تغيير وجهاتها أو صلاحياتها في الواجهة أو الـ Backend.
 
 ### ب) إصلاحات المراجعة الشاملة (الأمان، سلامة المخزون والحسابات، الأداء، تجربة الاستخدام، نظافة المستودع)
 - **إبطال التوكن الفعلي والحد من الهجمات (`0025_user_token_version`)**:
@@ -70,6 +70,10 @@
   - إضافة اختيار إجباري لاسم الصفحة للفتاة عبر `GET /api/agent/pages` و[AgentOrderModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/AgentOrderModal.tsx)، وإظهار اسم الصفحة كملاحظة خارج الفاتورة أسفل المعاينة في [WaybillPreviewModal.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/WaybillPreviewModal.tsx) دون إدراجها في الفاتورة المطبوعة أو PDF (`WaybillSheet.tsx` / `waybillPdf.ts`).
   - استخراج حسابات منفردة لكل صفحة وفلتر للصفحة في [accounting.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/src/routes/accounting.ts) و[GeneralAccounts.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/GeneralAccounts.tsx).
   - إزالة `backdrop-blur-md` من [Header.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/header/Header.tsx) وضبط عدد الصفوف إلى `20` مع `contain: layout style` لجدول المخزون لتسريع السكرول.
+- **دور «مشرف فتيات» (`SALES_AGENT_SUPERVISOR`) وشاشة تجميع وتصدير أوردرات الفتيات (`0030_sales_agent_supervisor_role`)**:
+  - إضافة دور `SALES_AGENT_SUPERVISOR` («مشرف فتيات») في [schema.prisma](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/prisma/schema.prisma) و[0030_sales_agent_supervisor_role](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/prisma/migrations/0030_sales_agent_supervisor_role/migration.sql)، وعزله تماماً في [inventoryAccess.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/src/utils/inventoryAccess.ts) و[permissions.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/lib/permissions.ts) بحيث لا يظهر له سوى شاشة تجميع وتصدير أوردرات الفتيات (`/agent-supervisor`) وصفحته الشخصية (`/profile`) دون أي تسريب لتكاليف المخزون أو العمولات أو الحسابات العامة.
+  - حصر تصدير أوردرات الفتيات للإنتاج في «مشرف فتيات» والمدير ومدير النظام عبر `agentSupervisorRouter` في [agent.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/src/routes/agent.ts) (`/api/agent-supervisor/orders`, `/filters`, `/orders/export`)، وإيقاف التصدير الذاتي لدى الفتاة (`403` في `POST /api/agent/orders/export` وإزالة أزرار/مربعات التصدير من [AgentOrders.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/AgentOrders.tsx))، مع الحفاظ على نسبة الأوردر للفتاة (`agentId`, `closerName`) وتسجيل `exportedById` وسجل `EXPORT` بهوية المشرف دون خصم مخزون.
+  - بناء واجهة [AgentSupervisorOrders.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/pages/AgentSupervisorOrders.tsx) و[SupervisorOrdersTable.tsx](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/frontend/src/components/agent/SupervisorOrdersTable.tsx) (بتبويبات: «غير مصدَّر» افتراضياً + «الكل» و«مصدَّر» و«ملغي»، فلترة شاملة، معاينة البوليصة بدون طباعة/PDF أو تعديل/حذف، وتصدير فردي وجماعي للإنتاج) وإتاحتها للإدارة داخل قسم «إدارة الحسابات».
 - **ملفات المستودع والاختبارات**:
   - إضافة `.env.example` في `backend/` و`frontend/` وملف `.github/workflows/ci.yml`.
   - إضافة [sync.test.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/tests/sync.test.ts) و[performance.test.ts](file:///C:/Users/CityLap/.gemini/antigravity/scratch/tashkel-desin-v11/tashkel-desin-main/backend/tests/performance.test.ts) وإصلاح وإضافة اختبارات التغطية في `backend/tests/` (شاملةً اختبارات القنوات والبث اللحظي SSE والفهارس والـ Pagination وتفاصيل المتابعة وعدم تسرب التكاليف).
@@ -86,6 +90,7 @@
 - `backend/prisma/migrations/0027_performance_indexes/migration.sql`
 - `backend/prisma/migrations/0028_box_fixed_price_and_item_adjust_prices/migration.sql`
 - `backend/prisma/migrations/0029_sales_pages/migration.sql`
+- `backend/prisma/migrations/0030_sales_agent_supervisor_role/migration.sql`
 - `backend/src/utils/salesStock.ts`
 - `backend/tests/sync.test.ts`
 - `backend/tests/performance.test.ts`
@@ -97,12 +102,14 @@
 - `frontend/src/components/departments/DepartmentProvider.tsx`
 - `frontend/src/components/agent/FollowOrdersTable.tsx`
 - `frontend/src/components/agent/SalesPagesManager.tsx`
+- `frontend/src/components/agent/SupervisorOrdersTable.tsx`
 - `frontend/src/components/agent/WaybillPreviewModal.tsx`
 - `frontend/src/components/agent/WaybillSheet.tsx`
 - `frontend/src/components/sales/SalesOrderWaybillModal.tsx`
 - `frontend/src/components/sales/SalesOrderWaybillSheet.tsx`
 - `frontend/src/components/ui/ErrorBoundary.tsx`
 - `frontend/src/components/ui/PaginationBar.tsx`
+- `frontend/src/pages/AgentSupervisorOrders.tsx`
 - `frontend/src/pages/Workspace.tsx`
 - `HANDOFF_DEPARTMENTS.md`
 - `CHANGES_DEPARTMENTS.md`
@@ -129,12 +136,14 @@
 - `backend/src/utils/notify.ts`
 - `backend/src/utils/r2Client.ts`
 - `backend/src/utils/salesSerialize.ts`
+- `backend/src/utils/serialize.ts`
 - `backend/src/utils/syncVersion.ts`
 - `backend/src/validators/agent.ts`
 - `backend/src/validators/attachments.ts`
 - `backend/src/validators/feedback.ts`
 - `backend/src/validators/inventory.ts`
 - `backend/src/validators/sales.ts`
+- `backend/src/validators/users.ts`
 - `backend/tests/access.test.ts`
 - `backend/tests/agentIntegrity.test.ts`
 - `backend/tests/agentMath.test.ts`
@@ -216,11 +225,11 @@
 | الفحص | الأمر | النتيجة | التفاصيل المرصودة |
 | --- | --- | --- | --- |
 | فحص أنواع Backend | `cd backend && npm run typecheck` | **PASS** | `tsc -p tsconfig.json --noEmit` — خروج برمز 0 (0 أخطاء) |
-| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **28 ملفاً نجح / 28**، **453 اختباراً نجح / 453** (0 فشل، 0 تخطي) في `62.94s` |
-| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (302ms) + `tsc -p tsconfig.json` — خروج برمز 0 |
-| اختبار قبول الإدارات والصلاحيات | `tsx verify_departments.ts` | **PASS** | طباعة `ALL_DEPARTMENTS_ACCEPTANCE_CHECKS_PASSED` (تحقق من `/workspace` و`manageUsers` لـ `admin`/`manager` فقط، إزالة `/products` من `Workspace`/`App`/`Sidebar`، عدّ الروابط `6/8/3/1`، وثبات `departmentsForPath`) |
-| فحص Frontend Lint | `cd frontend && npm run lint` | **PASS** | `oxlint` — `0 errors`, `20 warnings` (على 179 ملفاً في `108ms`) |
-| بناء Frontend | `cd frontend && npm run build` | **PASS** | `tsc -b && vite build` — اكتمل في `1.65s`؛ الحزمة الرئيسية `230.72 kB` (مع تحميل `jspdf` و`html2canvas` كحزم منفصلة كسولة) |
+| اختبارات Backend الكاملة | `cd backend && npm test` | **PASS** | **28 ملفاً نجح / 28**، **455 اختباراً نجح / 455** (0 فشل، 0 تخطي) في `261.27s` |
+| بناء Backend | `cd backend && npm run build` | **PASS** | `prisma generate` (1.15s) + `tsc -p tsconfig.json` — خروج برمز 0 |
+| اختبار قبول الإدارات والصلاحيات | `tsx verify_departments.ts` | **PASS** | طباعة `ALL_DEPARTMENTS_ACCEPTANCE_CHECKS_PASSED` (تحقق من `/workspace` و`manageUsers` لـ `admin`/`manager` فقط، إزالة `/products` من `Workspace`/`App`/`Sidebar`، عدّ الروابط `6/8/4/1`، وتغطية `sales_agent_supervisor` و`/agent-supervisor`) |
+| فحص Frontend Lint | `cd frontend && npm run lint` | **PASS** | `oxlint` — `0 errors`, `20 warnings` (على 181 ملفاً في `298ms`) |
+| بناء Frontend | `cd frontend && npm run build` | **PASS** | `tsc -b && vite build` — اكتمل في `9.89s`؛ الحزمة الرئيسية `231.15 kB` (مع تحميل `jspdf` و`html2canvas` و`AgentSupervisorOrders` كحزم منفصلة كسولة) |
 | اختبار المتصفح الحي (E2E) | — | **NOT RUN** | لم يُشغَّل متصفح فعلي للنقر البصري |
 
 ---
@@ -237,7 +246,7 @@
    npx prisma migrate deploy
    npm run build
    ```
-   (تتضمن migrations الجديدة `0025_user_token_version` لعمود `tokenVersion`، و`0026_agent_line_price_shipping` لحقول `boxPrice` و`shippingPrice`، و`0027_performance_indexes` لفهارس الأداء، و`0028_box_fixed_price_and_item_adjust_prices` لحقول `SalesProduct.fixedPrice` و`InventoryItem.addPrice`/`removePrice`، و`0029_sales_pages` لجدول `SalesPage` وعمود `salesPageId`).
+   (تتضمن migrations الجديدة `0025_user_token_version` لعمود `tokenVersion`، و`0026_agent_line_price_shipping` لحقول `boxPrice` و`shippingPrice`، و`0027_performance_indexes` لفهارس الأداء، و`0028_box_fixed_price_and_item_adjust_prices` لحقول `SalesProduct.fixedPrice` و`InventoryItem.addPrice`/`removePrice`، و`0029_sales_pages` لجدول `SalesPage` وعمود `salesPageId`، و`0030_sales_agent_supervisor_role` لإضافة دور `SALES_AGENT_SUPERVISOR` وفهرس `AgentOrder_status_date_idx`).
 3. **بناء ونشر الواجهة**:
    ```bash
    cd frontend
