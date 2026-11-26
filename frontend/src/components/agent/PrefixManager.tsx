@@ -8,10 +8,12 @@ import { LoadingState, ErrorState } from "../ui/StatusViews";
 import { useToast } from "../ui/ToastProvider";
 import { useResource } from "../../hooks/useResource";
 import { useSafeAction } from "../../hooks/useSafeAction";
+import type { SyncChannel } from "../../lib/liveSync";
 import { agentAdminService } from "../../services/agentService";
 import type { AgentAdminRow } from "../../types";
 
 const NONE: AgentAdminRow[] = [];
+const PREFIX_CHANNELS: SyncChannel[] = ["users", "sales", "accounting"];
 
 function PrefixRow({ agent, onSaved }: { agent: AgentAdminRow; onSaved: () => Promise<void> }) {
   const [value, setValue] = useState(agent.prefix === null ? "" : String(agent.prefix));
@@ -57,9 +59,13 @@ function PrefixRow({ agent, onSaved }: { agent: AgentAdminRow; onSaved: () => Pr
   );
 }
 
-// إدارة Prefix الفتيات (الإدارة فقط). رقم البوليصة = Prefix × 100 + التسلسل.
-export function PrefixManager() {
-  const agents = useResource<AgentAdminRow[]>(agentAdminService.list, NONE);
+// إدارة Prefix الفتيات (الإدارة ومشرف الفتيات). رقم البوليصة = Prefix × 100 + التسلسل.
+export function PrefixManager({ onChanged }: { onChanged?: () => void } = {}) {
+  const agents = useResource<AgentAdminRow[]>(agentAdminService.list, NONE, PREFIX_CHANNELS);
+  const reload = async () => {
+    await agents.reload();
+    onChanged?.();
+  };
   return (
     <Card className="mb-6 overflow-hidden">
       <div className="border-b border-border px-3 py-2.5">
@@ -73,7 +79,7 @@ export function PrefixManager() {
       ) : agents.data.length === 0 ? (
         <p className="px-3 py-5 text-center text-sm text-muted">لا توجد حسابات فتيات بعد.</p>
       ) : (
-        agents.data.map((a) => <PrefixRow key={`${a.id}:${a.prefix}:${a.nextSeq}`} agent={a} onSaved={agents.reload} />)
+        agents.data.map((a) => <PrefixRow key={`${a.id}:${a.prefix}:${a.nextSeq}`} agent={a} onSaved={reload} />)
       )}
     </Card>
   );

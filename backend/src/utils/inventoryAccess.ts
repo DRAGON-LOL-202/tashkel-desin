@@ -134,9 +134,16 @@ export function isSalesRoleAllowed(role: Role, method: string, path: string, bod
   if (p === "/inventory" || p.startsWith("/inventory/")) {
     return isSalesInventoryAllowed(role, method, p.slice("/inventory".length) || "/", body);
   }
-  // نظام الفتيات: مساحة الفتاة لها وحدها، ومشرف الفتيات يجمع ويصدّر مسودات الفتيات، ومتابعة/حسابات المبيعات لمحاسب المبيعات وحده (فحص الدور يتكرر داخل الراوترات)
+  // نظام الفتيات: مساحة الفتاة لها وحدها، ومشرف الفتيات يجمع ويصدّر مسودات الفتيات ويدير Prefix الفتيات وصفحات البيع، ومتابعة/حسابات المبيعات لمحاسب المبيعات وحده (فحص الدور يتكرر داخل الراوترات)
   if (role === "SALES_AGENT") return p === "/agent" || p.startsWith("/agent/");
-  if (role === "SALES_AGENT_SUPERVISOR") return p === "/agent-supervisor" || p.startsWith("/agent-supervisor/");
+  if (role === "SALES_AGENT_SUPERVISOR") {
+    return (
+      p === "/agent-supervisor" ||
+      p.startsWith("/agent-supervisor/") ||
+      p === "/sales-agents" ||
+      p.startsWith("/sales-agents/")
+    );
+  }
   if (role === "SALES_ACCOUNTANT") return p === "/accounting" || p.startsWith("/accounting/");
   // مشرف المبيعات يرفع ويحذف صور أصناف المخزون على R2 فقط (نطاق inventory)
   if (role === "SALES_SUPERVISOR") {

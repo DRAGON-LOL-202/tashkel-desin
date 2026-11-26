@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
-import { RotateCcw, Search, Send, X } from "lucide-react";
+import { RotateCcw, Search, Send, SlidersHorizontal, X } from "lucide-react";
 import { AppLayout } from "../components/layout/AppLayout";
 import { Header } from "../components/header/Header";
+import { useAuth } from "../components/auth/AuthProvider";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -11,6 +12,8 @@ import { ErrorState, LoadingState } from "../components/ui/StatusViews";
 import { useToast } from "../components/ui/ToastProvider";
 import { AgentOrderModal } from "../components/agent/AgentOrderModal";
 import { CancelModal, ExportModal } from "../components/agent/ExportCancelModals";
+import { PrefixManager } from "../components/agent/PrefixManager";
+import { SalesPagesManager } from "../components/agent/SalesPagesManager";
 import { SupervisorOrdersTable } from "../components/agent/SupervisorOrdersTable";
 import { useResource } from "../hooks/useResource";
 import { useSafeAction } from "../hooks/useSafeAction";
@@ -46,6 +49,8 @@ const PAGE_SIZE = 20;
 
 // شاشة مشرف الفتيات (والإدارة): تجميع كل مسودات الفتيات، معاينة البوليصة، وتصديرها فردياً أو جماعياً للإنتاج.
 export default function AgentSupervisorOrdersPage() {
+  const { user } = useAuth();
+  const [showSettings, setShowSettings] = useState(() => user?.accessRole === "sales_agent_supervisor");
   const [status, setStatus] = useState<(typeof STATUS_TABS)[number]>("DRAFT");
   const [agentId, setAgentId] = useState("");
   const [salesPageId, setSalesPageId] = useState("");
@@ -150,9 +155,26 @@ export default function AgentSupervisorOrdersPage() {
           title="تصدير أوردرات الفتيات"
           description="تجميع الأوردرات غير المصدَّرة من جميع الفتيات ومراجعتها وتصديرها للإنتاج"
           onOpenMobileNav={openMobileNav}
+          action={
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<SlidersHorizontal size={15} />}
+              onClick={() => setShowSettings((v) => !v)}
+            >
+              {showSettings ? "إخفاء الترقيم والصفحات" : "الترقيم وصفحات البيع"}
+            </Button>
+          }
         />
       )}
     >
+      {showSettings && (
+        <>
+          <PrefixManager onChanged={() => void filters.reload()} />
+          <SalesPagesManager onChanged={() => void filters.reload()} />
+        </>
+      )}
+
       {/* شريط تبويبات الحالة */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
         <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="حالة أوردر الفتاة">

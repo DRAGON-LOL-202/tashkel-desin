@@ -205,11 +205,9 @@ export function ItemModal({
       size="lg"
     >
       <form onSubmit={(e) => void submit(e)} noValidate>
-        {canCreateCategory && (
-          <FieldWrap label="1. صورة المنتج (معاينة قبل الحفظ وإمكانية التغيير أو الحذف)">
-            <ImageAttachmentsField value={images} onChange={setImages} scope="inventory" sessionKeys={sessionKeys} />
-          </FieldWrap>
-        )}
+        <FieldWrap label="1. صورة المنتج (معاينة قبل الحفظ وإمكانية التغيير أو الحذف)">
+          <ImageAttachmentsField value={images} onChange={setImages} scope="inventory" sessionKeys={sessionKeys} />
+        </FieldWrap>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <FieldWrap label="2. اسم المنتج" htmlFor="inv-name" error={errors.name}>

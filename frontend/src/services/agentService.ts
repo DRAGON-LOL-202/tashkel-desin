@@ -207,7 +207,7 @@ export const accountingService = {
   },
 };
 
-// إدارة Prefix الفتيات وصفحات البيع (الإدارة فقط)
+// إدارة Prefix الفتيات وصفحات البيع (الإدارة ومشرف الفتيات)
 export const agentAdminService = {
   async list(): Promise<AgentAdminRow[]> {
     const { agents } = await api<{ agents: AgentAdminRow[] }>("/sales-agents");

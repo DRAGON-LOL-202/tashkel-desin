@@ -695,9 +695,9 @@ agentRouter.post(
   })
 );
 
-// ===== إدارة Prefix الفتيات (الإدارة فقط) =====
+// ===== إدارة Prefix الفتيات (الإدارة ومشرف الفتيات) =====
 export const salesAgentsAdminRouter = Router();
-salesAgentsAdminRouter.use(requireAuth, requireStaff);
+salesAgentsAdminRouter.use(requireAuth, requireRole("ADMIN", "MANAGER", "SALES_AGENT_SUPERVISOR"));
 
 salesAgentsAdminRouter.get(
   "/",
@@ -767,7 +767,7 @@ salesAgentsAdminRouter.put(
   })
 );
 
-// ===== إدارة أسماء صفحات البيع (الإدارة فقط) =====
+// ===== إدارة أسماء صفحات البيع (الإدارة ومشرف الفتيات) =====
 const isUniquePageViolation = (e: unknown) => (e as { code?: string })?.code === "P2002";
 
 salesAgentsAdminRouter.get(

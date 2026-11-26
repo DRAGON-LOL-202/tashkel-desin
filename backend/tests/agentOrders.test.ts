@@ -967,7 +967,7 @@ describe("مشرف الفتيات (SALES_AGENT_SUPERVISOR)", () => {
     });
     const supTok = await login("ag_sup_created", "Password123!");
 
-    // محظور من جميع المسارات خارج /api/agent-supervisor
+    // محظور من جميع المسارات خارج /api/agent-supervisor و /api/sales-agents
     for (const url of [
       "/api/agent/orders",
       "/api/sales/orders?date=2026-11-10",
@@ -976,13 +976,13 @@ describe("مشرف الفتيات (SALES_AGENT_SUPERVISOR)", () => {
       "/api/accounting/orders",
       "/api/accounting/agents",
       "/api/accounting/general",
-      "/api/sales-agents",
       "/api/users",
       "/api/tasks?date=2026-11-10",
       "/api/feedback?date=2026-11-10",
     ]) {
       expect((await api(supTok).get(url)).status, url).toBe(403);
     }
+    expect((await api(supTok).get("/api/sales-agents")).status).toBe(200);
 
     // لا تعديل ولا حذف على مسارات مشرف الفتيات
     expect((await api(supTok).patch("/api/agent-supervisor/orders/fake").send({ notes: "x" })).status).toBe(404);
@@ -1417,5 +1417,60 @@ describe("مشرف الفتيات (SALES_AGENT_SUPERVISOR)", () => {
     expect(monthNames).toContain("أوردر يوم آخر");
     expect(monthNames).not.toContain("مسودة مستبعدة");
     expect(oDraft.id).toBeTruthy();
+  });
+
+  it("مشرف الفتيات يدير Prefix الفتيات وصفحات البيع (بلا تسريب رواتب/عمولات)، وتظل محجوبة عن الأدوار الأخرى", async () => {
+    const newAgent = await makeUser("ag_by_sup", "SALES_AGENT");
+    const des = await makeUser("des_no_sa", "DESIGNER");
+    const desTok = await login(des.username);
+
+    // قائمة الفتيات: تحتوي Prefix وترقيم فقط بلا كلمات مرور أو عمولات أو تكاليف
+    const listRes = await api(agSup).get("/api/sales-agents");
+    expect(listRes.status).toBe(200);
+    expect((listRes.body.agents as { id: string }[]).some((a) => a.id === newAgent.id)).toBe(true);
+    expect(JSON.stringify(listRes.body)).not.toMatch(/passwordHash|unitPrice|totalDue|commission|fixedFee|deliveredSales/);
+
+    // ضبط Prefix ورقم بدء من مشرف الفتيات (ومنع تكرار Prefix ← 409)
+    const setRes = await api(agSup).put(`/api/sales-agents/${newAgent.id}/prefix`).send({ prefix: 850, startSeq: 3 });
+    expect(setRes.status).toBe(200);
+    expect(setRes.body.profile).toMatchObject({ userId: newAgent.id, prefix: 850, nextSeq: 3 });
+    expect((await api(agSup).put(`/api/sales-agents/${newAgent.id}/prefix`).send({ prefix: 500 })).status).toBe(409);
+
+    // إدارة صفحات البيع (جلب، إنشاء، تعديل، تعطيل، حذف صفحة فارغة، ومنع حذف صفحة مرتبطة بأوردر)
+    const pagesBefore = await api(agSup).get("/api/sales-agents/pages");
+    expect(pagesBefore.status).toBe(200);
+
+    const createdPage = await api(agSup).post("/api/sales-agents/pages").send({ name: "صفحة من المشرفة" });
+    expect(createdPage.status).toBe(201);
+    const supPageId = createdPage.body.page.id as string;
+
+    const renamedPage = await api(agSup).patch(`/api/sales-agents/pages/${supPageId}`).send({ name: "صفحة المشرفة المعدّلة" });
+    expect(renamedPage.status).toBe(200);
+    expect(renamedPage.body.page.name).toBe("صفحة المشرفة المعدّلة");
+
+    const disabledPage = await api(agSup).patch(`/api/sales-agents/pages/${supPageId}`).send({ isActive: false });
+    expect(disabledPage.status).toBe(200);
+    expect(disabledPage.body.page.isActive).toBe(false);
+
+    // حذف صفحة غير مستخدمة ينجح 200، بينما صفحة مرتبطة بأوردر ← 409
+    const unusedPage = await api(agSup).post("/api/sales-agents/pages").send({ name: "صفحة مؤقتة للمشرفة" });
+    expect((await api(agSup).delete(`/api/sales-agents/pages/${unusedPage.body.page.id}`)).status).toBe(200);
+    const linkedPageId = (pagesBefore.body.pages as { id: string; ordersCount: number }[]).find((p) => p.ordersCount > 0)?.id;
+    expect(linkedPageId).toBeTruthy();
+    expect((await api(agSup).delete(`/api/sales-agents/pages/${linkedPageId}`)).status).toBe(409);
+
+    // بقية الأدوار غير المخوّلة تظل محجوبة بـ 403
+    for (const [label, tok] of [
+      ["SALES_AGENT", ag1],
+      ["SALES_ACCOUNTANT", acct],
+      ["SALES_EDITOR", edit],
+      ["SALES_SUPERVISOR", sup],
+      ["DESIGNER", desTok],
+    ] as const) {
+      expect((await api(tok).get("/api/sales-agents")).status, `${label} GET sales-agents`).toBe(403);
+      expect((await api(tok).put(`/api/sales-agents/${newAgent.id}/prefix`).send({ prefix: 860 })).status, `${label} PUT prefix`).toBe(403);
+      expect((await api(tok).get("/api/sales-agents/pages")).status, `${label} GET pages`).toBe(403);
+      expect((await api(tok).post("/api/sales-agents/pages").send({ name: "ممنوع" })).status, `${label} POST pages`).toBe(403);
+    }
   });
 });

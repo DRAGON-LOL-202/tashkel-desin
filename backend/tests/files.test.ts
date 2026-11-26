@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
-import { api, login, makeUser, resetDb } from "./helpers.ts";
+import { api, GROUP_ACCESSORIES, login, makeUser, resetDb } from "./helpers.ts";
 import { prisma } from "../src/db.ts";
 
 // "bucket" في الذاكرة يحل محل R2: HEAD/DELETE عبر fetch المُستبدَل. لا شبكة حقيقية.
@@ -40,7 +40,7 @@ afterAll(() => {
 });
 
 /** يحاكي رفعاً ناجحاً مباشرة إلى R2 ويُرجع مرفقاً جاهزاً للإرسال */
-function uploaded(ownerId: string, scope: "tasks" | "feedback", o: { size?: number; type?: string; ext?: string; realSize?: number } = {}) {
+function uploaded(ownerId: string, scope: "tasks" | "feedback" | "inventory", o: { size?: number; type?: string; ext?: string; realSize?: number } = {}) {
   const ext = o.ext ?? "png";
   const key = `${scope}/${ownerId}/${randomUUID()}.${ext}`;
   const size = o.size ?? 1000;
@@ -269,5 +269,57 @@ describe("files: DELETE /api/files (ملف لم يُحفظ بعد)", () => {
   it("مفتاح غير صالح ← 400", async () => {
     expect((await api(d1).delete(`/api/files?key=${encodeURIComponent("../etc/passwd")}`)).status).toBe(400);
     expect((await api(d1).delete("/api/files")).status).toBe(400);
+  });
+});
+
+describe("files: صور منتجات المخزون لمشرف المبيعات (SALES_SUPERVISOR)", () => {
+  it("يرفع صورة ويرفقها عند إنشاء/تعديل منتج مخزون ويحذف القديمة أو غير المحفوظة، ويُمنع من ملفات غيره", async () => {
+    const supUser = await makeUser("inv_img_sup", "SALES_SUPERVISOR");
+    const supTok = await login(supUser.username);
+    const catRes = await api(admin).post("/api/inventory/categories").send({ name: "تصنيف صور المشرف", groupId: GROUP_ACCESSORIES });
+    expect(catRes.status).toBe(201);
+    const categoryId = catRes.body.category.id as string;
+
+    // 1. طلب توقيع رفع لصورة مخزون (200) بينما نطاق المهام محظور (403)
+    const preOk = await api(supTok).post("/api/files/presign-upload").send({ scope: "inventory", mimeType: "image/png", size: 1500 });
+    expect(preOk.status).toBe(200);
+    expect((preOk.body.objectKey as string).startsWith(`inventory/${supUser.id}/`)).toBe(true);
+    expect((await api(supTok).post("/api/files/presign-upload").send({ scope: "tasks", mimeType: "image/png", size: 1500 })).status).toBe(403);
+
+    // 2. إنشاء منتج مخزون بمرفق صورة R2 خاص بالمشرف (مع إخفاء الأسعار في الرد)
+    const img1 = uploaded(supUser.id, "inventory");
+    const createRes = await api(supTok).post("/api/inventory").send({
+      name: "صنف بصورة مشرف",
+      categoryId,
+      unit: "قطعة",
+      minQuantity: 2,
+      initialQuantity: 5,
+      attachments: [img1],
+    });
+    expect(createRes.status).toBe(201);
+    expect(createRes.body.item.attachments).toHaveLength(1);
+    expect(createRes.body.item.attachments[0].objectKey).toBe(img1.objectKey);
+    expect(createRes.body.item.attachments[0].url).toContain("X-Amz-Signature=");
+    expect(createRes.body.item).not.toHaveProperty("unitPrice");
+    expect(bucket.has(img1.objectKey)).toBe(true);
+
+    const itemId = createRes.body.item.id as string;
+
+    // 3. تعديل المنتج باستبدال الصورة بأخرى ← يحذف القديمة من R2 ويثبت الجديدة
+    const img2 = uploaded(supUser.id, "inventory");
+    const patchRes = await api(supTok).patch(`/api/inventory/${itemId}`).send({ attachments: [img2] });
+    expect(patchRes.status).toBe(200);
+    expect(patchRes.body.item.attachments).toHaveLength(1);
+    expect(patchRes.body.item.attachments[0].objectKey).toBe(img2.objectKey);
+    expect(bucket.has(img1.objectKey)).toBe(false);
+    expect(bucket.has(img2.objectKey)).toBe(true);
+
+    // 4. حذف صورة رُفعت ولم تُحفظ بعد (DELETE /api/files) ومنع إرفاق ملف مستخدم آخر (403)
+    const draftImg = uploaded(supUser.id, "inventory");
+    expect((await api(supTok).delete(`/api/files?key=${encodeURIComponent(draftImg.objectKey)}`)).status).toBe(200);
+    expect(bucket.has(draftImg.objectKey)).toBe(false);
+
+    const otherAdminImg = uploaded(d1Id, "inventory");
+    expect((await api(supTok).patch(`/api/inventory/${itemId}`).send({ attachments: [otherAdminImg] })).status).toBe(403);
   });
 });

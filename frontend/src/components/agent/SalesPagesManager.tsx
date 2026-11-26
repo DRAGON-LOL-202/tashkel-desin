@@ -159,14 +159,19 @@ function PageRow({
   );
 }
 
-// إدارة أسماء صفحات البيع (الإدارة فقط): تظهر للفتيات كخيار إجباري، وتُخرج حسابات مستقلة لكل صفحة في الحسابات العامة.
-export function SalesPagesManager() {
+// إدارة أسماء صفحات البيع (الإدارة ومشرف الفتيات): تظهر للفتيات كخيار إجباري، وتُخرج حسابات مستقلة لكل صفحة في الحسابات العامة.
+export function SalesPagesManager({ onChanged }: { onChanged?: () => void } = {}) {
   const pages = useResource<SalesPageAdminRow[]>(agentAdminService.listPages, NONE, PAGE_CHANNELS);
   const [newName, setNewName] = useState("");
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<SalesPageAdminRow | null>(null);
   const { show } = useToast();
   const run = useSafeAction();
+
+  const refresh = async () => {
+    await pages.reload();
+    onChanged?.();
+  };
 
   const addPage = async (e: FormEvent) => {
     e.preventDefault();
@@ -178,7 +183,7 @@ export function SalesPagesManager() {
       if (r.ok) {
         show(`أُضيفت صفحة «${r.value.name}»`);
         setNewName("");
-        await pages.reload();
+        await refresh();
       }
     } finally {
       setAdding(false);
@@ -192,7 +197,7 @@ export function SalesPagesManager() {
     const r = await run(() => agentAdminService.deletePage(target.id));
     if (r.ok) {
       show(`حُذفت صفحة «${target.name}»`);
-      await pages.reload();
+      await refresh();
     }
   };
 
@@ -234,7 +239,7 @@ export function SalesPagesManager() {
             <PageRow
               key={`${p.id}:${p.name}:${p.isActive}`}
               page={p}
-              onUpdated={pages.reload}
+              onUpdated={refresh}
               onDeleteRequest={setDeleting}
             />
           ))
